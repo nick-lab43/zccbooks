@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #1d2939;
+  background: #edf0f3;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+.app-shell { min-height: 100vh; background: #f7f8fa; }
+.topbar {
+  min-height: 68px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 6vw; color: #fff; background: #172d4a; border-bottom: 4px solid #9a7b42;
+}
+.brand { font-weight: 800; letter-spacing: .12em; }
+.brand span { font-weight: 400; color: #d8c69e; }
+.context { font-size: 11px; letter-spacing: .12em; color: #d4dce6; }
+.page-heading { max-width: 980px; margin: 72px auto 36px; padding: 0 28px; }
+.eyebrow { color: #8b713f; font-size: 11px; font-weight: 700; letter-spacing: .16em; }
+h1 { max-width: 720px; margin: 14px 0; color: #172d4a; font-family: Georgia, serif; font-size: clamp(32px, 5vw, 48px); font-weight: 500; }
+.intro { max-width: 650px; color: #5d6877; font-size: 16px; line-height: 1.7; }
+.notice { max-width: 924px; margin: 0 auto; padding: 24px 28px; border: 1px solid #d7dde5; border-left: 4px solid #9a7b42; background: #fff; }
+.notice strong { color: #172d4a; }
+.notice p { margin-bottom: 0; color: #5d6877; line-height: 1.6; }
+footer { max-width: 924px; margin: 48px auto 0; padding: 18px 0; border-top: 1px solid #d7dde5; color: #778292; font-size: 12px; }
+@media (max-width: 600px) { .context { display: none; } .page-heading { margin-top: 48px; } footer { margin-inline: 24px; } }

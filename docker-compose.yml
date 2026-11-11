@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: zccbooks-postgres
+    environment:
+      POSTGRES_DB: zccbooks
+      POSTGRES_USER: zccbooks
+      POSTGRES_PASSWORD: change-me
+    ports:
+      - "5432:5432"
+    volumes:
+      - zccbooks-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zccbooks -d zccbooks"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  zccbooks-data:
