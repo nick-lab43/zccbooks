@@ -102,7 +102,10 @@ export default function App() {
         zccAppNumber: form.get("zccAppNumber"), firstName: form.get("firstName"), lastName: form.get("lastName"),
         classificationId: form.get("classificationId") || null,
       }) });
-      setMembers(await api<Member[]>(`/api/branches/${branchId}/members`)); setNotice("Member registered in this branch."); formElement.reset();
+      const params = new URLSearchParams();
+      if (search.trim()) params.set("search", search.trim());
+      setMembers(await api<Member[]>(`/api/branches/${branchId}/members?${params.toString()}`));
+      setNotice("Member registered in this branch."); formElement.reset();
     });
   }
 
