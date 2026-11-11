@@ -158,19 +158,13 @@ public class RegistryService {
     }
 
     private UUID requireBranch(UUID id) {
-        return jdbc.query("""
-            SELECT b.organisation_id FROM branch b WHERE b.id = ?
-            """, rs -> rs.next() ? rs.getObject(1, UUID.class) : null, id) == null
-            ? throwNotFoundBranch() : branchOrganisation(id);
-    }
-
-    private UUID branchOrganisation(UUID id) {
-        return jdbc.queryForObject("SELECT organisation_id FROM branch WHERE id = ?",
-            UUID.class, id);
-    }
-
-    private UUID throwNotFoundBranch() {
-        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Branch not found.");
+        List<UUID> organisationIds = jdbc.query(
+            "SELECT organisation_id FROM branch WHERE id = ?",
+            (rs, row) -> rs.getObject("organisation_id", UUID.class), id);
+        if (organisationIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Branch not found.");
+        }
+        return organisationIds.get(0);
     }
 
     private boolean exists(String sql, UUID id) {
