@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 
 type Organisation = { id: string; name: string; createdAt: string };
 type Branch = { id: string; organisationId: string; code: string; name: string; districtName?: string; countryCode?: string };
@@ -75,11 +76,11 @@ export default function App() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     await submit(event, async () => {
-      await api(`/api/organisations/${organisationId}/branches`, { method: "POST", body: JSON.stringify({
-        code: form.get("code"), name: form.get("name"), districtName: form.get("districtName"), countryCode: form.get("countryCode"),
+      const created = await api<Branch>(`/api/organisations/${organisationId}/branches`, { method: "POST", body: JSON.stringify({
+        code: form.get("code"), name: form.get("name"), districtName: form.get("districtName"), countryCode: form.get("countryCode") || null,
       }) });
       const rows = await api<Branch[]>(`/api/organisations/${organisationId}/branches`);
-      setBranches(rows); setBranchId(rows[rows.length - 1]?.id ?? ""); setNotice("Branch created."); formElement.reset();
+      setBranches(rows); setBranchId(created.id); setNotice("Branch created."); formElement.reset();
     });
   }
 
