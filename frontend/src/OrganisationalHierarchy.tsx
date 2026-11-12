@@ -29,7 +29,7 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
   const [notice, setNotice] = useState("");
 
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-  const authHeaders = authorizationHeader ? { Authorization: authorizationHeader } : {};
+  const authHeaders: Record<string, string> = authorizationHeader ? { Authorization: authorizationHeader } : {};
   const selectedCellId = selected[5] || "";
 
   async function loadUnits() {
