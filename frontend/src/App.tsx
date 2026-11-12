@@ -116,7 +116,7 @@ export default function App() {
 
   function logout() {
     currentAuthHeader = null; setAuthenticated(false); setCurrentAdmin(null);
-    setAdminUsers([]); setAdminRoles([]); setOrganisations([]); setBranches([]); setMembers([]); setAccessOrganisationId(""); setAccessUnits([]); setAuditEvents([]);
+    setAdminUsers([]); setAdminRoles([]); setOrganisations([]); setBranches([]); setMembers([]); setAccessOrganisationId(""); setAccessUnits([]); setAuditEvents([]); setActiveModule("overview");
     setOrganisationId(""); setBranchId(""); setError(""); setNotice("");
   }
 
@@ -235,8 +235,8 @@ export default function App() {
       </header>
       <nav className="menubar workspace-nav" aria-label="Main modules">
         <button className={activeModule === "overview" ? "active" : ""} onClick={() => setActiveModule("overview")}>Overview</button>
-        <button className={activeModule === "organisation" ? "active" : ""} onClick={() => setActiveModule("organisation")}>Organisation</button>
-        <button className={activeModule === "membership" ? "active" : ""} onClick={() => setActiveModule("membership")}>Membership</button>
+        {currentAdmin?.permissions.includes("ORG_VIEW") && <button className={activeModule === "organisation" ? "active" : ""} onClick={() => setActiveModule("organisation")}>Organisation</button>}
+        {currentAdmin?.permissions.includes("MEMBERS_VIEW") && <button className={activeModule === "membership" ? "active" : ""} onClick={() => setActiveModule("membership")}>Membership</button>}
         {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button className={activeModule === "access" ? "active" : ""} onClick={() => setActiveModule("access")}>Access Control</button>}
         <span className="menu-spacer" />
         <span className="workspace-nav-status">AUTHENTICATED · {currentAdmin?.username}</span>
