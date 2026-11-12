@@ -140,6 +140,21 @@ public class OrganisationalUnitController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    @PostMapping("/households/{householdId}/members/{memberId}/end")
+    public ResponseEntity<Void> endHouseholdMembership(@PathVariable UUID householdId,
+            @PathVariable UUID memberId, @Valid @RequestBody EndHouseholdMembership request) {
+        requireHousehold(householdId);
+        int updated = jdbc.update("""
+            UPDATE member_household_memberships
+            SET valid_to = ?
+            WHERE household_id = ? AND member_id = ? AND valid_to IS NULL
+            """, Date.valueOf(request.validTo()), householdId, memberId);
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Active household membership not found.");
+        }
+        return ResponseEntity.noContent().build();
+    }
+
     private ResponseEntity<UnitDto> createUnit(UUID organisationId, UUID parentId, String level, CreateUnit request) {
         UUID id = UUID.randomUUID();
         return ResponseEntity.status(HttpStatus.CREATED).body(jdbc.queryForObject("""
@@ -183,8 +198,10 @@ public class OrganisationalUnitController {
 
     public record CreateUnit(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
     public record CreateHousehold(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
-    public record AddHouseholdMember(UUID memberId, @NotBlank @Size(max = 80) String relationshipLabel,
+    public record AddHouseholdMember(@jakarta.validation.constraints.NotNull UUID memberId,
+                                     @NotBlank @Size(max = 80) String relationshipLabel,
                                      java.time.LocalDate validFrom) {}
+    public record EndHouseholdMembership(@jakarta.validation.constraints.NotNull java.time.LocalDate validTo) {}
     public record UnitDto(String id, String organisationId, String parentId, String level, String code, String name, boolean active) {}
     public record HouseholdDto(String id, String code, String name, String householdHeadMemberId, boolean active) {}
     public record HouseholdMemberDto(String id, String zccAppNumber, String firstName, String lastName,
