@@ -169,7 +169,6 @@ public class AdminController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
-    @Transactional
     @GetMapping("/audit")
     public List<AuditEventDto> auditEvents() {
         authorization.requireGlobalPermission("AUDIT_VIEW");
