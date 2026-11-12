@@ -213,6 +213,17 @@ export default function App() {
   const selectedBranch = branches.find((item) => item.id === branchId);
   const selectedOrganisation = organisations.find((item) => item.id === organisationId);
 
+  if (!authenticated) return (
+    <main className="system login-shell">
+      <header className="masthead"><div className="masthead-brand"><span className="brand-mark">Z</span><div><strong>ZCC BOOKS</strong><small>CHURCH FINANCE &amp; RECORDS</small></div></div><div className="masthead-right"><span>SECURE ADMINISTRATION</span></div></header>
+      <section className="login-panel"><div className="login-kicker">AUTHORISED PERSONNEL ONLY</div><h1>Administrator sign-in</h1><p>Sign in with the administrator account provisioned for this ZCC Books environment.</p>
+        {loginError && <div className="message error">{loginError}</div>}
+        <form onSubmit={login} className="form-stack"><label>Username<input name="username" autoComplete="username" required /></label><label>Password<input name="password" type="password" autoComplete="current-password" required /></label><button className="primary-button">Sign in</button></form>
+        <div className="login-footnote">Access is controlled by administrator roles and assigned geographical scope.</div>
+      </section>
+    </main>
+  );
+
   return (
     <main className="system">
       <header className="masthead">
@@ -301,7 +312,7 @@ export default function App() {
                 {!branches.length && <tr><td colSpan={3} className="empty-table">No branches registered.</td></tr>}
               </tbody></table></div>
             </section>
-            <div className="organisation-hierarchy"><OrganisationalHierarchy organisationId={organisationId} /></div>
+            <div className="organisation-hierarchy"><OrganisationalHierarchy organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} /></div>
           </div>
         </>
       )}
