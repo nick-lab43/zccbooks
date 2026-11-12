@@ -10,6 +10,7 @@ CREATE TABLE organisational_units (
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_organisational_units_id_org UNIQUE (id, organisation_id),
+    CONSTRAINT uq_organisational_units_id_org_level UNIQUE (id, organisation_id, level),
     CONSTRAINT fk_organisational_units_parent
         FOREIGN KEY (parent_id, organisation_id)
         REFERENCES organisational_units (id, organisation_id)
@@ -31,14 +32,15 @@ CREATE TABLE households (
     id UUID PRIMARY KEY,
     organisation_id UUID NOT NULL,
     cell_id UUID NOT NULL,
+    cell_level VARCHAR(32) NOT NULL DEFAULT 'CELL' CHECK (cell_level = 'CELL'),
     code VARCHAR(60) NOT NULL,
     name VARCHAR(160) NOT NULL,
     household_head_member_id UUID REFERENCES members(id),
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_households_cell
-        FOREIGN KEY (cell_id, organisation_id)
-        REFERENCES organisational_units (id, organisation_id),
+        FOREIGN KEY (cell_id, organisation_id, cell_level)
+        REFERENCES organisational_units (id, organisation_id, level),
     CONSTRAINT uq_households_id_org UNIQUE (id, organisation_id)
 );
 
