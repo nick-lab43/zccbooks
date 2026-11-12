@@ -45,5 +45,9 @@ public class BootstrapAdministrator implements ApplicationRunner {
             INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type)
             VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL')
             """, UUID.randomUUID(), userId);
+        jdbc.update("""
+            INSERT INTO admin_audit_events (id, actor_user_id, action_code, target_type, target_id, details)
+            VALUES (?, ?, 'BOOTSTRAP_ADMIN_CREATED', 'ADMIN_USER', ?, '{"source":"environment-bootstrap"}'::JSONB)
+            """, UUID.randomUUID(), userId, userId);
     }
 }
