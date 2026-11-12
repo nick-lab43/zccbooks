@@ -8,6 +8,7 @@ type AdminUser = { id: string; username: string; displayName: string; enabled: b
 type AdminRole = { id: string; code: string; name: string; description?: string; systemRole: boolean; permissions: string[] };
 type Permission = { code: string; name: string; description: string };
 type UnitOption = { id: string; level: string; code: string; name: string };
+type AuditEvent = { id: string; actor: string; action: string; targetType: string; targetId: string | null; details: string; occurredAt: string };
 type Organisation = { id: string; name: string; createdAt: string };
 type Branch = { id: string; organisationId: string; code: string; name: string; districtName?: string; countryCode?: string };
 type Classification = { id: string; code: string; name: string; active: boolean };
@@ -34,6 +35,7 @@ export default function App() {
   const [adminRoles, setAdminRoles] = useState<AdminRole[]>([]);
   const [permissionOptions, setPermissionOptions] = useState<Permission[]>([]);
   const [accessUnits, setAccessUnits] = useState<UnitOption[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [accessOrganisationId, setAccessOrganisationId] = useState("");
   const [organisations, setOrganisations] = useState<Organisation[]>([]);
   const [organisationId, setOrganisationId] = useState("");
@@ -61,7 +63,8 @@ export default function App() {
       api<AdminUser[]>("/api/admin/users"),
       api<AdminRole[]>("/api/admin/roles"),
       api<Permission[]>("/api/admin/permissions"),
-    ]).then(([users, roles, permissions]) => { setAdminUsers(users); setAdminRoles(roles); setPermissionOptions(permissions); })
+      api<AuditEvent[]>("/api/admin/audit"),
+    ]).then(([users, roles, permissions, events]) => { setAdminUsers(users); setAdminRoles(roles); setPermissionOptions(permissions); setAuditEvents(events); })
       .catch((e: Error) => setError(e.message));
   }, [authenticated, activeModule]);
 
@@ -131,8 +134,8 @@ export default function App() {
       const scopeType = String(form.get("scopeType"));
       await api(`/api/admin/users/${form.get("userId")}/assignments`, { method: "POST", body: JSON.stringify({
         roleId: form.get("roleId"), scopeType,
-        organisationId: scopeType === "GLOBAL" ? null : form.get("organisationId"),
-        scopeUnitId: scopeType === "UNIT" ? form.get("scopeUnitId") : null,
+        organisationId: scopeType === "GLOBAL" ? null : (form.get("organisationId") || null),
+        scopeUnitId: scopeType === "UNIT" ? (form.get("scopeUnitId") || null) : null,
       }) });
       setAdminUsers(await api<AdminUser[]>("/api/admin/users")); setNotice("Role assigned.");
     });
@@ -406,6 +409,14 @@ export default function App() {
               <p className="panel-description access-help">System roles are protected. Create a custom role to define a different permission set. Use Ctrl or Command to select multiple permissions.</p>
             </section>
           </div>
+          
+            <section className="panel">
+              <div className="panel-title"><div><span className="panel-index">05</span><h2>Administrator audit history</h2></div><span className="panel-tag">LATEST 250 EVENTS</span></div>
+              <div className="table-wrap"><table><thead><tr><th>DATE / TIME</th><th>ACTOR</th><th>ACTION</th><th>RECORD</th><th>DETAILS</th></tr></thead><tbody>
+                {auditEvents.map((event) => <tr key={event.id}><td>{new Date(event.occurredAt).toLocaleString()}</td><td>{event.actor}</td><td><strong>{event.action}</strong></td><td>{event.targetType}</td><td>{event.details}</td></tr>)}
+                {!auditEvents.length && <tr><td colSpan={5} className="empty-table">No administrator events recorded.</td></tr>}
+              </tbody></table></div>
+            </section>
         </div>
       )}
 
