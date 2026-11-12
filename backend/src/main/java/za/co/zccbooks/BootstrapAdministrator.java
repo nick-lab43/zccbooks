@@ -35,6 +35,7 @@ public class BootstrapAdministrator implements ApplicationRunner {
         if (username.isBlank() || password.isBlank()) {
             throw new IllegalStateException("Both BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD must be set together.");
         }
+        if (password.length() < 12) throw new IllegalStateException("BOOTSTRAP_ADMIN_PASSWORD must contain at least 12 characters.");
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM admin_users", Integer.class);
         if (count != null && count > 0) return;
 
