@@ -36,6 +36,7 @@ CREATE TABLE admin_role_assignments (
     organisation_id UUID REFERENCES organisations(id),
     scope_unit_id UUID,
     assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMPTZ,
     CONSTRAINT ck_admin_assignment_scope CHECK (
         (scope_type = 'GLOBAL' AND organisation_id IS NULL AND scope_unit_id IS NULL)
         OR (scope_type = 'ORGANISATION' AND organisation_id IS NOT NULL AND scope_unit_id IS NULL)
@@ -48,13 +49,13 @@ CREATE TABLE admin_role_assignments (
 
 CREATE UNIQUE INDEX uq_admin_assignment_global
     ON admin_role_assignments (user_id, role_id)
-    WHERE scope_type = 'GLOBAL';
+    WHERE scope_type = 'GLOBAL' AND revoked_at IS NULL;
 CREATE UNIQUE INDEX uq_admin_assignment_organisation
     ON admin_role_assignments (user_id, role_id, organisation_id)
-    WHERE scope_type = 'ORGANISATION';
+    WHERE scope_type = 'ORGANISATION' AND revoked_at IS NULL;
 CREATE UNIQUE INDEX uq_admin_assignment_unit
     ON admin_role_assignments (user_id, role_id, scope_unit_id)
-    WHERE scope_type = 'UNIT';
+    WHERE scope_type = 'UNIT' AND revoked_at IS NULL;
 
 CREATE INDEX ix_admin_role_assignments_user ON admin_role_assignments (user_id);
 CREATE INDEX ix_admin_role_permissions_permission ON admin_role_permissions (permission_code);
