@@ -1,15 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
+import type { FormEvent } from "react";
 
 type Unit = {
-  id: string;
-  organisationId: string;
-  parentId: string | null;
-  level: string;
-  code: string;
-  name: string;
-  active: boolean;
+  id: string; organisationId: string; parentId: string | null;
+  level: string; code: string; name: string; active: boolean;
 };
+type Household = { id: string; code: string; name: string; householdHeadMemberId: string | null; active: boolean };
 
 const LEVELS = [
   { key: "COUNTRY", label: "Country" },
@@ -18,24 +14,22 @@ const LEVELS = [
   { key: "NYIKA", label: "Nyika" },
   { key: "TABHERA", label: "Tabhera" },
   { key: "CELL", label: "Cell" },
-  { key: "TABHERA_YEMUMBA", label: "Tabhera yemumba" },
 ];
-
-const fieldStyle: CSSProperties = {
-  display: "block", width: "100%", padding: "10px 12px", marginTop: 6,
-  border: "1px solid #cbd3dc", borderRadius: 4, background: "#fff", color: "#172b43",
-};
 
 export default function OrganisationalHierarchy({ organisationId }: { organisationId: string }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
+  const [householdCode, setHouseholdCode] = useState("");
+  const [householdName, setHouseholdName] = useState("");
+  const [households, setHouseholds] = useState<Household[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+  const selectedCellId = selected[5] || "";
 
   async function loadUnits() {
     if (!organisationId) { setUnits([]); setSelected([]); return; }
@@ -44,11 +38,21 @@ export default function OrganisationalHierarchy({ organisationId }: { organisati
     setUnits(await response.json() as Unit[]);
   }
 
+  async function loadHouseholds(cellId: string) {
+    if (!cellId) { setHouseholds([]); return; }
+    const response = await fetch(`${apiBase}/api/units/${cellId}/households`);
+    if (!response.ok) throw new Error(`Could not load households (${response.status}).`);
+    setHouseholds(await response.json() as Household[]);
+  }
+
   useEffect(() => {
-    setSelected([]);
-    setError("");
+    setSelected([]); setError(""); setHouseholds([]);
     loadUnits().catch((e: Error) => setError(e.message));
   }, [organisationId]);
+
+  useEffect(() => {
+    loadHouseholds(selectedCellId).catch((e: Error) => setError(e.message));
+  }, [selectedCellId]);
 
   const options = useMemo(() => LEVELS.map((level, index) => {
     const parentId = index === 0 ? null : selected[index - 1] || null;
@@ -78,8 +82,7 @@ export default function OrganisationalHierarchy({ organisationId }: { organisati
         ? `${apiBase}/api/units/${parentId}/children`
         : `${apiBase}/api/organisations/${organisationId}/units`;
       const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, name }),
       });
       if (!response.ok) {
@@ -95,63 +98,90 @@ export default function OrganisationalHierarchy({ organisationId }: { organisati
         next[nextLevelIndex] = created.id;
         return next;
       });
-      setCode(""); setName("");
-      setNotice(`${nextLevel.label} created.`);
+      setCode(""); setName(""); setNotice(`${nextLevel.label} created.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "The unit could not be created.");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
+  }
+
+  async function createHousehold(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedCellId) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/api/units/${selectedCellId}/households`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: householdCode, name: householdName }),
+      });
+      if (!response.ok) {
+        const problem = await response.json().catch(() => null);
+        throw new Error(problem?.detail ?? `Could not create household (${response.status}).`);
+      }
+      await loadHouseholds(selectedCellId);
+      setHouseholdCode(""); setHouseholdName(""); setNotice("Household created under the selected Cell.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The household could not be created.");
+    } finally { setBusy(false); }
   }
 
   return (
-    <section style={{ margin: "24px 0", padding: 22, background: "#fff", border: "1px solid #cbd3dc", borderTop: "4px solid #b08b48", borderRadius: 5 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
-        <div>
-          <div style={{ color: "#8b713f", fontSize: 11, letterSpacing: 1.5, fontWeight: 700 }}>ORGANISATIONAL STRUCTURE</div>
-          <h2 style={{ margin: "5px 0", color: "#172b43", fontFamily: "Georgia, serif" }}>Church hierarchy</h2>
-          <p style={{ margin: 0, color: "#5b6877", fontSize: 13 }}>Build the church structure from Country down to Tabhera yemumba.</p>
-        </div>
-        <span style={{ fontSize: 11, color: "#536273", border: "1px solid #d6dce3", padding: "6px 9px" }}>7 LEVELS</span>
+    <section className="pos-window hierarchy-window">
+      <div className="pos-window-title">
+        <div><span className="pos-window-icon">ORG</span><strong>ORGANISATIONAL STRUCTURE MAINTENANCE</strong></div>
+        <span className="pos-window-reference">FILE: ORG-001</span>
       </div>
-      {!organisationId && <p style={{ color: "#8a5b20" }}>Create or select an organisation to configure its hierarchy.</p>}
-      {organisationId && (
-        <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginTop: 18 }}>
+      <div className="pos-window-toolbar">
+        <span className="toolbar-caption">MASTER DATA</span><span className="toolbar-separator">|</span>
+        <span>GEOGRAPHICAL HIERARCHY</span><span className="toolbar-spacer" />
+        <span className="toolbar-state">{units.length.toString().padStart(3, "0")} UNITS LOADED</span>
+      </div>
+      <div className="hierarchy-window-body">
+        <div className="pos-section-heading"><span>01</span> GEOGRAPHICAL LEVELS <small>COUNTRY → PROVINCE / STATE → DISTRICT → NYIKA → TABHERA → CELL</small></div>
+        {!organisationId && <div className="pos-inline-warning">Select or create an organisation before maintaining its hierarchy.</div>}
+        {organisationId && <>
+          <div className="hierarchy-level-grid">
             {LEVELS.map((level, index) => (
-              <label key={level.key} style={{ color: "#34465a", fontSize: 12, fontWeight: 700 }}>
-                {index + 1}. {level.label}
-                <select
-                  value={selected[index] ?? ""}
-                  disabled={index > 0 && !selected[index - 1]}
-                  onChange={(event) => chooseLevel(index, event.target.value)}
-                  style={fieldStyle}
-                >
-                  <option value="">Select {level.label.toLowerCase()}</option>
-                  {options[index].map((unit) => <option key={unit.id} value={unit.id}>{unit.code} — {unit.name}</option>)}
+              <label className="pos-field" key={level.key}>
+                <span><b>{String(index + 1).padStart(2, "0")}</b> {level.label.toUpperCase()}</span>
+                <select value={selected[index] ?? ""} disabled={index > 0 && !selected[index - 1]}
+                  onChange={(event) => chooseLevel(index, event.target.value)}>
+                  <option value="">-- SELECT --</option>
+                  {options[index].map((unit) => <option key={unit.id} value={unit.id}>{unit.code} - {unit.name}</option>)}
                 </select>
+                <small>{options[index].length} RECORD{options[index].length === 1 ? "" : "S"}</small>
               </label>
             ))}
           </div>
-          <div style={{ marginTop: 18, padding: 16, background: "#f4f6f8", border: "1px solid #e0e5ea" }}>
-            <strong style={{ color: "#172b43", fontSize: 14 }}>
-              {nextLevel ? `Add ${nextLevel.label}` : "Lowest level selected"}
-            </strong>
-            {nextLevel ? (
-              <form onSubmit={createUnit} style={{ display: "grid", gridTemplateColumns: "minmax(130px, 1fr) minmax(180px, 2fr) auto", gap: 10, alignItems: "end", marginTop: 10 }}>
-                <label style={{ fontSize: 12, color: "#34465a" }}>Code
-                  <input required maxLength={60} value={code} onChange={(e) => setCode(e.target.value)} placeholder="Unique code" style={fieldStyle}/>
-                </label>
-                <label style={{ fontSize: 12, color: "#34465a" }}>Name
-                  <input required maxLength={160} value={name} onChange={(e) => setName(e.target.value)} placeholder={`${nextLevel.label} name`} style={fieldStyle}/>
-                </label>
-                <button disabled={busy} className="primary-button" style={{ minHeight: 39 }}>{busy ? "Saving..." : `Add ${nextLevel.label}`}</button>
-              </form>
-            ) : <p style={{ marginBottom: 0, color: "#536273", fontSize: 13 }}>Tabhera yemumba is the final level. It cannot contain another organisational unit.</p>}
+          <div className="pos-section-heading add-unit-heading"><span>02</span> ADD GEOGRAPHICAL UNIT
+            <small>{nextLevel ? `NEXT LEVEL: ${nextLevel.label.toUpperCase()}` : "CELL SELECTED — GEOGRAPHICAL HIERARCHY COMPLETE"}</small>
           </div>
-          {(error || notice) && <p role="status" style={{ color: error ? "#a33131" : "#286b4a", marginBottom: 0 }}>{error || notice}</p>}
-        </>
-      )}
+          {nextLevel ? (
+            <form onSubmit={createUnit} className="pos-entry-form">
+              <label className="pos-field"><span>UNIT CODE</span><input required maxLength={60} value={code} onChange={(e) => setCode(e.target.value)} placeholder="ENTER CODE" /></label>
+              <label className="pos-field unit-name-field"><span>UNIT NAME / DESCRIPTION</span><input required maxLength={160} value={name} onChange={(e) => setName(e.target.value)} placeholder={`ENTER ${nextLevel.label.toUpperCase()} NAME`} /></label>
+              <button className="primary-button pos-command-button" disabled={busy}>{busy ? "SAVING..." : "SAVE RECORD"}</button>
+            </form>
+          ) : <div className="pos-inline-info">CELL IS THE LOWEST GEOGRAPHICAL LEVEL. HOUSEHOLDS ARE MAINTAINED SEPARATELY BELOW.</div>}
+          {selectedCellId && <>
+            <div className="pos-section-heading add-unit-heading"><span>03</span> TABHERA YEMUMBA — HOUSEHOLD REGISTER
+              <small>{households.length.toString().padStart(3, "0")} HOUSEHOLDS IN SELECTED CELL</small>
+            </div>
+            <form onSubmit={createHousehold} className="pos-entry-form">
+              <label className="pos-field"><span>HOUSEHOLD CODE</span><input required maxLength={60} value={householdCode} onChange={(e) => setHouseholdCode(e.target.value)} placeholder="ENTER CODE" /></label>
+              <label className="pos-field unit-name-field"><span>HOUSEHOLD / FAMILY NAME</span><input required maxLength={160} value={householdName} onChange={(e) => setHouseholdName(e.target.value)} placeholder="ENTER FAMILY DESIGNATION" /></label>
+              <button className="primary-button pos-command-button" disabled={busy}>{busy ? "SAVING..." : "ADD HOUSEHOLD"}</button>
+            </form>
+            <div className="table-wrap household-table"><table><thead><tr><th>HOUSEHOLD CODE</th><th>HOUSEHOLD / FAMILY</th><th>STATUS</th></tr></thead><tbody>
+              {households.map((household) => <tr key={household.id}><td><strong>{household.code}</strong></td><td>{household.name}</td><td><span className="active-label">{household.active ? "ACTIVE" : "INACTIVE"}</span></td></tr>)}
+              {!households.length && <tr><td colSpan={3} className="empty-table">No households registered in this Cell.</td></tr>}
+            </tbody></table></div>
+          </>}
+          <div className="pos-status-line" role="status">
+            <span className={error ? "status-error" : notice ? "status-success" : ""}>{error || notice || "READY — SELECT A GEOGRAPHICAL LEVEL OR MAINTAIN HOUSEHOLDS UNDER A CELL."}</span>
+            <span>F7: SAVE RECORD</span>
+          </div>
+        </>}
+      </div>
     </section>
   );
 }
