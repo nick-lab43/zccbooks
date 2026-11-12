@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import OrganisationalHierarchy from "./OrganisationalHierarchy";
 
 type Organisation = { id: string; name: string; createdAt: string };
 type Branch = { id: string; organisationId: string; code: string; name: string; districtName?: string; countryCode?: string };
@@ -129,6 +130,7 @@ export default function App() {
         <label>Branch<select value={branchId} onChange={(e) => setBranchId(e.target.value)} disabled={!branches.length}><option value="">Select branch</option>{branches.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
         <div className="selection-summary"><span>REGISTERED MEMBERS</span><strong>{members.length.toString().padStart(3, "0")}</strong></div>
       </section>
+      <OrganisationalHierarchy organisationId={organisationId} />
       <div className="content-grid">
         <section className="panel">
           <div className="panel-title"><div><span className="panel-index">01</span><h2>Organisation setup</h2></div><span className="panel-tag">CENTRAL RECORD</span></div>
