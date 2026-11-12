@@ -59,7 +59,8 @@ public class AdminController {
     public ResponseEntity<Void> setRolePermissions(@PathVariable UUID roleId,
             @Valid @RequestBody SetRolePermissions request) {
         authorization.requireGlobalPermission("ROLE_CONFIGURE");
-        Integer roleCount = jdbc.queryForObject("SELECT COUNT(*) FROM admin_roles WHERE id = ?", Integer.class, roleId);
+        Integer roleCount = jdbc.queryForObject("SELECT COUNT(*) FROM admin_roles WHERE id = ? AND system_role = FALSE", Integer.class, roleId);
+        if (roleCount == null || roleCount == 0) throw new IllegalArgumentException("System roles cannot be reconfigured. Create a custom role instead.");
         if (roleCount == null || roleCount == 0) throw new ResourceNotFoundException("Role not found.");
         jdbc.update("DELETE FROM admin_role_permissions WHERE role_id = ?", roleId);
         for (String permission : request.permissionCodes().stream().distinct().toList()) {
@@ -80,6 +81,7 @@ public class AdminController {
             FROM admin_users u
             LEFT JOIN admin_role_assignments a ON a.user_id = u.id
             LEFT JOIN admin_roles r ON r.id = a.role_id
+            WHERE a.revoked_at IS NULL OR a.id IS NULL
             GROUP BY u.id ORDER BY u.username
             """, (rs, n) -> new AdminUserDto(rs.getObject("id", UUID.class).toString(),
                 rs.getString("username"), rs.getString("display_name"), rs.getBoolean("enabled"),
