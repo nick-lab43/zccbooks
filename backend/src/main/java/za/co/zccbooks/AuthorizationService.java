@@ -21,7 +21,7 @@ public class AuthorizationService {
         Integer count = jdbc.queryForObject("""
             SELECT COUNT(*) FROM admin_role_assignments a
             JOIN admin_role_permissions rp ON rp.role_id = a.role_id
-            WHERE a.user_id = (SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?))
+            WHERE a.revoked_at IS NULL AND a.user_id = (SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?))
               AND a.scope_type = 'GLOBAL' AND rp.permission_code = ?
             """, Integer.class, username, permission);
         if (count == null || count == 0) throw new AccessDeniedException("Permission denied.");
@@ -55,7 +55,7 @@ public class AuthorizationService {
             SELECT COUNT(*)
             FROM admin_role_assignments a
             JOIN admin_role_permissions rp ON rp.role_id = a.role_id
-            JOIN unit_path path ON path.organisation_id = a.organisation_id
+            CROSS JOIN unit_path path
             WHERE a.user_id = (SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?))
               AND rp.permission_code = ?
               AND (a.scope_type = 'GLOBAL'
