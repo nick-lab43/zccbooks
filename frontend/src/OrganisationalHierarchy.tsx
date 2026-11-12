@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 
 type Unit = {
   id: string;
@@ -20,7 +21,7 @@ const LEVELS = [
   { key: "TABHERA_YEMUMBA", label: "Tabhera yemumba" },
 ];
 
-const fieldStyle: React.CSSProperties = {
+const fieldStyle: CSSProperties = {
   display: "block", width: "100%", padding: "10px 12px", marginTop: 6,
   border: "1px solid #cbd3dc", borderRadius: 4, background: "#fff", color: "#172b43",
 };
@@ -68,7 +69,7 @@ export default function OrganisationalHierarchy({ organisationId }: { organisati
     setNotice("");
   }
 
-  async function createUnit(event: React.FormEvent<HTMLFormElement>) {
+  async function createUnit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!organisationId || !nextLevel) return;
     setBusy(true); setError(""); setNotice("");
