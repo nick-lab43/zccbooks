@@ -33,7 +33,7 @@ public class AdminUserDetailsService implements UserDetailsService {
                 return User.withUsername(rs.getString("username"))
                     .password(rs.getString("password_hash"))
                     .disabled(!rs.getBoolean("enabled"))
-                    .authorities(List.of(permissions))
+                    .authorities(permissions)
                     .build();
             }, username);
         if (users.isEmpty()) throw new UsernameNotFoundException("Administrator account not found.");
