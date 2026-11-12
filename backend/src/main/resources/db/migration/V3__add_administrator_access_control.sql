@@ -1,11 +1,13 @@
 CREATE TABLE admin_users (
     id UUID PRIMARY KEY,
-    username VARCHAR(80) NOT NULL UNIQUE,
+    username VARCHAR(80) NOT NULL,
     display_name VARCHAR(160) NOT NULL,
     password_hash VARCHAR(100) NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX uq_admin_users_username_ci ON admin_users (LOWER(username));
 
 CREATE TABLE admin_roles (
     id UUID PRIMARY KEY,
@@ -102,3 +104,16 @@ INSERT INTO admin_role_permissions (role_id, permission_code) VALUES
 ('10000000-0000-0000-0000-000000000007', 'ORG_VIEW'),
 ('10000000-0000-0000-0000-000000000007', 'MEMBERS_VIEW'),
 ('10000000-0000-0000-0000-000000000007', 'AUDIT_VIEW');
+
+-- Administrative events are append-only; no update/delete API is exposed.
+CREATE TABLE admin_audit_events (
+    id UUID PRIMARY KEY,
+    actor_user_id UUID NOT NULL REFERENCES admin_users(id),
+    action_code VARCHAR(80) NOT NULL,
+    target_type VARCHAR(80) NOT NULL,
+    target_id UUID,
+    details JSONB NOT NULL DEFAULT '{}'::JSONB,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX ix_admin_audit_events_occurred ON admin_audit_events (occurred_at DESC);
+CREATE INDEX ix_admin_audit_events_actor ON admin_audit_events (actor_user_id, occurred_at DESC);
