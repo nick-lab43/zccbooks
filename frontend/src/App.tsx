@@ -7,7 +7,8 @@ type Classification = { id: string; code: string; name: string; active: boolean 
 type Member = { id: string; branchId: string; zccAppNumber?: string; firstName: string; lastName: string; classificationId?: string; classificationName?: string; active: boolean };
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...options?.headers } });
+  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+  const response = await fetch(`${apiBaseUrl}${path}`, { ...options, headers: { "Content-Type": "application/json", ...options?.headers } });
   if (!response.ok) {
     const problem = await response.json().catch(() => null);
     throw new Error(problem?.detail ?? `Request failed (${response.status})`);
