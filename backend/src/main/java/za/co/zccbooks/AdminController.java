@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,11 +19,13 @@ public class AdminController {
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
     private final AuthorizationService authorization;
+    private final AdminAuditService audit;
 
-    public AdminController(JdbcTemplate jdbc, PasswordEncoder passwordEncoder, AuthorizationService authorization) {
+    public AdminController(JdbcTemplate jdbc, PasswordEncoder passwordEncoder, AuthorizationService authorization, AdminAuditService audit) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
         this.authorization = authorization;
+        this.audit = audit;
     }
 
     @GetMapping("/roles")
@@ -51,6 +54,7 @@ public class AdminController {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO admin_roles (id, role_code, name, description, system_role) VALUES (?, ?, ?, ?, FALSE)",
             id, request.code().trim().toUpperCase(), request.name().trim(), blankToNull(request.description()));
+        audit.record("ROLE_CREATED", "ROLE", id, Map.of("roleCode", request.code().trim().toUpperCase(), "name", request.name().trim()));
         return ResponseEntity.status(HttpStatus.CREATED).body(new RoleDto(id.toString(),
             request.code().trim().toUpperCase(), request.name().trim(), request.description(), false, new String[0]));
     }
@@ -70,6 +74,7 @@ public class AdminController {
         for (String permission : permissionCodes) {
             jdbc.update("INSERT INTO admin_role_permissions (role_id, permission_code) VALUES (?, ?)", roleId, permission);
         }
+        audit.record("ROLE_PERMISSIONS_CHANGED", "ROLE", roleId, Map.of("permissionCodes", permissionCodes));
         return ResponseEntity.noContent().build();
     }
 
@@ -97,6 +102,7 @@ public class AdminController {
             INSERT INTO admin_users (id, username, display_name, password_hash)
             VALUES (?, ?, ?, ?)
             """, id, request.username().trim(), request.displayName().trim(), passwordEncoder.encode(request.password()));
+        audit.record("ADMIN_CREATED", "ADMIN_USER", id, Map.of("username", request.username().trim()));
         return ResponseEntity.status(HttpStatus.CREATED).body(new AdminUserDto(id.toString(),
             request.username().trim(), request.displayName().trim(), true, null, ""));
     }
@@ -106,6 +112,7 @@ public class AdminController {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
         int updated = jdbc.update("UPDATE admin_users SET enabled = ? WHERE id = ?", request.enabled(), userId);
         if (updated == 0) throw new ResourceNotFoundException("Administrator account not found.");
+        audit.record(request.enabled() ? "ADMIN_ENABLED" : "ADMIN_DISABLED", "ADMIN_USER", userId, Map.of());
         return ResponseEntity.noContent().build();
     }
 
@@ -128,11 +135,13 @@ public class AdminController {
         } else {
             throw new IllegalArgumentException("Scope type must be GLOBAL, ORGANISATION or UNIT.");
         }
+        UUID assignmentId = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
             VALUES (?, ?, ?, ?, ?, ?)
-            """, UUID.randomUUID(), userId, request.roleId(), request.scopeType(),
+            """, assignmentId, userId, request.roleId(), request.scopeType(),
             request.organisationId(), request.scopeUnitId());
+        audit.record("ROLE_ASSIGNED", "ROLE_ASSIGNMENT", assignmentId, Map.of("userId", userId.toString(), "roleId", request.roleId().toString(), "scopeType", request.scopeType()));
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
@@ -141,6 +150,7 @@ public class AdminController {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
         int deleted = jdbc.update("UPDATE admin_role_assignments SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL", assignmentId);
         if (deleted == 0) throw new ResourceNotFoundException("Active role assignment not found.");
+        audit.record("ROLE_ASSIGNMENT_REVOKED", "ROLE_ASSIGNMENT", assignmentId, Map.of());
         return ResponseEntity.noContent().build();
     }
 
