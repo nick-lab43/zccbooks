@@ -115,6 +115,19 @@ public class AdminController {
     @PatchMapping("/users/{userId}/enabled")
     public ResponseEntity<Void> setUserEnabled(@PathVariable UUID userId, @Valid @RequestBody SetEnabled request) {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
+        if (!request.enabled()) {
+            Integer targetIsCentral = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM admin_role_assignments a JOIN admin_roles r ON r.id = a.role_id
+                WHERE a.user_id = ? AND r.role_code = 'CENTRAL_ADMIN' AND a.scope_type = 'GLOBAL' AND a.revoked_at IS NULL
+                """, Integer.class, userId);
+            Integer enabledCentralAdmins = jdbc.queryForObject("""
+                SELECT COUNT(DISTINCT a.user_id) FROM admin_role_assignments a
+                JOIN admin_roles r ON r.id = a.role_id JOIN admin_users u ON u.id = a.user_id
+                WHERE r.role_code = 'CENTRAL_ADMIN' AND a.scope_type = 'GLOBAL' AND a.revoked_at IS NULL AND u.enabled = TRUE
+                """, Integer.class);
+            if (targetIsCentral != null && targetIsCentral > 0 && enabledCentralAdmins != null && enabledCentralAdmins <= 1)
+                throw new IllegalArgumentException("The last enabled central administrator cannot be disabled.");
+        }
         int updated = jdbc.update("UPDATE admin_users SET enabled = ? WHERE id = ?", request.enabled(), userId);
         if (updated == 0) throw new ResourceNotFoundException("Administrator account not found.");
         audit.record(request.enabled() ? "ADMIN_ENABLED" : "ADMIN_DISABLED", "ADMIN_USER", userId, Map.of());
