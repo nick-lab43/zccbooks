@@ -407,3 +407,38 @@ tbody tr:nth-child(even) { background: #e9edf1; }
   .overview-stat strong { font-size: 23px; }
   .organisation-layout { padding-inline: 10px; }
 }
+
+
+/* Secure administrator access and account maintenance */
+.logout-button {
+  min-height: 26px;
+  padding: 4px 9px;
+  border: 1px solid #74879b;
+  color: #f0f3f6;
+  background: #2b4562;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  cursor: pointer;
+}
+.login-shell { min-height: 100vh; background: #d9dee4; }
+.login-panel {
+  width: min(430px, calc(100% - 32px));
+  margin: 8vh auto 0;
+  padding: 25px;
+  border: 1px solid #aeb9c5;
+  background: #f5f6f7;
+  box-shadow: 0 5px 20px #172d481c, inset 0 1px #fff;
+}
+.login-kicker { color: #8b754c; font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.login-panel h1 { margin: 10px 0 7px; color: #203a57; font-size: 21px; }
+.login-panel > p { margin: 0 0 19px; color: #697687; font-size: 11px; line-height: 1.5; }
+.login-panel .form-stack { gap: 13px; }
+.login-footnote { margin-top: 18px; padding-top: 11px; border-top: 1px solid #d5dce3; color: #7d8996; font-size: 9px; line-height: 1.5; }
+.access-layout { display: grid; grid-template-columns: minmax(350px, .9fr) minmax(400px, 1.1fr); gap: 14px; max-width: 1452px; margin: 0 auto; padding: 0 16px; align-items: start; }
+.access-right-column { display: grid; gap: 14px; min-width: 0; }
+.access-help { margin: 12px 0 0; }
+.access-layout .panel { min-width: 0; }
+.access-layout select[multiple] { min-height: 130px; padding: 7px; }
+@media (max-width: 900px) { .access-layout { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .login-panel { margin-top: 5vh; padding: 19px; } .masthead-right { gap: 8px; } .access-layout { padding-inline: 10px; } }
