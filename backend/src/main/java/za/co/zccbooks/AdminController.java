@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -48,6 +49,7 @@ public class AdminController {
             (rs, n) -> new PermissionDto(rs.getString("permission_code"), rs.getString("name"), rs.getString("description")));
     }
 
+    @Transactional
     @PostMapping("/roles")
     public ResponseEntity<RoleDto> createRole(@Valid @RequestBody CreateRole request) {
         authorization.requireGlobalPermission("ROLE_CONFIGURE");
@@ -59,6 +61,7 @@ public class AdminController {
             request.code().trim().toUpperCase(), request.name().trim(), request.description(), false, new String[0]));
     }
 
+    @Transactional
     @PutMapping("/roles/{roleId}/permissions")
     public ResponseEntity<Void> setRolePermissions(@PathVariable UUID roleId,
             @Valid @RequestBody SetRolePermissions request) {
@@ -94,6 +97,7 @@ public class AdminController {
                 rs.getString("created_at"), rs.getString("assignments")));
     }
 
+    @Transactional
     @PostMapping("/users")
     public ResponseEntity<AdminUserDto> createUser(@Valid @RequestBody CreateAdminUser request) {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
@@ -107,6 +111,7 @@ public class AdminController {
             request.username().trim(), request.displayName().trim(), true, null, ""));
     }
 
+    @Transactional
     @PatchMapping("/users/{userId}/enabled")
     public ResponseEntity<Void> setUserEnabled(@PathVariable UUID userId, @Valid @RequestBody SetEnabled request) {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
@@ -116,6 +121,7 @@ public class AdminController {
         return ResponseEntity.noContent().build();
     }
 
+    @Transactional
     @PostMapping("/users/{userId}/assignments")
     public ResponseEntity<Void> assignRole(@PathVariable UUID userId, @Valid @RequestBody CreateAssignment request) {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
@@ -123,11 +129,12 @@ public class AdminController {
         Integer roleCount = jdbc.queryForObject("SELECT COUNT(*) FROM admin_roles WHERE id = ?", Integer.class, request.roleId());
         if (userCount == null || userCount == 0) throw new ResourceNotFoundException("Administrator account not found.");
         if (roleCount == null || roleCount == 0) throw new ResourceNotFoundException("Role not found.");
-        if ("GLOBAL".equals(request.scopeType())) {
+        String scopeType = request.scopeType().trim().toUpperCase();
+        if ("GLOBAL".equals(scopeType)) {
             if (request.organisationId() != null || request.scopeUnitId() != null) throw new IllegalArgumentException("Global assignments cannot specify an organisation or unit.");
-        } else if ("ORGANISATION".equals(request.scopeType())) {
+        } else if ("ORGANISATION".equals(scopeType)) {
             if (request.organisationId() == null || request.scopeUnitId() != null) throw new IllegalArgumentException("Organisation assignments require an organisation only.");
-        } else if ("UNIT".equals(request.scopeType())) {
+        } else if ("UNIT".equals(scopeType)) {
             if (request.organisationId() == null || request.scopeUnitId() == null) throw new IllegalArgumentException("Unit assignments require an organisation and unit.");
             Integer unitCount = jdbc.queryForObject("SELECT COUNT(*) FROM organisational_units WHERE id = ? AND organisation_id = ?",
                 Integer.class, request.scopeUnitId(), request.organisationId());
@@ -139,15 +146,42 @@ public class AdminController {
         jdbc.update("""
             INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
             VALUES (?, ?, ?, ?, ?, ?)
-            """, assignmentId, userId, request.roleId(), request.scopeType(),
+            """, assignmentId, userId, request.roleId(), scopeType,
             request.organisationId(), request.scopeUnitId());
-        audit.record("ROLE_ASSIGNED", "ROLE_ASSIGNMENT", assignmentId, Map.of("userId", userId.toString(), "roleId", request.roleId().toString(), "scopeType", request.scopeType()));
+        audit.record("ROLE_ASSIGNED", "ROLE_ASSIGNMENT", assignmentId, Map.of("userId", userId.toString(), "roleId", request.roleId().toString(), "scopeType", scopeType));
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    @Transactional
+    @GetMapping("/audit")
+    public List<AuditEventDto> auditEvents() {
+        authorization.requireGlobalPermission("AUDIT_VIEW");
+        return jdbc.query("""
+            SELECT e.id, u.username, e.action_code, e.target_type, e.target_id,
+                   e.details::text AS details, e.occurred_at::text AS occurred_at
+            FROM admin_audit_events e JOIN admin_users u ON u.id = e.actor_user_id
+            ORDER BY e.occurred_at DESC LIMIT 250
+            """, (rs, n) -> new AuditEventDto(rs.getObject("id", UUID.class).toString(),
+                rs.getString("username"), rs.getString("action_code"), rs.getString("target_type"),
+                rs.getObject("target_id") == null ? null : rs.getObject("target_id", UUID.class).toString(),
+                rs.getString("details"), rs.getString("occurred_at")));
+    }
+
+    @Transactional
     @DeleteMapping("/assignments/{assignmentId}")
     public ResponseEntity<Void> removeAssignment(@PathVariable UUID assignmentId) {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
+        Integer targetIsCentral = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM admin_role_assignments a JOIN admin_roles r ON r.id = a.role_id
+            WHERE a.id = ? AND r.role_code = 'CENTRAL_ADMIN' AND a.scope_type = 'GLOBAL' AND a.revoked_at IS NULL
+            """, Integer.class, assignmentId);
+        Integer allCentralAdmins = jdbc.queryForObject("""
+            SELECT COUNT(DISTINCT a.user_id) FROM admin_role_assignments a
+            JOIN admin_roles r ON r.id = a.role_id JOIN admin_users u ON u.id = a.user_id
+            WHERE r.role_code = 'CENTRAL_ADMIN' AND a.scope_type = 'GLOBAL' AND a.revoked_at IS NULL AND u.enabled = TRUE
+            """, Integer.class);
+        if (targetIsCentral != null && targetIsCentral > 0 && allCentralAdmins != null && allCentralAdmins <= 1)
+            throw new IllegalArgumentException("The last enabled central administrator assignment cannot be revoked.");
         int deleted = jdbc.update("UPDATE admin_role_assignments SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL", assignmentId);
         if (deleted == 0) throw new ResourceNotFoundException("Active role assignment not found.");
         audit.record("ROLE_ASSIGNMENT_REVOKED", "ROLE_ASSIGNMENT", assignmentId, Map.of());
@@ -167,4 +201,5 @@ public class AdminController {
     public record RoleDto(String id, String code, String name, String description, boolean systemRole, String[] permissions) {}
     public record PermissionDto(String code, String name, String description) {}
     public record AdminUserDto(String id, String username, String displayName, boolean enabled, String createdAt, String assignments) {}
+    public record AuditEventDto(String id, String actor, String action, String targetType, String targetId, String details, String occurredAt) {}
 }
