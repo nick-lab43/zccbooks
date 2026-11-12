@@ -7,6 +7,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class BootstrapAdministrator implements ApplicationRunner {
@@ -28,6 +29,7 @@ public class BootstrapAdministrator implements ApplicationRunner {
     }
 
     @Override
+    @Transactional
     public void run(ApplicationArguments args) {
         if (username.isBlank() && password.isBlank()) return;
         if (username.isBlank() || password.isBlank()) {
