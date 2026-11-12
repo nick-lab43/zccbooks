@@ -116,7 +116,7 @@ export default function App() {
 
   function logout() {
     currentAuthHeader = null; setAuthenticated(false); setCurrentAdmin(null);
-    setAdminUsers([]); setAdminRoles([]); setOrganisations([]); setBranches([]); setMembers([]);
+    setAdminUsers([]); setAdminRoles([]); setOrganisations([]); setBranches([]); setMembers([]); setAccessOrganisationId(""); setAccessUnits([]); setAuditEvents([]);
     setOrganisationId(""); setBranchId(""); setError(""); setNotice("");
   }
 
