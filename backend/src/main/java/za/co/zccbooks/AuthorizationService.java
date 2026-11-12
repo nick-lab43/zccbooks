@@ -57,7 +57,8 @@ public class AuthorizationService {
             FROM admin_role_assignments a
             JOIN admin_role_permissions rp ON rp.role_id = a.role_id
             CROSS JOIN unit_path path
-            WHERE a.user_id = (SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?))
+            WHERE a.revoked_at IS NULL
+              AND a.user_id = (SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?))
               AND rp.permission_code = ?
               AND (a.scope_type = 'GLOBAL'
                    OR (a.scope_type = 'ORGANISATION' AND a.organisation_id = path.organisation_id)
