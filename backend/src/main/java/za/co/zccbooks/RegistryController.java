@@ -47,8 +47,10 @@ public class RegistryController {
 
     @GetMapping("/organisations")
     public List<OrganisationDto> organisations() {
-        authorization.requireGlobalPermission("ORG_VIEW");
-        return jdbc.query("SELECT id, name, created_at::text AS created_at FROM organisations ORDER BY name", ORGANISATION_ROW);
+        authorization.requireAnyOrganisationPermission("ORG_VIEW");
+        return jdbc.query("SELECT id, name, created_at::text AS created_at FROM organisations ORDER BY name", ORGANISATION_ROW)
+            .stream().filter(organisation -> authorization.canAccessOrganisation("ORG_VIEW", UUID.fromString(organisation.id())))
+            .toList();
     }
 
     @PostMapping("/organisations")
