@@ -23,7 +23,7 @@ public class AuthenticationController {
                    COALESCE(array_agg(DISTINCT p.permission_code)
                        FILTER (WHERE p.permission_code IS NOT NULL), ARRAY[]::VARCHAR[]) AS permissions
             FROM admin_users u
-            LEFT JOIN admin_role_assignments a ON a.user_id = u.id AND a.revoked_at IS NULL
+            LEFT JOIN admin_role_assignments a ON a.user_id = u.id AND a.revoked_at IS NULL AND a.scope_type IN ('GLOBAL', 'ORGANISATION')
             LEFT JOIN admin_role_permissions rp ON rp.role_id = a.role_id
             LEFT JOIN admin_permissions p ON p.permission_code = rp.permission_code
             WHERE LOWER(u.username) = LOWER(?)
