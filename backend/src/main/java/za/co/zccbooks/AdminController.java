@@ -79,7 +79,7 @@ public class AdminController {
             SELECT u.id, u.username, u.display_name, u.enabled, u.created_at,
                    COALESCE(string_agg(DISTINCT r.role_code || ':' || a.scope_type, ', '), '') AS assignments
             FROM admin_users u
-            LEFT JOIN admin_role_assignments a ON a.user_id = u.id
+            LEFT JOIN admin_role_assignments a ON a.user_id = u.id AND a.revoked_at IS NULL
             LEFT JOIN admin_roles r ON r.id = a.role_id
             WHERE a.revoked_at IS NULL OR a.id IS NULL
             GROUP BY u.id ORDER BY u.username
@@ -138,8 +138,8 @@ public class AdminController {
     @DeleteMapping("/assignments/{assignmentId}")
     public ResponseEntity<Void> removeAssignment(@PathVariable UUID assignmentId) {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
-        int deleted = jdbc.update("DELETE FROM admin_role_assignments WHERE id = ?", assignmentId);
-        if (deleted == 0) throw new ResourceNotFoundException("Role assignment not found.");
+        int deleted = jdbc.update("UPDATE admin_role_assignments SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL", assignmentId);
+        if (deleted == 0) throw new ResourceNotFoundException("Active role assignment not found.");
         return ResponseEntity.noContent().build();
     }
 
