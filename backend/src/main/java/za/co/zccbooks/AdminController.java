@@ -61,12 +61,13 @@ public class AdminController {
         authorization.requireGlobalPermission("ROLE_CONFIGURE");
         Integer roleCount = jdbc.queryForObject("SELECT COUNT(*) FROM admin_roles WHERE id = ? AND system_role = FALSE", Integer.class, roleId);
         if (roleCount == null || roleCount == 0) throw new IllegalArgumentException("System roles cannot be reconfigured. Create a custom role instead.");
-        if (roleCount == null || roleCount == 0) throw new ResourceNotFoundException("Role not found.");
-        jdbc.update("DELETE FROM admin_role_permissions WHERE role_id = ?", roleId);
-        for (String permission : request.permissionCodes().stream().distinct().toList()) {
-            Integer permissionCount = jdbc.queryForObject("SELECT COUNT(*) FROM admin_permissions WHERE permission_code = ?",
-                Integer.class, permission);
+        List<String> permissionCodes = request.permissionCodes().stream().distinct().toList();
+        for (String permission : permissionCodes) {
+            Integer permissionCount = jdbc.queryForObject("SELECT COUNT(*) FROM admin_permissions WHERE permission_code = ?", Integer.class, permission);
             if (permissionCount == null || permissionCount == 0) throw new IllegalArgumentException("Unknown permission: " + permission);
+        }
+        jdbc.update("DELETE FROM admin_role_permissions WHERE role_id = ?", roleId);
+        for (String permission : permissionCodes) {
             jdbc.update("INSERT INTO admin_role_permissions (role_id, permission_code) VALUES (?, ?)", roleId, permission);
         }
         return ResponseEntity.noContent().build();
