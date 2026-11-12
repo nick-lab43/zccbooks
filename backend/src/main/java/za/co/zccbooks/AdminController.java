@@ -3,6 +3,7 @@ package za.co.zccbooks;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
@@ -86,10 +87,13 @@ public class AdminController {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
         return jdbc.query("""
             SELECT u.id, u.username, u.display_name, u.enabled, u.created_at,
-                   COALESCE(string_agg(DISTINCT r.role_code || ':' || a.scope_type, ', '), '') AS assignments
+                   COALESCE(string_agg(DISTINCT r.role_code || ':' || a.scope_type || ':' ||
+                       COALESCE(o.name, '') || ':' || COALESCE(ou.name, ''), ', '), '') AS assignments
             FROM admin_users u
             LEFT JOIN admin_role_assignments a ON a.user_id = u.id AND a.revoked_at IS NULL
             LEFT JOIN admin_roles r ON r.id = a.role_id
+            LEFT JOIN organisations o ON o.id = a.organisation_id
+            LEFT JOIN organisational_units ou ON ou.id = a.scope_unit_id
             WHERE a.revoked_at IS NULL OR a.id IS NULL
             GROUP BY u.id ORDER BY u.username
             """, (rs, n) -> new AdminUserDto(rs.getObject("id", UUID.class).toString(),
@@ -203,7 +207,7 @@ public class AdminController {
 
     private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
 
-    public record CreateRole(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 120) String name,
+    public record CreateRole(@NotBlank @Pattern(regexp = "[A-Za-z][A-Za-z0-9_]{1,59}") String code, @NotBlank @Size(max = 120) String name,
                              @Size(max = 300) String description) {}
     public record SetRolePermissions(@NotNull List<String> permissionCodes) {}
     public record CreateAdminUser(@NotBlank @Size(max = 80) String username, @NotBlank @Size(max = 160) String displayName,
