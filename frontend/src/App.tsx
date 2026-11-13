@@ -218,7 +218,7 @@ export default function App() {
 
   if (!authenticated) return (
     <main className="system login-shell">
-      <header className="masthead"><div className="masthead-brand"><span className="brand-mark">Z</span><div><strong>ZCC BOOKS</strong><small>CHURCH FINANCE &amp; RECORDS</small></div></div><div className="masthead-right"><span>SECURE ADMINISTRATION</span></div></header>
+      <header className="masthead"><div className="masthead-brand"><img className="brand-logo" src="/zcc-star-logo.png" alt="Zion Christian Church star" /><div><strong>ZCC BOOKS</strong><small>CHURCH FINANCE &amp; RECORDS</small></div></div><div className="masthead-right"><span>SECURE ADMINISTRATION</span></div></header>
       <section className="login-panel"><div className="login-kicker">AUTHORISED PERSONNEL ONLY</div><h1>Administrator sign-in</h1><p>Sign in with the administrator account provisioned for this ZCC Books environment.</p>
         {loginError && <div className="message error">{loginError}</div>}
         <form onSubmit={login} className="form-stack"><label>Username<input name="username" autoComplete="username" required /></label><label>Password<input name="password" type="password" autoComplete="current-password" required /></label><button className="primary-button">Sign in</button></form>
@@ -230,7 +230,7 @@ export default function App() {
   return (
     <main className="system">
       <header className="masthead">
-        <div className="masthead-brand"><span className="brand-mark">Z</span><div><strong>ZCC BOOKS</strong><small>CHURCH FINANCE &amp; RECORDS</small></div></div>
+        <div className="masthead-brand"><img className="brand-logo" src="/zcc-star-logo.png" alt="Zion Christian Church star" /><div><strong>ZCC BOOKS</strong><small>CHURCH FINANCE &amp; RECORDS</small></div></div>
         <div className="masthead-right"><span>{currentAdmin?.displayName ?? "ADMINISTRATOR"}</span><button className="logout-button" onClick={logout}>SIGN OUT</button><span className="system-state">SECURE SESSION</span></div>
       </header>
       <nav className="menubar workspace-nav" aria-label="Main modules">
