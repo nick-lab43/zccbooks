@@ -19,14 +19,17 @@ public class OrganisationalUnitController {
     );
 
     private final JdbcTemplate jdbc;
+    private final AuthorizationService authorization;
 
-    public OrganisationalUnitController(JdbcTemplate jdbc) {
+    public OrganisationalUnitController(JdbcTemplate jdbc, AuthorizationService authorization) {
         this.jdbc = jdbc;
+        this.authorization = authorization;
     }
 
     @GetMapping("/organisations/{organisationId}/units")
     public List<UnitDto> units(@PathVariable UUID organisationId) {
         requireOrganisation(organisationId);
+        authorization.requireOrganisationPermission("ORG_VIEW", organisationId);
         return jdbc.query("""
             SELECT id, organisation_id, parent_id, level, code, name, active
             FROM organisational_units WHERE organisation_id = ?
@@ -42,6 +45,7 @@ public class OrganisationalUnitController {
     @GetMapping("/units/{parentId}/children")
     public List<UnitDto> children(@PathVariable UUID parentId) {
         UnitRow parent = requireUnit(parentId);
+        authorization.requireUnitPermission("ORG_VIEW", parentId);
         return jdbc.query("""
             SELECT id, organisation_id, parent_id, level, code, name, active
             FROM organisational_units WHERE organisation_id = ? AND parent_id = ?
@@ -58,6 +62,7 @@ public class OrganisationalUnitController {
     public ResponseEntity<UnitDto> createCountry(@PathVariable UUID organisationId,
             @Valid @RequestBody CreateUnit request) {
         requireOrganisation(organisationId);
+        authorization.requireOrganisationPermission("ORG_MANAGE", organisationId);
         return createUnit(organisationId, null, "COUNTRY", request);
     }
 
@@ -65,6 +70,7 @@ public class OrganisationalUnitController {
     public ResponseEntity<UnitDto> createChild(@PathVariable UUID parentId,
             @Valid @RequestBody CreateUnit request) {
         UnitRow parent = requireUnit(parentId);
+        authorization.requireUnitPermission("ORG_MANAGE", parentId);
         int parentIndex = LEVELS.indexOf(parent.level());
         if (parentIndex < 0 || parentIndex == LEVELS.size() - 1) {
             throw new IllegalArgumentException("A Cell is the lowest geographical level. Households are maintained separately.");
@@ -75,6 +81,7 @@ public class OrganisationalUnitController {
     @GetMapping("/units/{cellId}/households")
     public List<HouseholdDto> households(@PathVariable UUID cellId) {
         UnitRow cell = requireCell(cellId);
+        authorization.requireUnitPermission("MEMBERS_VIEW", cellId);
         return jdbc.query("""
             SELECT id, code, name, household_head_member_id, active
             FROM households WHERE organisation_id = ? AND cell_id = ?
@@ -90,6 +97,7 @@ public class OrganisationalUnitController {
     public ResponseEntity<HouseholdDto> createHousehold(@PathVariable UUID cellId,
             @Valid @RequestBody CreateHousehold request) {
         UnitRow cell = requireCell(cellId);
+        authorization.requireUnitPermission("MEMBERS_MANAGE", cellId);
         UUID id = UUID.randomUUID();
         HouseholdDto created = jdbc.queryForObject("""
             INSERT INTO households (id, organisation_id, cell_id, code, name)
@@ -104,7 +112,8 @@ public class OrganisationalUnitController {
 
     @GetMapping("/households/{householdId}/members")
     public List<HouseholdMemberDto> householdMembers(@PathVariable UUID householdId) {
-        requireHousehold(householdId);
+        HouseholdRow household = requireHousehold(householdId);
+        authorization.requireUnitPermission("MEMBERS_VIEW", household.cellId());
         return jdbc.query("""
             SELECT m.id, m.zcc_app_number, m.first_name, m.last_name,
                    x.relationship_label, x.valid_from, x.valid_to
@@ -124,6 +133,7 @@ public class OrganisationalUnitController {
     public ResponseEntity<Void> addHouseholdMember(@PathVariable UUID householdId,
             @Valid @RequestBody AddHouseholdMember request) {
         HouseholdRow household = requireHousehold(householdId);
+        authorization.requireUnitPermission("MEMBERS_MANAGE", household.cellId());
         Integer memberCount = jdbc.queryForObject("""
             SELECT COUNT(*) FROM members m JOIN branches b ON b.id = m.branch_id
             WHERE m.id = ? AND b.organisation_id = ?
@@ -143,7 +153,8 @@ public class OrganisationalUnitController {
     @PostMapping("/households/{householdId}/members/{memberId}/end")
     public ResponseEntity<Void> endHouseholdMembership(@PathVariable UUID householdId,
             @PathVariable UUID memberId, @Valid @RequestBody EndHouseholdMembership request) {
-        requireHousehold(householdId);
+        HouseholdRow household = requireHousehold(householdId);
+        authorization.requireUnitPermission("MEMBERS_MANAGE", household.cellId());
         int updated = jdbc.update("""
             UPDATE member_household_memberships
             SET valid_to = ?
@@ -185,9 +196,9 @@ public class OrganisationalUnitController {
 
     private HouseholdRow requireHousehold(UUID id) {
         return jdbc.query("""
-            SELECT id, organisation_id FROM households WHERE id = ?
+            SELECT id, organisation_id, cell_id FROM households WHERE id = ?
             """, (rs, n) -> new HouseholdRow(rs.getObject("id", UUID.class),
-                rs.getObject("organisation_id", UUID.class)), id)
+                rs.getObject("organisation_id", UUID.class), rs.getObject("cell_id", UUID.class)), id)
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Household not found."));
     }
 
@@ -207,5 +218,5 @@ public class OrganisationalUnitController {
     public record HouseholdMemberDto(String id, String zccAppNumber, String firstName, String lastName,
                                      String relationshipLabel, String validFrom, String validTo) {}
     private record UnitRow(UUID id, UUID organisationId, String level) {}
-    private record HouseholdRow(UUID id, UUID organisationId) {}
+    private record HouseholdRow(UUID id, UUID organisationId, UUID cellId) {}
 }

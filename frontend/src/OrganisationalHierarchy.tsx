@@ -16,7 +16,7 @@ const LEVELS = [
   { key: "CELL", label: "Cell" },
 ];
 
-export default function OrganisationalHierarchy({ organisationId }: { organisationId: string }) {
+export default function OrganisationalHierarchy({ organisationId, authorizationHeader }: { organisationId: string; authorizationHeader: string }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [code, setCode] = useState("");
@@ -29,18 +29,19 @@ export default function OrganisationalHierarchy({ organisationId }: { organisati
   const [notice, setNotice] = useState("");
 
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+  const authHeaders: Record<string, string> = authorizationHeader ? { Authorization: authorizationHeader } : {};
   const selectedCellId = selected[5] || "";
 
   async function loadUnits() {
     if (!organisationId) { setUnits([]); setSelected([]); return; }
-    const response = await fetch(`${apiBase}/api/organisations/${organisationId}/units`);
+    const response = await fetch(`${apiBase}/api/organisations/${organisationId}/units`, { headers: authHeaders });
     if (!response.ok) throw new Error(`Could not load hierarchy (${response.status}).`);
     setUnits(await response.json() as Unit[]);
   }
 
   async function loadHouseholds(cellId: string) {
     if (!cellId) { setHouseholds([]); return; }
-    const response = await fetch(`${apiBase}/api/units/${cellId}/households`);
+    const response = await fetch(`${apiBase}/api/units/${cellId}/households`, { headers: authHeaders });
     if (!response.ok) throw new Error(`Could not load households (${response.status}).`);
     setHouseholds(await response.json() as Household[]);
   }
@@ -82,7 +83,7 @@ export default function OrganisationalHierarchy({ organisationId }: { organisati
         ? `${apiBase}/api/units/${parentId}/children`
         : `${apiBase}/api/organisations/${organisationId}/units`;
       const response = await fetch(url, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ code, name }),
       });
       if (!response.ok) {
@@ -90,7 +91,7 @@ export default function OrganisationalHierarchy({ organisationId }: { organisati
         throw new Error(problem?.detail ?? `Could not create unit (${response.status}).`);
       }
       const created = await response.json() as Unit;
-      const refreshed = await fetch(`${apiBase}/api/organisations/${organisationId}/units`);
+      const refreshed = await fetch(`${apiBase}/api/organisations/${organisationId}/units`, { headers: authHeaders });
       if (!refreshed.ok) throw new Error("Unit was created, but the hierarchy could not be refreshed.");
       setUnits(await refreshed.json() as Unit[]);
       setSelected((current) => {
@@ -110,7 +111,7 @@ export default function OrganisationalHierarchy({ organisationId }: { organisati
     setBusy(true); setError(""); setNotice("");
     try {
       const response = await fetch(`${apiBase}/api/units/${selectedCellId}/households`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ code: householdCode, name: householdName }),
       });
       if (!response.ok) {

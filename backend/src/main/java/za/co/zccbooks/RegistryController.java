@@ -18,9 +18,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api")
 public class RegistryController {
     private final JdbcTemplate jdbc;
+    private final AuthorizationService authorization;
 
-    public RegistryController(JdbcTemplate jdbc) {
+    public RegistryController(JdbcTemplate jdbc, AuthorizationService authorization) {
         this.jdbc = jdbc;
+        this.authorization = authorization;
     }
 
     private static final RowMapper<OrganisationDto> ORGANISATION_ROW = (rs, n) ->
@@ -45,11 +47,15 @@ public class RegistryController {
 
     @GetMapping("/organisations")
     public List<OrganisationDto> organisations() {
-        return jdbc.query("SELECT id, name, created_at::text AS created_at FROM organisations ORDER BY name", ORGANISATION_ROW);
+        authorization.requireAnyOrganisationPermission("ORG_VIEW");
+        return jdbc.query("SELECT id, name, created_at::text AS created_at FROM organisations ORDER BY name", ORGANISATION_ROW)
+            .stream().filter(organisation -> authorization.canAccessOrganisation("ORG_VIEW", UUID.fromString(organisation.id())))
+            .toList();
     }
 
     @PostMapping("/organisations")
     public ResponseEntity<OrganisationDto> createOrganisation(@Valid @RequestBody CreateOrganisation request) {
+        authorization.requireGlobalPermission("ORG_MANAGE");
         UUID id = UUID.randomUUID();
         return ResponseEntity.status(HttpStatus.CREATED).body(jdbc.queryForObject(
             "INSERT INTO organisations (id, name) VALUES (?, ?) RETURNING id, name, created_at::text AS created_at",
@@ -59,6 +65,7 @@ public class RegistryController {
     @GetMapping("/organisations/{organisationId}/branches")
     public List<BranchDto> branches(@PathVariable UUID organisationId) {
         requireOrganisation(organisationId);
+        authorization.requireOrganisationPermission("ORG_VIEW", organisationId);
         return jdbc.query("SELECT id, organisation_id, code, name, district_name, country_code FROM branches WHERE organisation_id = ? ORDER BY name",
             BRANCH_ROW, organisationId);
     }
@@ -66,6 +73,7 @@ public class RegistryController {
     @PostMapping("/organisations/{organisationId}/branches")
     public ResponseEntity<BranchDto> createBranch(@PathVariable UUID organisationId, @Valid @RequestBody CreateBranch request) {
         requireOrganisation(organisationId);
+        authorization.requireOrganisationPermission("ORG_MANAGE", organisationId);
         UUID id = UUID.randomUUID();
         return ResponseEntity.status(HttpStatus.CREATED).body(jdbc.queryForObject(
             "INSERT INTO branches (id, organisation_id, code, name, district_name, country_code) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, organisation_id, code, name, district_name, country_code",
@@ -76,6 +84,7 @@ public class RegistryController {
     @GetMapping("/organisations/{organisationId}/classifications")
     public List<ClassificationDto> classifications(@PathVariable UUID organisationId) {
         requireOrganisation(organisationId);
+        authorization.requireOrganisationPermission("MEMBERS_VIEW", organisationId);
         return jdbc.query("SELECT id, code, name, active FROM classifications WHERE organisation_id = ? ORDER BY name",
             (rs, n) -> new ClassificationDto(rs.getObject("id", UUID.class).toString(), rs.getString("code"),
                 rs.getString("name"), rs.getBoolean("active")), organisationId);
@@ -85,6 +94,7 @@ public class RegistryController {
     public ResponseEntity<ClassificationDto> createClassification(@PathVariable UUID organisationId,
             @Valid @RequestBody CreateClassification request) {
         requireOrganisation(organisationId);
+        authorization.requireOrganisationPermission("MEMBERS_MANAGE", organisationId);
         UUID id = UUID.randomUUID();
         return ResponseEntity.status(HttpStatus.CREATED).body(jdbc.queryForObject(
             "INSERT INTO classifications (id, organisation_id, code, name) VALUES (?, ?, ?, ?) RETURNING id, code, name, active",
@@ -93,7 +103,8 @@ public class RegistryController {
 
     @GetMapping("/branches/{branchId}/members")
     public List<MemberDto> members(@PathVariable UUID branchId, @RequestParam(required = false) String search) {
-        requireBranch(branchId);
+        UUID organisationId = requireBranch(branchId);
+        authorization.requireOrganisationPermission("MEMBERS_VIEW", organisationId);
         String term = search == null ? "" : search.trim();
         String pattern = "%" + term + "%";
         return jdbc.query("""
@@ -110,9 +121,8 @@ public class RegistryController {
 
     @PostMapping("/branches/{branchId}/members")
     public ResponseEntity<MemberDto> createMember(@PathVariable UUID branchId, @Valid @RequestBody CreateMember request) {
-        UUID organisationId = jdbc.query("SELECT organisation_id FROM branches WHERE id = ?",
-            (rs, n) -> rs.getObject(1, UUID.class), branchId).stream().findFirst()
-            .orElseThrow(() -> new ResourceNotFoundException("Branch not found."));
+        UUID organisationId = requireBranch(branchId);
+        authorization.requireOrganisationPermission("MEMBERS_MANAGE", organisationId);
         UUID classificationId = request.classificationId();
         if (classificationId != null) {
             Integer count = jdbc.queryForObject(
@@ -135,9 +145,10 @@ public class RegistryController {
             throw new ResourceNotFoundException("Organisation not found.");
     }
 
-    private void requireBranch(UUID id) {
-        if (jdbc.queryForList("SELECT id FROM branches WHERE id = ?", UUID.class, id).isEmpty())
-            throw new ResourceNotFoundException("Branch not found.");
+    private UUID requireBranch(UUID id) {
+        return jdbc.query("SELECT organisation_id FROM branches WHERE id = ?",
+            (rs, n) -> rs.getObject(1, UUID.class), id).stream().findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("Branch not found."));
     }
 
     private static String blankToNull(String value) {

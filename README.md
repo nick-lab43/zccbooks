@@ -95,3 +95,22 @@ Redeploy the frontend after saving the variable. The Vite development proxy rema
 - Render's `PORT` environment variable is honoured by the API.
 - The API allows browser requests only from the configured `FRONTEND_ORIGIN`.
 - The current release is a development foundation. Authentication and role-based access control are not implemented; do not enter real member or financial data or expose this system for operational use.
+
+
+## Administrator access and deployment bootstrap
+
+The API now requires administrator authentication for every endpoint except `GET /api/health`. Authentication uses HTTP Basic over HTTPS, with BCrypt password hashes stored in PostgreSQL. The frontend keeps the Basic authorisation header in memory for the active page session; it is not written to local storage.
+
+On the first deployment of this release, add these environment variables to the Render API service **before deploying**:
+
+- `BOOTSTRAP_ADMIN_USERNAME` — initial central administrator username.
+- `BOOTSTRAP_ADMIN_PASSWORD` — initial password (minimum 12 characters; use a unique generated password).
+- `BOOTSTRAP_ADMIN_DISPLAY_NAME` — optional display name.
+
+Flyway V3 creates the administrator, role, permission, geographical-scope assignment and append-only administrative audit tables. The application creates the initial `CENTRAL_ADMIN` account only when the administrator table is empty. Once the first administrator has been created, remove the bootstrap password variable from Render. Do not put credentials in GitHub or the frontend.
+
+Sign in through the Vercel application using the bootstrap credentials. Central Management can then create administrator accounts, configure custom roles, assign roles at global, organisation or geographical-unit scope, and review administrator audit events.
+
+Role permissions and geographical scope are checked by backend APIs. Unit scope includes the selected geographical unit and its descendants. The legacy branch-based member register is currently restricted to organisation-scoped administrators because branch records are not yet mapped to Cells. Local household/member workflows are the next implementation stage.
+
+The V3 migration is additive. Do not rewrite or rename the already-released V1 or V2 Flyway migrations.

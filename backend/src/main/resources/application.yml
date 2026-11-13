@@ -15,3 +15,7 @@ server:
   port: ${PORT:${SERVER_PORT:8080}}
 app:
   frontend-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+  bootstrap-admin:
+    username: ${BOOTSTRAP_ADMIN_USERNAME:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+    display-name: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:Central Administrator}
