@@ -226,20 +226,26 @@ export default function App() {
         <div className="masthead-brand"><img className="brand-logo" src="/zcc-star-logo.png" alt="Zion Christian Church star" /><div><strong>ZCC BOOKS</strong><small>CHURCH FINANCE &amp; RECORDS</small></div></div>
         <div className="masthead-right"><span>{currentAdmin?.displayName ?? "ADMINISTRATOR"}</span><button className="logout-button" onClick={logout}>SIGN OUT</button><span className="system-state">SECURE SESSION</span></div>
       </header>
-      <nav className="menubar workspace-nav" aria-label="Main modules">
-        <button className={activeModule === "overview" ? "active" : ""} onClick={() => setActiveModule("overview")}>Overview</button>
-        {currentAdmin?.permissions.includes("ORG_VIEW") && <button className={activeModule === "organisation" ? "active" : ""} onClick={() => setActiveModule("organisation")}>Organisation</button>}
-        {currentAdmin?.permissions.includes("MEMBERS_VIEW") && <button className={activeModule === "membership" ? "active" : ""} onClick={() => setActiveModule("membership")}>Membership</button>}
-        {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button className={activeModule === "access" ? "active" : ""} onClick={() => setActiveModule("access")}>Access Control</button>}
-        <span className="menu-spacer" />
-        
-      </nav>
+      <div className="app-frame">
+        <aside className="app-sidebar" aria-label="Application navigation">
+          <div className="sidebar-section-label">WORKSPACE</div>
+          <button className={activeModule === "overview" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("overview")} aria-current={activeModule === "overview" ? "page" : undefined}><span className="sidebar-icon">OV</span><span>Overview</span></button>
+          <div className="sidebar-section-label">GENERAL ADMINISTRATION</div>
+          {currentAdmin?.permissions.includes("ORG_VIEW") && <button className={activeModule === "organisation" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("organisation")} aria-current={activeModule === "organisation" ? "page" : undefined}><span className="sidebar-icon">OR</span><span>Organisational structure</span></button>}
+          {currentAdmin?.permissions.includes("MEMBERS_VIEW") && <button className={activeModule === "membership" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("membership")} aria-current={activeModule === "membership" ? "page" : undefined}><span className="sidebar-icon">ME</span><span>Membership</span></button>}
+          {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <>
+            <div className="sidebar-section-label">SYSTEM ADMINISTRATION</div>
+            <button className={activeModule === "access" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("access")} aria-current={activeModule === "access" ? "page" : undefined}><span className="sidebar-icon">AC</span><span>Users &amp; access</span></button>
+          </>}
+          <div className="sidebar-note"><strong>Current release</strong><span>Organisation and membership foundation. Financial workflows are not yet available.</span></div>
+        </aside>
+        <main className="app-main">
 
       <section className="workspace-heading">
         <div>
-          <div className="breadcrumb">{activeModule.toUpperCase()}</div>
-          <h1>{activeModule === "overview" ? "Central Management Overview" : activeModule === "organisation" ? "Organisation Management" : activeModule === "membership" ? "Membership Administration" : "Administrator Access Control"}</h1>
-          
+          <div className="breadcrumb">{activeModule === "access" ? "SYSTEM ADMINISTRATION" : activeModule === "overview" ? "WORKSPACE" : "GENERAL ADMINISTRATION"}</div>
+          <h1>{activeModule === "overview" ? "Overview" : activeModule === "organisation" ? "Organisational structure" : activeModule === "membership" ? "Membership" : "Users & access"}</h1>
+          <p>{activeModule === "overview" ? "A summary of the organisation and administration areas available to your account." : activeModule === "organisation" ? "Create and maintain the organisation's geographical hierarchy." : activeModule === "membership" ? "Register and maintain members and their household records." : "Manage administrator accounts, roles, permissions and audit history."}</p>
         </div>
         <div className="record-stamp"><span>WORKSPACE</span><strong>{activeModule === "overview" ? "CEN-01" : activeModule === "organisation" ? "ORG-01" : activeModule === "membership" ? "MEM-01" : "ACL-01"}</strong><span>FOUNDATION RELEASE</span></div>
       </section>
@@ -410,6 +416,8 @@ export default function App() {
       )}
 
       <footer className="system-footer"><span>ZCC BOOKS · CENTRAL MANAGEMENT</span><span>DEMONSTRATION DATA ONLY · NOT CONNECTED TO THE LIVE ZCC APP</span></footer>
+        </main>
+      </div>
     </main>
   );
 }
