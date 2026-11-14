@@ -77,8 +77,8 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   }, [cellId, scopeUnitId, authorizationHeader]);
 
   async function capture(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(""); setReceipt(null);
-    const data = new FormData(event.currentTarget);
+    event.preventDefault(); const form = event.currentTarget; setBusy(true); setError(""); setReceipt(null);
+    const data = new FormData(form);
     try {
       const result = await request<Receipt>(`/api/organisations/${organisationId}/contributions`, {
         method: "POST",
@@ -90,7 +90,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
         })
       });
       setReceipt(result);
-      event.currentTarget.reset();
+      form.reset();
       setMemberId("");
     } catch (e) { setError(e instanceof Error ? e.message : "Contribution could not be posted."); }
     finally { setBusy(false); }
