@@ -169,8 +169,7 @@ public class ContributionController {
 
     @GetMapping("/organisations/{organisationId}/financial-target-progress")
     public List<TargetProgressDto> targetProgress(@PathVariable UUID organisationId) {
-        authorization.requireOrganisationOrUnitPermission("FINANCE_VIEW", organisationId);
-        return jdbc.query("""
+        String sql = """
             SELECT t.id AS target_id, t.category_id, c.name AS category_name,
                    t.unit_id, u.name AS unit_name, t.period_start, t.period_end,
                    t.target_amount, t.currency,
@@ -184,19 +183,49 @@ public class ContributionController {
              AND p.scope_unit_id = t.unit_id
              AND p.contribution_date BETWEEN t.period_start AND t.period_end
             WHERE t.organisation_id = ?
+            """;
+        if (!authorization.hasOrganisationWidePermission("FINANCE_VIEW", organisationId)) {
+            sql += """
+                AND EXISTS (
+                    WITH RECURSIVE visible_units AS (
+                        SELECT a.scope_unit_id AS id
+                        FROM admin_role_assignments a
+                        JOIN admin_users au ON au.id = a.user_id
+                        JOIN admin_roles ar ON ar.id = a.role_id
+                        JOIN admin_role_permissions rp ON rp.role_id = ar.id
+                        WHERE a.scope_type = 'UNIT' AND a.organisation_id = ?
+                          AND a.revoked_at IS NULL AND LOWER(au.username) = LOWER(?)
+                          AND rp.permission_code = 'FINANCE_VIEW'
+                        UNION
+                        SELECT child.id
+                        FROM organisational_units child
+                        JOIN visible_units parent ON child.parent_id = parent.id
+                        WHERE child.organisation_id = ?
+                    )
+                    SELECT 1 FROM visible_units v WHERE v.id = t.unit_id
+                )
+                """;
+        }
+        sql += """
             GROUP BY t.id, t.category_id, c.name, t.unit_id, u.name,
                      t.period_start, t.period_end, t.target_amount, t.currency
             ORDER BY t.period_start DESC, u.name, c.name
-            """, (rs, n) -> {
-                BigDecimal target = rs.getBigDecimal("target_amount");
-                BigDecimal received = rs.getBigDecimal("received_amount");
-                BigDecimal percentage = target.signum() == 0 ? BigDecimal.ZERO :
-                    received.multiply(BigDecimal.valueOf(100)).divide(target, 2, java.math.RoundingMode.HALF_UP);
-                return new TargetProgressDto(rs.getObject("target_id", UUID.class).toString(),
-                    rs.getString("category_name"), rs.getObject("unit_id", UUID.class).toString(),
-                    rs.getString("unit_name"), rs.getDate("period_start").toLocalDate().toString(),
-                    rs.getDate("period_end").toLocalDate().toString(), target, received, percentage, rs.getString("currency"));
-            }, organisationId);
+            """;
+        var mapper = (org.springframework.jdbc.core.RowMapper<TargetProgressDto>) (rs, n) -> {
+            BigDecimal target = rs.getBigDecimal("target_amount");
+            BigDecimal received = rs.getBigDecimal("received_amount");
+            BigDecimal percentage = target.signum() == 0 ? BigDecimal.ZERO :
+                received.multiply(BigDecimal.valueOf(100)).divide(target, 2, java.math.RoundingMode.HALF_UP);
+            return new TargetProgressDto(rs.getObject("target_id", UUID.class).toString(),
+                rs.getString("category_name"), rs.getObject("unit_id", UUID.class).toString(),
+                rs.getString("unit_name"), rs.getDate("period_start").toLocalDate().toString(),
+                rs.getDate("period_end").toLocalDate().toString(), target, received, percentage, rs.getString("currency"));
+        };
+        if (!authorization.hasOrganisationWidePermission("FINANCE_VIEW", organisationId)) {
+            return jdbc.query(sql, mapper, organisationId, organisationId,
+                authorization.currentUsername(), organisationId);
+        }
+        return jdbc.query(sql, mapper, organisationId);
     }
 
     private ContributionDto requireContribution(UUID id) {
