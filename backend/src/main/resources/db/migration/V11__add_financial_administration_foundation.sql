@@ -9,6 +9,12 @@ INSERT INTO admin_role_permissions (role_id, permission_code) VALUES
 ('10000000-0000-0000-0000-000000000006', 'FINANCE_VIEW'),
 ('10000000-0000-0000-0000-000000000007', 'FINANCE_VIEW');
 
+-- V3 seeded Central Administrator permissions before these new permission codes existed.
+INSERT INTO admin_role_permissions (role_id, permission_code) VALUES
+('10000000-0000-0000-0000-000000000001', 'FINANCE_VIEW'),
+('10000000-0000-0000-0000-000000000001', 'FINANCE_CONFIGURE')
+ON CONFLICT DO NOTHING;
+
 CREATE TABLE financial_streams (
     id UUID PRIMARY KEY,
     organisation_id UUID NOT NULL REFERENCES organisations(id),
