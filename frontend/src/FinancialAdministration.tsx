@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import ContributionCapture from "./ContributionCapture";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Stream = { id: string; code: string; name: string; active: boolean };
 type Category = { id: string; streamId: string; streamCode: string; streamName: string; code: string; name: string; description: string | null; contributionType: string; active: boolean; scopeLevels: string[] };
 type Target = { id: string; categoryId: string; categoryCode: string; categoryName: string; streamName: string; unitId: string; unitLevel: string; unitCode: string; unitName: string; periodStart: string; periodEnd: string; targetAmount: number; currency: string; note: string | null };
+type TargetProgress = { targetId: string; categoryName: string; unitId: string; unitName: string; periodStart: string; periodEnd: string; targetAmount: number; receivedAmount: number; percentageAchieved: number; currency: string };
 
 const scopeOptions = [
   { value: "NYIKA", label: "Nyika" },
@@ -12,12 +14,13 @@ const scopeOptions = [
   { value: "CELL", label: "Cell" }
 ];
 
-export default function FinancialAdministration({ organisationId, authorizationHeader }: {
-  organisationId: string; authorizationHeader: string;
+export default function FinancialAdministration({ organisationId, authorizationHeader, canCapture }: {
+  organisationId: string; authorizationHeader: string; canCapture: boolean;
 }) {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [targets, setTargets] = useState<Target[]>([]);
+  const [progress, setProgress] = useState<TargetProgress[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [canConfigure, setCanConfigure] = useState(false);
   const [error, setError] = useState("");
@@ -40,15 +43,17 @@ export default function FinancialAdministration({ organisationId, authorizationH
 
   async function reload() {
     if (!organisationId) return;
-    const [streamRows, categoryRows, targetRows, access] = await Promise.all([
+    const [streamRows, categoryRows, targetRows, progressRows, access] = await Promise.all([
       request<Stream[]>(`/api/organisations/${organisationId}/financial-streams`),
       request<Category[]>(`/api/organisations/${organisationId}/contribution-categories`),
       request<Target[]>(`/api/organisations/${organisationId}/financial-targets`),
+      request<TargetProgress[]>(`/api/organisations/${organisationId}/financial-target-progress`),
       request<boolean>(`/api/organisations/${organisationId}/financial-management-access`)
     ]);
     setStreams(streamRows);
     setCategories(categoryRows);
     setTargets(targetRows);
+    setProgress(progressRows);
     setCanConfigure(access);
     if (access) {
       const unitRows = await request<Unit[]>(`/api/organisations/${organisationId}/units`);
@@ -59,7 +64,7 @@ export default function FinancialAdministration({ organisationId, authorizationH
   }
 
   useEffect(() => {
-    setStreams([]); setCategories([]); setTargets([]); setUnits([]);
+    setStreams([]); setCategories([]); setTargets([]); setProgress([]); setUnits([]);
     setCanConfigure(false); setError(""); setNotice("");
     if (organisationId) reload().catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
@@ -203,13 +208,14 @@ export default function FinancialAdministration({ organisationId, authorizationH
           <button className="primary-button" disabled={busy || !activeCategories.length || !units.length}>Record financial target</button>
         </form>
       </>}
+      {canCapture && <ContributionCapture organisationId={organisationId} authorizationHeader={authorizationHeader} />}
       <div className="panel-divider" />
       <div className="register-heading"><div><h3>Target register</h3><p>Targets visible within the permitted financial scope</p></div></div>
       <div className="table-wrap"><table><thead><tr><th>CATEGORY</th><th>GEOGRAPHICAL UNIT</th><th>PERIOD</th><th>TARGET</th><th>PROGRESS</th></tr></thead><tbody>
-        {targets.map(target => <tr key={target.id}><td><strong>{target.categoryName}</strong><small className="table-subtext">{target.streamName}</small></td><td>{target.unitLevel}<small className="table-subtext">{target.unitCode} — {target.unitName}</small></td><td>{target.periodStart} – {target.periodEnd}</td><td>{target.currency} {Number(target.targetAmount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><span className="inactive-label">AWAITING CONTRIBUTION POSTING</span></td></tr>)}
+        {targets.map(target => <tr key={target.id}><td><strong>{target.categoryName}</strong><small className="table-subtext">{target.streamName}</small></td><td>{target.unitLevel}<small className="table-subtext">{target.unitCode} — {target.unitName}</small></td><td>{target.periodStart} – {target.periodEnd}</td><td>{target.currency} {Number(target.targetAmount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td>{(() => { const row = progress.find(item => item.targetId === target.id); return row ? <><strong>{row.percentageAchieved.toFixed(2)}%</strong><small className="table-subtext">{row.currency} {Number(row.receivedAmount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} received</small></> : <span className="inactive-label">NO PROGRESS DATA</span>; })()}</td></tr>)}
         {!targets.length && <tr><td colSpan={5} className="empty-table">No financial targets have been recorded in this scope.</td></tr>}
       </tbody></table></div>
-      <p className="empty-note">Target progress percentages will be calculated from posted contributions in the next financial development phase. The system does not report a fabricated 0% achievement before contribution capture exists.</p>
+      <p className="empty-note">Target achievement is calculated from posted contributions within the matching category, geographical unit and target period. Contributions recorded against another geographical level are not counted in this target.</p>
     </>}
   </section>;
 }
