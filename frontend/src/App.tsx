@@ -388,7 +388,7 @@ function MainApp() {
       )}
 
 
-      {activeModule === "appointments" && <MemberAppointments organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canConfigurePositions={currentAdmin?.permissions.includes("ROLE_CONFIGURE") ?? false} />}
+      {activeModule === "appointments" && <MemberAppointments organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
 
       {activeModule === "access" && (
         <div className="access-layout">
