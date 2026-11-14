@@ -146,6 +146,10 @@ public class AdminController {
         Integer roleCount = jdbc.queryForObject("SELECT COUNT(*) FROM admin_roles WHERE id = ?", Integer.class, request.roleId());
         if (userCount == null || userCount == 0) throw new ResourceNotFoundException("Administrator account not found.");
         if (roleCount == null || roleCount == 0) throw new ResourceNotFoundException("Role not found.");
+        String roleCode = jdbc.queryForObject("SELECT role_code FROM admin_roles WHERE id = ?", String.class, request.roleId());
+        if ("NYIKA_ADMIN".equals(roleCode)) {
+            throw new IllegalArgumentException("Nyika administrator accounts must be created through the secure invitation workflow.");
+        }
         String scopeType = request.scopeType().trim().toUpperCase();
         if ("GLOBAL".equals(scopeType)) {
             if (request.organisationId() != null || request.scopeUnitId() != null) throw new IllegalArgumentException("Global assignments cannot specify an organisation or unit.");
