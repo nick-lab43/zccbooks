@@ -86,7 +86,7 @@ public class AdminController {
     public List<AdminUserDto> users() {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
         return jdbc.query("""
-            SELECT u.id, u.username, u.display_name, u.enabled, u.created_at,
+            SELECT u.id, u.username, u.display_name, u.email, u.enabled, u.created_at,
                    COALESCE(string_agg(DISTINCT r.role_code || ':' || a.scope_type || ':' ||
                        COALESCE(o.name, '') || ':' || COALESCE(ou.name, ''), ', '), '') AS assignments
             FROM admin_users u
@@ -97,7 +97,7 @@ public class AdminController {
             WHERE a.revoked_at IS NULL OR a.id IS NULL
             GROUP BY u.id ORDER BY u.username
             """, (rs, n) -> new AdminUserDto(rs.getObject("id", UUID.class).toString(),
-                rs.getString("username"), rs.getString("display_name"), rs.getBoolean("enabled"),
+                rs.getString("username"), rs.getString("display_name"), rs.getString("email"), rs.getBoolean("enabled"),
                 rs.getString("created_at"), rs.getString("assignments")));
     }
 
@@ -216,6 +216,6 @@ public class AdminController {
                                    UUID organisationId, UUID scopeUnitId) {}
     public record RoleDto(String id, String code, String name, String description, boolean systemRole, String[] permissions) {}
     public record PermissionDto(String code, String name, String description) {}
-    public record AdminUserDto(String id, String username, String displayName, boolean enabled, String createdAt, String assignments) {}
+    public record AdminUserDto(String id, String username, String displayName, String email, boolean enabled, String createdAt, String assignments) {}
     public record AuditEventDto(String id, String actor, String action, String targetType, String targetId, String details, String occurredAt) {}
 }

@@ -40,7 +40,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authenticationProvider(provider)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/health").permitAll()
+                .requestMatchers("/api/health", "/api/invitations/accept").permitAll()
                 .anyRequest().authenticated())
             .httpBasic(Customizer.withDefaults())
             .build();
