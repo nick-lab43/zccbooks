@@ -255,6 +255,72 @@ public class ContributionController {
         return jdbc.query(sql, mapper, organisationId);
     }
 
+    @GetMapping("/organisations/{organisationId}/deposit-followups")
+    public List<DepositFollowupDto> depositFollowups(@PathVariable UUID organisationId,
+            @RequestParam UUID scopeUnitId) {
+        authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
+        return jdbc.query("""
+            SELECT f.id, f.status, f.note, f.created_at, c.id AS contribution_id,
+                   c.receipt_number, m.first_name, m.last_name, cat.name AS category_name,
+                   c.amount, c.currency, c.contribution_date
+            FROM contribution_deposit_followups f
+            JOIN contributions c ON c.id = f.contribution_id
+            JOIN members m ON m.id = c.member_id
+            JOIN contribution_categories cat ON cat.id = c.category_id
+            WHERE c.organisation_id = ? AND c.scope_unit_id = ?
+              AND f.status <> 'RESOLVED'
+            ORDER BY f.created_at
+            """, (rs, n) -> new DepositFollowupDto(
+                rs.getObject("id", UUID.class).toString(), rs.getString("status"),
+                rs.getString("note"), rs.getString("receipt_number"),
+                rs.getString("first_name") + " " + rs.getString("last_name"),
+                rs.getString("category_name"), rs.getBigDecimal("amount"),
+                rs.getString("currency"), rs.getDate("contribution_date").toLocalDate().toString()),
+            organisationId, scopeUnitId);
+    }
+
+    @PatchMapping("/deposit-followups/{followupId}")
+    @Transactional
+    public DepositFollowupDto updateDepositFollowup(@PathVariable UUID followupId,
+            @Valid @RequestBody UpdateDepositFollowup request) {
+        DepositFollowupContext context = jdbc.query("""
+            SELECT f.id, c.scope_unit_id, c.organisation_id, f.status
+            FROM contribution_deposit_followups f
+            JOIN contributions c ON c.id = f.contribution_id
+            WHERE f.id = ? FOR UPDATE
+            """, (rs, n) -> new DepositFollowupContext(rs.getObject("id", UUID.class),
+                rs.getObject("scope_unit_id", UUID.class), rs.getObject("organisation_id", UUID.class),
+                rs.getString("status")), followupId).stream().findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("Deposit follow-up not found."));
+        authorization.requireUnitPermission("FINANCE_CAPTURE", context.scopeUnitId());
+        jdbc.update("""
+            UPDATE contribution_deposit_followups
+            SET status = ?, note = ?, assigned_to = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """, request.status(), blankToNull(request.note()),
+            jdbc.queryForObject("SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?)",
+                UUID.class, authorization.currentUsername()), followupId);
+        audit.record("DEPOSIT_FOLLOWUP_UPDATED", "DEPOSIT_FOLLOWUP", followupId,
+            Map.of("previousStatus", context.status(), "status", request.status(),
+                "scopeUnitId", context.scopeUnitId().toString()));
+        return jdbc.query("""
+            SELECT f.id, f.status, f.note, f.created_at, c.id AS contribution_id,
+                   c.receipt_number, m.first_name, m.last_name, cat.name AS category_name,
+                   c.amount, c.currency, c.contribution_date
+            FROM contribution_deposit_followups f
+            JOIN contributions c ON c.id = f.contribution_id
+            JOIN members m ON m.id = c.member_id
+            JOIN contribution_categories cat ON cat.id = c.category_id
+            WHERE f.id = ?
+            """, (rs, n) -> new DepositFollowupDto(
+                rs.getObject("id", UUID.class).toString(), rs.getString("status"),
+                rs.getString("note"), rs.getString("receipt_number"),
+                rs.getString("first_name") + " " + rs.getString("last_name"),
+                rs.getString("category_name"), rs.getBigDecimal("amount"),
+                rs.getString("currency"), rs.getDate("contribution_date").toLocalDate().toString()),
+            followupId).get(0);
+    }
+
     private ContributionDto requireContribution(UUID id) {
         return jdbc.query("""
             SELECT c.id, c.receipt_number, c.member_id, m.first_name, m.last_name,
@@ -289,6 +355,11 @@ public class ContributionController {
     }
 
     public record FinancialMemberDto(String id, String zccAppNumber, String firstName, String lastName) {}
+    public record UpdateDepositFollowup(@NotBlank @Pattern(regexp = "ACKNOWLEDGED|RESOLVED") String status,
+        @Size(max = 500) String note) {}
+    public record DepositFollowupDto(String id, String status, String note, String receiptNumber,
+        String memberName, String categoryName, BigDecimal amount, String currency, String contributionDate) {}
+    private record DepositFollowupContext(UUID id, UUID scopeUnitId, UUID organisationId, String status) {}
     public record CaptureContribution(@NotNull UUID memberId, @NotNull UUID categoryId,
         @NotNull UUID scopeUnitId, @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount,
         @NotNull LocalDate contributionDate, @NotBlank String paymentMethod,
