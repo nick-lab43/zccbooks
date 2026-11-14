@@ -44,25 +44,28 @@ Open `http://localhost:5173`. Vite proxies `/api` requests to the backend.
 
 ## Current functionality
 
-- Create organisations.
-- Create branches within an organisation, including district and country metadata.
-- Configure member classifications per organisation.
-- Register members against a branch.
-- Store an optional ZCC app number, unique when supplied.
-- Search a branch register by member name or ZCC app number.
+- Organisation records and the canonical Country → Province/State → District → Nyika → Tabhera → Cell hierarchy.
+- Administrator authentication, role-based permissions, geographical scope enforcement and append-only audit events.
+- Cell-based member registration, classifications, household membership history and member contact profiles.
+- Centrally governed church positions and date-effective member appointments.
+- Financial Administration foundation: configurable financial streams, contribution categories, category applicability by geographical level and period-based financial targets.
+- Scoped Financial Officer and Auditor access to financial configuration and target registers.
 
 The membership application integration is not connected. Use fictional demonstration records only.
 
 ## API overview
 
 - `GET/POST /api/organisations`
-- `GET/POST /api/organisations/{organisationId}/branches`
-- `GET/POST /api/organisations/{organisationId}/classifications`
-- `GET/POST /api/branches/{branchId}/members`
+- `GET/POST /api/organisations/{organisationId}/units`
+- `GET/POST /api/units/{cellId}/members`
+- `GET/POST /api/units/{cellId}/households`
+- `GET/POST /api/organisations/{organisationId}/financial-streams`
+- `GET/POST /api/organisations/{organisationId}/contribution-categories`
+- `GET/POST /api/organisations/{organisationId}/financial-targets`
 
 ## Current limitations
 
-Authentication and role-based access control are not implemented yet. Do not deploy this development build with real member data or expose it to the public internet. Contribution posting, receipts, deposits and reconciliation are planned for subsequent milestones.
+Financial configuration and target setup are implemented, but contribution posting, receipt issuance, target achievement calculations, pending-deposit follow-ups, deposits, allocation, scanning and reconciliation are not yet implemented. Do not use this development build for live financial or member records until the remaining workflows and operational controls are verified.
 
 ## Cloud deployment (Vercel + Render + Neon)
 
