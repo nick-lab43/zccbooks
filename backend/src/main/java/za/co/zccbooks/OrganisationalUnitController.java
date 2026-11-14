@@ -96,7 +96,7 @@ public class OrganisationalUnitController {
     public ResponseEntity<UnitDto> createCountry(@PathVariable UUID organisationId,
             @Valid @RequestBody CreateUnit request) {
         requireOrganisation(organisationId);
-        authorization.requireOrganisationPermission("ORG_MANAGE", organisationId);
+        authorization.requireCentralAdministrator();
         return createUnit(organisationId, null, "COUNTRY", request);
     }
 
@@ -104,12 +104,24 @@ public class OrganisationalUnitController {
     public ResponseEntity<UnitDto> createChild(@PathVariable UUID parentId,
             @Valid @RequestBody CreateUnit request) {
         UnitRow parent = requireUnit(parentId);
-        authorization.requireUnitPermission("ORG_MANAGE", parentId);
         int parentIndex = LEVELS.indexOf(parent.level());
         if (parentIndex < 0 || parentIndex == LEVELS.size() - 1) {
             throw new IllegalArgumentException("A Cell is the lowest geographical level. Households are maintained separately.");
         }
-        return createUnit(parent.organisationId(), parent.id(), LEVELS.get(parentIndex + 1), request);
+
+        String childLevel = LEVELS.get(parentIndex + 1);
+        if (List.of("PROVINCE_STATE", "DISTRICT", "NYIKA").contains(childLevel)) {
+            authorization.requireCentralAdministrator();
+        } else {
+            // Central Administration retains organisation-wide control. Otherwise,
+            // only the Nyika Administrator assigned to this Nyika can maintain
+            // its Tabheras and Cells.
+            if (!authorization.isCentralAdministrator()) {
+                authorization.requireNyikaAdministratorFor(parent.id());
+            }
+            authorization.requireUnitPermission("ORG_MANAGE", parent.id());
+        }
+        return createUnit(parent.organisationId(), parent.id(), childLevel, request);
     }
 
     @GetMapping("/units/{cellId}/households")

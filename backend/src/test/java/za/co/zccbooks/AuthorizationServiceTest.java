@@ -74,4 +74,35 @@ class AuthorizationServiceTest {
         assertThrows(AccessDeniedException.class,
             () -> authorization.requireUnitPermission("MEMBERS_MANAGE", unitId));
     }
+
+    @Test
+    void centralAdministratorRequiresTheCentralRoleAndGlobalScope() {
+        authenticate();
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("central.operator"))).thenReturn(1);
+        assertDoesNotThrow(() -> authorization.requireCentralAdministrator());
+    }
+
+    @Test
+    void nonCentralAdministratorCannotManageCentralHierarchyLevels() {
+        authenticate();
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("central.operator"))).thenReturn(0);
+        assertThrows(AccessDeniedException.class, () -> authorization.requireCentralAdministrator());
+    }
+
+    @Test
+    void nyikaAdministratorMustBeAssignedToAnAncestorNyika() {
+        authenticate();
+        UUID parentUnitId = UUID.randomUUID();
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(parentUnitId), eq("central.operator"))).thenReturn(1);
+        assertDoesNotThrow(() -> authorization.requireNyikaAdministratorFor(parentUnitId));
+    }
+
+    @Test
+    void administratorWithoutMatchingNyikaAssignmentCannotManageLocalHierarchy() {
+        authenticate();
+        UUID parentUnitId = UUID.randomUUID();
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(parentUnitId), eq("central.operator"))).thenReturn(0);
+        assertThrows(AccessDeniedException.class,
+            () -> authorization.requireNyikaAdministratorFor(parentUnitId));
+    }
 }
