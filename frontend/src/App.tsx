@@ -3,8 +3,9 @@ import type { FormEvent } from "react";
 import OrganisationalHierarchy from "./OrganisationalHierarchy";
 import CellMembership from "./CellMembership";
 import MemberAppointments from "./MemberAppointments";
+import FinancialAdministration from "./FinancialAdministration";
 
-type Module = "overview" | "organisation" | "membership" | "appointments" | "access";
+type Module = "overview" | "organisation" | "membership" | "appointments" | "financial" | "access";
 type CurrentAdmin = { username: string; displayName: string; permissions: string[] };
 type AdminUser = { id: string; username: string; displayName: string; email?: string | null; enabled: boolean; createdAt: string | null; assignments: string };
 type AdminRole = { id: string; code: string; name: string; description?: string; systemRole: boolean; permissions: string[] };
@@ -264,21 +265,25 @@ function MainApp() {
             <button className={activeModule === "membership" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("membership")} aria-current={activeModule === "membership" ? "page" : undefined}><span className="sidebar-icon">ME</span><span>Membership</span></button>
             <button className={activeModule === "appointments" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("appointments")} aria-current={activeModule === "appointments" ? "page" : undefined}><span className="sidebar-icon">AP</span><span>Church appointments</span></button>
           </>}
+          {currentAdmin?.permissions.includes("FINANCE_VIEW") && <>
+            <div className="sidebar-section-label">FINANCIAL ADMINISTRATION</div>
+            <button className={activeModule === "financial" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("financial")} aria-current={activeModule === "financial" ? "page" : undefined}><span className="sidebar-icon">FA</span><span>Financial Administration</span></button>
+          </>}
           {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <>
             <div className="sidebar-section-label">SYSTEM ADMINISTRATION</div>
             <button className={activeModule === "access" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("access")} aria-current={activeModule === "access" ? "page" : undefined}><span className="sidebar-icon">AC</span><span>Users &amp; access</span></button>
           </>}
-          <div className="sidebar-note"><strong>Current release</strong><span>Organisation and membership foundation. Financial workflows are not yet available.</span></div>
+          <div className="sidebar-note"><strong>Current release</strong><span>Organisation, membership, appointments and centrally governed financial configuration.</span></div>
         </aside>
         <main className="app-main">
 
       <section className="workspace-heading">
         <div>
-          <div className="breadcrumb">{activeModule === "access" ? "SYSTEM ADMINISTRATION" : activeModule === "overview" ? "WORKSPACE" : "GENERAL ADMINISTRATION"}</div>
-          <h1>{activeModule === "overview" ? "Overview" : activeModule === "organisation" ? "Organisational structure" : activeModule === "membership" ? "Membership" : activeModule === "appointments" ? "Church appointments" : "Users & access"}</h1>
-          <p>{activeModule === "overview" ? "A summary of the organisation and administration areas available to your account." : activeModule === "organisation" ? "Create and maintain the organisation's geographical hierarchy." : activeModule === "membership" ? "Register and maintain members and their household records." : activeModule === "appointments" ? "Maintain church offices and date-effective member appointments." : "Manage administrator accounts, roles, permissions and audit history."}</p>
+          <div className="breadcrumb">{activeModule === "access" ? "SYSTEM ADMINISTRATION" : activeModule === "financial" ? "FINANCIAL ADMINISTRATION" : activeModule === "overview" ? "WORKSPACE" : "GENERAL ADMINISTRATION"}</div>
+          <h1>{activeModule === "overview" ? "Overview" : activeModule === "organisation" ? "Organisational structure" : activeModule === "membership" ? "Membership" : activeModule === "appointments" ? "Church appointments" : activeModule === "financial" ? "Financial Administration" : "Users & access"}</h1>
+          <p>{activeModule === "overview" ? "A summary of the organisation and administration areas available to your account." : activeModule === "organisation" ? "Create and maintain the organisation's geographical hierarchy." : activeModule === "membership" ? "Register and maintain members and their household records." : activeModule === "appointments" ? "Maintain church offices and date-effective member appointments." : activeModule === "financial" ? "Govern financial streams, contribution categories and geographical targets." : "Manage administrator accounts, roles, permissions and audit history."}</p>
         </div>
-        <div className="record-stamp"><span>WORKSPACE</span><strong>{activeModule === "overview" ? "CEN-01" : activeModule === "organisation" ? "ORG-01" : activeModule === "membership" ? "MEM-01" : activeModule === "appointments" ? "APT-01" : "ACL-01"}</strong><span>FOUNDATION RELEASE</span></div>
+        <div className="record-stamp"><span>WORKSPACE</span><strong>{activeModule === "overview" ? "CEN-01" : activeModule === "organisation" ? "ORG-01" : activeModule === "membership" ? "MEM-01" : activeModule === "appointments" ? "APT-01" : activeModule === "financial" ? "FIN-01" : "ACL-01"}</strong><span>FOUNDATION RELEASE</span></div>
       </section>
 
       {(error || notice) && <div className={error ? "message error" : "message success"} role="status">{error || notice}<button onClick={() => { setError(""); setNotice(""); }} aria-label="Dismiss message">×</button></div>}
@@ -301,7 +306,8 @@ function MainApp() {
               <div className="overview-module-list">
                 <button onClick={() => setActiveModule("organisation")}><span className="module-code">01</span><span><strong>Organisation management</strong><small>Organisation records, branches and geographical hierarchy</small></span><b>OPEN</b></button>
                 <button onClick={() => setActiveModule("membership")}><span className="module-code">02</span><span><strong>Membership administration</strong><small>Classifications, Cell registration and household records</small></span><b>OPEN</b></button>
-                {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button onClick={() => setActiveModule("access")}><span className="module-code">03</span><span><strong>Administrator access control</strong><small>Accounts, role definitions, permissions and geographical scopes</small></span><b>OPEN</b></button>}
+                {currentAdmin?.permissions.includes("FINANCE_VIEW") && <button onClick={() => setActiveModule("financial")}><span className="module-code">03</span><span><strong>Financial Administration</strong><small>Financial streams, contribution categories and geographical targets</small></span><b>OPEN</b></button>}
+                {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button onClick={() => setActiveModule("access")}><span className="module-code">04</span><span><strong>Administrator access control</strong><small>Accounts, role definitions, permissions and geographical scopes</small></span><b>OPEN</b></button>}
               </div>
             </section>
             <section className="pos-window overview-window">
@@ -313,7 +319,7 @@ function MainApp() {
               </div>
             </section>
           </div>
-          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION AND MEMBERSHIP FOUNDATION · FINANCIAL WORKFLOWS NOT YET ENABLED</div>
+          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION, MEMBERSHIP AND FINANCIAL CONFIGURATION · CONTRIBUTION POSTING NOT YET ENABLED</div>
         </section>
       )}
 
@@ -389,6 +395,8 @@ function MainApp() {
 
 
       {activeModule === "appointments" && <MemberAppointments organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
+
+      {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
 
       {activeModule === "access" && (
         <div className="access-layout">

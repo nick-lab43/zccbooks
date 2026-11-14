@@ -152,16 +152,17 @@ Each Word report should use the official ZCC star logo without stretching, recol
 - Apply retention, access and export controls to scanned documents and generated reports.
 - Treat OCR or machine extraction, if later introduced, as an assistive suggestion requiring human verification.
 
-## 11. Proposed delivery sequence
+## 11. Delivery sequence and implementation status
 
-1. **Domain and workflow foundation:** implement the confirmed governance boundary (Central Administration owns Country through Nyika; Nyika administrators own Tabhera and Cell beneath their Nyika), contribution/deposit states, one-Nyika deposit invariant, allocation rules, roles, scope and audit events. Reconcile legacy branch records with the canonical Cell-based hierarchy before financial capture.
-2. **Contribution and receipt lifecycle:** implement contribution posting, receipt issuance and persistent pending-deposit follow-ups.
-3. **Deposit package and allocation:** implement deposit records, allocation lines, contribution matching, notes and central submission/review.
-4. **Scanner experience:** implement capture/upload, crop, perspective correction, enhancement, original preservation and PDF/image output.
-5. **Administrator invitations:** implement email delivery, invitation lifecycle, deterministic username generation and pre-scoped account activation.
-6. **Appointments:** implement position catalogue, member appointments and history.
-7. **Reporting:** implement permission-scoped Word templates for census, contribution, receipt, deposit and expenditure reports; then expand report configuration.
-8. **Verification:** test cross-Nyika isolation, partial deposits, multiple categories per deposit, delayed banking, duplicate/over-allocation prevention, rejected/resubmitted packages, invitation expiry and report scope.
+1. **Organisation and access foundation — implemented:** canonical Country → Province/State → District → Nyika → Tabhera → Cell hierarchy, scoped administrator roles and append-only administrative audit events. Legacy branch records remain separate and must be reconciled before financial capture uses them.
+2. **Membership and appointments — implemented:** Cell-based membership, household history, member contact profiles, centrally governed church positions and date-effective appointments.
+3. **Financial Administration configuration — implemented in the current development branch:** centrally governed financial streams, contribution categories, geographical applicability and period-based targets. See `docs/financial-administration-foundation.md`. Contribution posting and target achievement calculations are not yet implemented.
+4. **Contribution and receipt lifecycle — next:** post contributions against the actual member, approved category, amount, date, stream and authorised geographical scope; issue receipts; preserve immutable transaction history; and maintain pending-deposit follow-ups.
+5. **Deposit package and allocation:** implement one-Nyika deposits, structured category/stream allocation lines, partial banking, contribution matching and Central Financial Administration review.
+6. **Scanner experience:** implement capture/upload, crop, perspective correction, enhancement, original preservation and PDF/image output.
+7. **Administrator invitations:** complete email delivery, invitation lifecycle, deterministic username generation and pre-scoped account activation.
+8. **Reporting:** implement permission-scoped Word templates for census, contribution, receipt, deposit and expenditure reports; then expand report configuration.
+9. **Verification:** test cross-Nyika isolation, partial deposits, multiple categories and streams per deposit, delayed banking, duplicate/over-allocation prevention, rejected/resubmitted packages, invitation expiry and report scope.
 
 ## 12. Decisions still requiring confirmation
 
