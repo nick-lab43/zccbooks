@@ -265,7 +265,7 @@ function MainApp() {
             <button className={activeModule === "membership" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("membership")} aria-current={activeModule === "membership" ? "page" : undefined}><span className="sidebar-icon">ME</span><span>Membership</span></button>
             <button className={activeModule === "appointments" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("appointments")} aria-current={activeModule === "appointments" ? "page" : undefined}><span className="sidebar-icon">AP</span><span>Church appointments</span></button>
           </>}
-          {(currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("FINANCE_CAPTURE")) && <>
+          {(currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("FINANCE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_DEPOSIT") || currentAdmin?.permissions.includes("FINANCE_RECONCILE")) && <>
             <div className="sidebar-section-label">FINANCIAL ADMINISTRATION</div>
             <button className={activeModule === "financial" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("financial")} aria-current={activeModule === "financial" ? "page" : undefined}><span className="sidebar-icon">FA</span><span>Financial Administration</span></button>
           </>}
@@ -273,7 +273,7 @@ function MainApp() {
             <div className="sidebar-section-label">SYSTEM ADMINISTRATION</div>
             <button className={activeModule === "access" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("access")} aria-current={activeModule === "access" ? "page" : undefined}><span className="sidebar-icon">AC</span><span>Users &amp; access</span></button>
           </>}
-          <div className="sidebar-note"><strong>Current release</strong><span>Organisation, membership, appointments and centrally governed financial configuration.</span></div>
+          <div className="sidebar-note"><strong>Current release</strong><span>Organisation, membership, contribution capture, deposits and financial reconciliation.</span></div>
         </aside>
         <main className="app-main">
 
@@ -319,7 +319,7 @@ function MainApp() {
               </div>
             </section>
           </div>
-          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION, MEMBERSHIP, FINANCIAL CONFIGURATION AND CONTRIBUTION RECEIPTS</div>
+          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION, MEMBERSHIP, CONTRIBUTION RECEIPTS, DEPOSIT MANAGEMENT AND RECONCILIATION</div>
         </section>
       )}
 
@@ -396,7 +396,7 @@ function MainApp() {
 
       {activeModule === "appointments" && <MemberAppointments organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
 
-      {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_CAPTURE") ?? false} />}
+      {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_CAPTURE") ?? false} canDeposit={currentAdmin?.permissions.includes("FINANCE_DEPOSIT") ?? false} canReconcile={currentAdmin?.permissions.includes("FINANCE_RECONCILE") ?? false} />}
 
       {activeModule === "access" && (
         <div className="access-layout">
