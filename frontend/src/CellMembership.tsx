@@ -71,15 +71,25 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
   }, [organisationId, authorizationHeader]);
 
   useEffect(() => {
-    if (!cellId) { setMembers([]); setHouseholds([]); return; }
+    setActiveHouseholdMembers([]);
+    if (!cellId) {
+      setMembers([]); setHouseholds([]); setClassifications([]);
+      setHouseholdId("");
+      return;
+    }
     Promise.all([
       request<Member[]>(`/api/units/${cellId}/members`),
       request<Household[]>(`/api/units/${cellId}/households`),
-      request<Classification[]>(`/api/units/${cellId}/classifications`)
-    ]).then(([memberRows, householdRows, categoryRows]) => {
+      request<Classification[]>(`/api/units/${cellId}/classifications`),
+      request<ActiveHouseholdMember[]>(`/api/units/${cellId}/household-members`)
+    ]).then(([memberRows, householdRows, categoryRows, activeHouseholdRows]) => {
       setMembers(memberRows); setHouseholds(householdRows); setClassifications(categoryRows);
+      setActiveHouseholdMembers(activeHouseholdRows);
       setHouseholdId((current) => householdRows.some((h) => h.id === current) ? current : householdRows[0]?.id ?? "");
-    }).catch((e: Error) => setError(e.message));
+    }).catch((e: Error) => {
+      setActiveHouseholdMembers([]);
+      setError(e.message);
+    });
   }, [cellId]);
 
   useEffect(() => { loadHousehold(householdId).catch((e: Error) => setError(e.message)); }, [householdId]);
