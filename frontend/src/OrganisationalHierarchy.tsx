@@ -38,6 +38,7 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
   const visibleLevels = LEVELS.slice(firstVisibleLevelIndex);
   const cellLevelIndex = visibleLevels.findIndex((level) => level.key === "CELL");
   const selectedCellId = cellLevelIndex >= 0 ? selected[cellLevelIndex] || "" : "";
+  const selectedUnit = units.find((unit) => unit.id === selected.filter(Boolean).slice(-1)[0]);
 
   async function loadUnits() {
     if (!organisationId) { setUnits([]); setSelected([]); return; }
@@ -118,6 +119,27 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
     } finally { setBusy(false); }
   }
 
+  async function toggleSelectedUnitStatus() {
+    if (!selectedUnit) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/api/units/${selectedUnit.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ active: !selectedUnit.active }),
+      });
+      if (!response.ok) {
+        const problem = await response.json().catch(() => null);
+        throw new Error(problem?.detail ?? `Could not update unit status (${response.status}).`);
+      }
+      const updated = await response.json() as Unit;
+      setUnits((current) => current.map((unit) => unit.id === updated.id ? updated : unit));
+      setNotice(`${updated.name} ${updated.active ? "reactivated" : "deactivated"}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The unit status could not be changed.");
+    } finally { setBusy(false); }
+  }
+
   async function createHousehold(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedCellId) return;
@@ -167,6 +189,13 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
               </label>
             ))}
           </div>
+          {selectedUnit && <div className="pos-inline-info unit-status-control">
+            <span><strong>{selectedUnit.code} — {selectedUnit.name}</strong> · {selectedUnit.active ? "ACTIVE" : "INACTIVE"}</span>
+            <button type="button" className="secondary-button" disabled={busy}
+              onClick={toggleSelectedUnitStatus}>
+              {selectedUnit.active ? "DEACTIVATE SELECTED UNIT" : "REACTIVATE SELECTED UNIT"}
+            </button>
+          </div>}
           <div className="pos-section-heading add-unit-heading"><span>02</span> ADD GEOGRAPHICAL UNIT
             <small>{nextLevel ? `NEXT LEVEL: ${nextLevel.label.toUpperCase()}` : "CELL SELECTED — GEOGRAPHICAL HIERARCHY COMPLETE"}</small>
           </div>

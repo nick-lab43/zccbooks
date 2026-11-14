@@ -124,6 +124,76 @@ public class OrganisationalUnitController {
         return createUnit(parent.organisationId(), parent.id(), childLevel, request);
     }
 
+    @PatchMapping("/units/{unitId}/status")
+    @Transactional
+    public UnitDto updateUnitStatus(@PathVariable UUID unitId,
+            @Valid @RequestBody UpdateUnitStatus request) {
+        UnitRow unit = requireUnit(unitId);
+        if (List.of("COUNTRY", "PROVINCE_STATE", "DISTRICT", "NYIKA").contains(unit.level())) {
+            authorization.requireCentralAdministrator();
+        } else if (!authorization.isCentralAdministrator()) {
+            authorization.requireNyikaAdministratorFor(unit.id());
+        }
+        authorization.requireUnitPermission("ORG_MANAGE", unitId);
+
+        Boolean currentActive = jdbc.queryForObject(
+            "SELECT active FROM organisational_units WHERE id = ?", Boolean.class, unitId);
+        if (currentActive == null) throw new ResourceNotFoundException("Organisational unit not found.");
+        if (currentActive == request.active()) {
+            throw new IllegalArgumentException("The organisational unit already has the requested status.");
+        }
+
+        if (!request.active()) {
+            Integer activeDescendants = jdbc.queryForObject("""
+                WITH RECURSIVE descendants AS (
+                    SELECT id, parent_id FROM organisational_units WHERE id = ?
+                    UNION ALL
+                    SELECT child.id, child.parent_id
+                    FROM organisational_units child
+                    JOIN descendants parent ON child.parent_id = parent.id
+                )
+                SELECT COUNT(*) FROM organisational_units child
+                JOIN descendants d ON child.id = d.id
+                WHERE child.id <> ? AND child.active = TRUE
+                """, Integer.class, unitId, unitId);
+            if (activeDescendants != null && activeDescendants > 0) {
+                throw new IllegalStateException(
+                    "Deactivate active descendant units before deactivating this unit.");
+            }
+        } else {
+            Integer inactiveAncestors = jdbc.queryForObject("""
+                WITH RECURSIVE ancestors AS (
+                    SELECT id, parent_id FROM organisational_units WHERE id = ?
+                    UNION ALL
+                    SELECT parent.id, parent.parent_id
+                    FROM organisational_units parent
+                    JOIN ancestors child ON child.parent_id = parent.id
+                )
+                SELECT COUNT(*) FROM organisational_units ancestor
+                JOIN ancestors a ON a.id = ancestor.id
+                WHERE ancestor.id <> ? AND ancestor.active = FALSE
+                """, Integer.class, unitId, unitId);
+            if (inactiveAncestors != null && inactiveAncestors > 0) {
+                throw new IllegalStateException(
+                    "Reactivate the inactive parent hierarchy before reactivating this unit.");
+            }
+        }
+
+        jdbc.update("UPDATE organisational_units SET active = ? WHERE id = ?", request.active(), unitId);
+        audit.record(request.active() ? "ORG_UNIT_REACTIVATED" : "ORG_UNIT_DEACTIVATED",
+            "ORGANISATIONAL_UNIT", unitId,
+            Map.of("level", unit.level(), "active", request.active()));
+        return jdbc.queryForObject("""
+            SELECT id, organisation_id, parent_id, level, code, name, active
+            FROM organisational_units WHERE id = ?
+            """, (rs, n) -> new UnitDto(
+                rs.getObject("id", UUID.class).toString(),
+                rs.getObject("organisation_id", UUID.class).toString(),
+                rs.getObject("parent_id") == null ? null : rs.getObject("parent_id", UUID.class).toString(),
+                rs.getString("level"), rs.getString("code"), rs.getString("name"), rs.getBoolean("active")
+            ), unitId);
+    }
+
     @GetMapping("/units/{cellId}/households")
     public List<HouseholdDto> households(@PathVariable UUID cellId) {
         UnitRow cell = requireCell(cellId);
@@ -267,6 +337,7 @@ public class OrganisationalUnitController {
     }
 
     public record CreateUnit(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
+    public record UpdateUnitStatus(boolean active) {}
     public record CreateHousehold(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
     public record AddHouseholdMember(@jakarta.validation.constraints.NotNull UUID memberId,
                                      @NotBlank @Size(max = 80) String relationshipLabel,
