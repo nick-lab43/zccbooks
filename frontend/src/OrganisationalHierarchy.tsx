@@ -69,7 +69,10 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
   const deepestSelected = selected.reduce((last, id, index) => id ? index : last, -1);
   const nextLevelIndex = deepestSelected + 1;
   const parentId = deepestSelected >= 0 ? selected[deepestSelected] : null;
-  const nextLevel = visibleLevels[nextLevelIndex] ?? (units.length ? LEVELS[LEVELS.findIndex((level) => level.key === units[0].level) + visibleLevels.length] : LEVELS[0]);
+  const canCreateRootUnit = units.some((unit) => unit.level === "COUNTRY" && unit.parentId === null);
+  const nextLevel = deepestSelected < 0
+    ? (canCreateRootUnit || units.length === 0 ? LEVELS[0] : null)
+    : visibleLevels[nextLevelIndex] ?? null;
 
   function chooseLevel(index: number, id: string) {
     setSelected((current) => {
@@ -143,7 +146,7 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
         <span className="toolbar-state">{units.length.toString().padStart(3, "0")} UNITS LOADED</span>
       </div>
       <div className="hierarchy-window-body">
-        <div className="pos-section-heading"><span>01</span> GEOGRAPHICAL LEVELS <small>COUNTRY → PROVINCE / STATE → DISTRICT → NYIKA → TABHERA → CELL</small></div>
+        <div className="pos-section-heading"><span>01</span> GEOGRAPHICAL LEVELS <small>{visibleLevels.map((level) => level.label.toUpperCase()).join(" → ") || "NO UNITS REGISTERED"}</small></div>
         {!organisationId && <div className="pos-inline-warning">Select or create an organisation before maintaining its hierarchy.</div>}
         {organisationId && <>
           {!units.length && <div className="pos-inline-warning">No geographical units are available within your assigned scope, or you do not have permission to view them.</div>}
