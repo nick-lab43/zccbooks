@@ -30,7 +30,12 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
 
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
   const authHeaders: Record<string, string> = authorizationHeader ? { Authorization: authorizationHeader } : {};
-  const visibleLevels = LEVELS.filter((level) => units.some((unit) => unit.level === level.key));
+  const firstVisibleLevelIndex = units.length
+    ? Math.min(...units.map((unit) => LEVELS.findIndex((level) => level.key === unit.level)).filter((index) => index >= 0))
+    : 0;
+  // Keep empty descendant levels available so administrators can create the
+  // next unit. Starting at the first visible level preserves scoped Nyika views.
+  const visibleLevels = LEVELS.slice(firstVisibleLevelIndex);
   const cellLevelIndex = visibleLevels.findIndex((level) => level.key === "CELL");
   const selectedCellId = cellLevelIndex >= 0 ? selected[cellLevelIndex] || "" : "";
 
@@ -70,7 +75,7 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
   const nextLevelIndex = deepestSelected + 1;
   const parentId = deepestSelected >= 0 ? selected[deepestSelected] : null;
   const nextLevel = deepestSelected < 0
-    ? (units.length === 0 ? LEVELS[0] : null)
+    ? (units.length === 0 ? visibleLevels[0] : null)
     : visibleLevels[nextLevelIndex] ?? null;
 
   function chooseLevel(index: number, id: string) {
