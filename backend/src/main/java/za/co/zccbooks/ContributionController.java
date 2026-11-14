@@ -342,6 +342,9 @@ public class ContributionController {
                 rs.getString("status")), followupId).stream().findFirst()
             .orElseThrow(() -> new ResourceNotFoundException("Deposit follow-up not found."));
         authorization.requireUnitPermission("FINANCE_CAPTURE", context.scopeUnitId());
+        if ("RESOLVED".equals(context.status())) {
+            throw new ConflictException("A resolved deposit follow-up cannot be reopened.");
+        }
         jdbc.update("""
             UPDATE contribution_deposit_followups
             SET status = ?, note = ?, assigned_to = ?, updated_at = CURRENT_TIMESTAMP
