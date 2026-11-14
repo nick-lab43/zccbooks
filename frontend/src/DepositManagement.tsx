@@ -178,7 +178,7 @@ export default function DepositManagement({ organisationId, authorizationHeader,
           </tbody></table></div>
           <button type="button" className="primary-button" disabled={busy || !allocations.length || Number(selectedBatch.allocatedAmount) !== Number(selectedBatch.expectedAmount)} onClick={submitBatch}>Submit batch for reconciliation</button>
         </>}
-      </>}
+      </div>}
     </>}
     {canReconcile && <>
       <div className="panel-divider" />
