@@ -69,7 +69,7 @@ public class NyikaInvitationController {
     public ResponseEntity<CreatedInvitation> create(@Valid @RequestBody CreateInvitation request) {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
         NyikaInvitationMailService mail = mailService.getIfAvailable();
-        if (mail == null) throw new IllegalStateException("Invitation email is not configured. Enable app.mail and configure SMTP before creating invitations.");
+        if (mail == null) throw new IllegalStateException("Invitation email is not configured. Enable invitation email and configure RESEND_API_KEY and MAIL_FROM.");
 
         Nyika nyika = jdbc.query("""
             SELECT id, organisation_id, code, name FROM organisational_units

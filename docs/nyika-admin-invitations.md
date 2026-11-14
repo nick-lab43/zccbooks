@@ -12,27 +12,22 @@ Central Administration can invite an administrator for an active Nyika from **Us
 - Links expire after 48 hours and are consumed atomically once. Revoked, expired and previously accepted links cannot activate an account.
 - Invitation creation, acceptance and revocation are audited.
 
-## Email configuration
+## Resend email configuration
 
 Configure these environment variables on the backend deployment:
 
 | Variable | Purpose |
 | --- | --- |
 | `INVITATION_EMAIL_ENABLED` | Set to `true` to enable delivery |
-| `SMTP_HOST` | SMTP server hostname |
-| `SMTP_PORT` | SMTP port (normally 587 for STARTTLS) |
-| `SMTP_USERNAME` | SMTP account username |
-| `SMTP_PASSWORD` | SMTP account password or provider app password |
-| `SMTP_AUTH` | SMTP authentication; normally `true` |
-| `SMTP_STARTTLS` | STARTTLS; normally `true` |
-| `MAIL_FROM` | Verified sender address |
+| `RESEND_API_KEY` | Resend sending API key; keep it secret |
+| `MAIL_FROM` | Sender identity verified in Resend |
 | `FRONTEND_URL` | Public Vercel frontend origin, without a trailing slash |
 | `FRONTEND_ORIGIN` | Allowed browser origin for API CORS |
 
-Do not enable invitation delivery until valid SMTP credentials and a verified sender address are configured. If mail delivery is disabled, invitation creation fails without creating an account or invitation.
+The backend sends invitation email through Resend's HTTPS API. No SMTP host, port, username or password is required. The sender address must belong to a verified Resend domain. If mail delivery is disabled, invitation creation fails without creating an account or invitation.
 
 The frontend activation route is `/accept-invitation?token=...`. The invitee sets a password of at least 12 characters, then signs in with the username in the email.
 
 ## Deployment notes
 
-Flyway applies migration `V8__nyika_administrator_invitations.sql` automatically. Deploy the backend before using the invitation form. Configure the frontend URL and SMTP settings on the backend service, then redeploy it.
+Flyway applies migration `V8__nyika_administrator_invitations.sql` automatically. Deploy the backend before using the invitation form. Configure the Resend API key, verified sender and frontend URL on the backend service, then redeploy it.
