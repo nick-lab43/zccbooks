@@ -692,3 +692,36 @@ input, select { border-radius: 5px !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+
+/* Focus secondary workflows on demand instead of showing every form at once. */
+.workflow-disclosure {
+  margin: 0 0 1rem;
+  border: 1px solid var(--line, #d9dde2);
+  border-radius: 8px;
+  background: #fff;
+}
+.workflow-disclosure > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.85rem 1rem;
+  color: var(--ink, #252a31);
+  font-weight: 600;
+}
+.workflow-disclosure > summary::-webkit-details-marker { display: none; }
+.workflow-disclosure > summary::after {
+  content: "+";
+  float: right;
+  color: var(--muted, #707780);
+  font-size: 1.1rem;
+}
+.workflow-disclosure[open] > summary {
+  border-bottom: 1px solid var(--line, #d9dde2);
+}
+.workflow-disclosure[open] > summary::after { content: "−"; }
+.workflow-disclosure > .form-stack {
+  padding: 1rem;
+}
+@media (max-width: 640px) {
+  .workflow-disclosure > summary { min-height: 44px; }
+}

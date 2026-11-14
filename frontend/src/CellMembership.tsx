@@ -146,8 +146,8 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
 
   return (
     <section className="panel cell-membership-panel">
-      <div className="panel-title"><div><span className="panel-index">03</span><h2>Cell membership and household register</h2></div><span className="panel-tag">SCOPED RECORDS</span></div>
-      <p className="panel-description">Register members directly within an authorised Cell. Household membership is maintained separately and retains its effective-date history.</p>
+      <div className="panel-title"><div><span className="panel-index">03</span><h2>Members and households</h2></div><span className="panel-tag">CELL REGISTER</span></div>
+      
       {!organisationId && <div className="empty-note">Select an organisation first.</div>}
       {organisationId && <>
         <label className="search-field"><span>GEOGRAPHICAL CELL</span>
@@ -159,25 +159,31 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
         {!units.some((unit) => unit.level === "CELL") && <div className="empty-note">No Cells are available within this administrator's assigned scope.</div>}
         {cellId && <>
           <div className="panel-divider" />
-          <div className="panel-title"><div><span className="panel-index">04</span><h2>Register member</h2></div><span className="panel-tag">{selectedCell?.name}</span></div>
-          <form onSubmit={createMember} className="form-stack">
+          <div className="panel-title"><div><span className="panel-index">04</span><h2>Members</h2></div><span className="panel-tag">{selectedCell?.name}</span></div>
+          <details className="workflow-disclosure">
+            <summary>Register a member</summary>
+            <form onSubmit={createMember} className="form-stack">
             <label>ZCC app number<input name="zccAppNumber" maxLength={80} placeholder="Existing ZCC app number" /></label>
             <div className="field-pair"><label>First name<input name="firstName" required maxLength={100} /></label><label>Last name<input name="lastName" required maxLength={100} /></label></div>
             <label>Member classification<select name="classificationId" defaultValue=""><option value="">Unassigned</option>{classifications.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.code})</option>)}</select></label>
-            <button className="primary-button" disabled={busy}>{busy ? "SAVING..." : "REGISTER IN CELL"}</button>
-          </form>
+              <button className="primary-button" disabled={busy}>{busy ? "SAVING..." : "REGISTER MEMBER"}</button>
+            </form>
+          </details>
           <div className="panel-divider" />
-          <div className="register-heading"><div><h2>Cell member register</h2><p>{selectedCell?.code} · {selectedCell?.name}</p></div><span className="count-box">{members.length} RECORDS</span></div>
+          <div className="register-heading"><div><h2>Member register</h2><p>{selectedCell?.code} · {selectedCell?.name}</p></div><span className="count-box">{members.length} RECORDS</span></div>
           <div className="table-wrap"><table><thead><tr><th>MEMBER</th><th>ZCC APP NO.</th><th>CLASSIFICATION</th><th>STATUS</th></tr></thead><tbody>
             {members.map((member) => <tr key={member.id}><td><strong>{member.lastName}, {member.firstName}</strong></td><td>{member.zccAppNumber || "—"}</td><td>{member.classificationName || "Unassigned"}</td><td><span className="active-label">{member.active ? "ACTIVE" : "INACTIVE"}</span></td></tr>)}
             {!members.length && <tr><td colSpan={4} className="empty-table">No members registered in this Cell.</td></tr>}
           </tbody></table></div>
           <div className="panel-divider" />
-          <div className="panel-title"><div><span className="panel-index">05</span><h2>Household register</h2></div><span className="panel-tag">{households.length} HOUSEHOLDS</span></div>
-          <form onSubmit={createHousehold} className="form-stack">
+          <div className="panel-title"><div><span className="panel-index">05</span><h2>Households</h2></div><span className="panel-tag">{households.length} HOUSEHOLDS</span></div>
+          <details className="workflow-disclosure">
+            <summary>Create household</summary>
+            <form onSubmit={createHousehold} className="form-stack">
             <div className="field-pair"><label>Household code<input name="code" required maxLength={60} /></label><label>Family designation<input name="name" required maxLength={160} /></label></div>
-            <button className="secondary-button" disabled={busy}>Create household</button>
-          </form>
+              <button className="secondary-button" disabled={busy}>Create household</button>
+            </form>
+          </details>
           <div className="table-wrap"><table><thead><tr><th>CODE</th><th>HOUSEHOLD / FAMILY</th><th>STATUS</th></tr></thead><tbody>
             {households.map((item) => <tr key={item.id}><td><strong>{item.code}</strong></td><td>{item.name}</td><td>{item.active ? "ACTIVE" : "INACTIVE"}</td></tr>)}
             {!households.length && <tr><td colSpan={3} className="empty-table">No households in this Cell.</td></tr>}
@@ -185,8 +191,10 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
           {households.length > 0 && <>
             <div className="panel-divider" />
             <label className="search-field"><span>SELECT HOUSEHOLD</span><select value={householdId} onChange={(e) => setHouseholdId(e.target.value)}>{households.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
-            <div className="panel-title"><div><span className="panel-index">06</span><h2>Household membership</h2></div><span className="panel-tag">{householdMembers.length} HISTORY ROWS</span></div>
-            <form onSubmit={addHouseholdMember} className="form-stack">
+            <div className="panel-title"><div><span className="panel-index">06</span><h2>Household members</h2></div><span className="panel-tag">{householdMembers.length} RECORDS</span></div>
+            <details className="workflow-disclosure">
+              <summary>Add a member or update household head</summary>
+              <form onSubmit={addHouseholdMember} className="form-stack">
               <label>Member<select name="memberId" required defaultValue=""><option value="">Select member</option>{availableMembers.map((item) => <option key={item.id} value={item.id}>{item.lastName}, {item.firstName} · {item.zccAppNumber || "No app number"}</option>)}</select></label>
               <label>Relationship label<input name="relationshipLabel" required maxLength={80} placeholder="Configured relationship label" /></label>
               <button className="secondary-button" disabled={busy || !availableMembers.length}>Add household member</button>
@@ -195,10 +203,11 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
               {householdMembers.map((item, index) => <tr key={`${item.id}-${index}`}><td><strong>{item.lastName}, {item.firstName}</strong></td><td>{item.relationshipLabel}</td><td>{item.validFrom}</td><td>{item.validTo || "CURRENT"}</td></tr>)}
               {!householdMembers.length && <tr><td colSpan={4} className="empty-table">No household members recorded.</td></tr>}
             </tbody></table></div>
-            <form onSubmit={setHead} className="form-stack">
-              <label>Household head<select name="memberId" defaultValue={selectedHousehold?.householdHeadMemberId ?? ""}><option value="">Not designated</option>{headCandidates.map((item) => <option key={item.id} value={item.id}>{item.lastName}, {item.firstName}</option>)}</select></label>
-              <button className="secondary-button" disabled={busy}>Save household head</button>
-            </form>
+              <form onSubmit={setHead} className="form-stack">
+                <label>Household head<select name="memberId" defaultValue={selectedHousehold?.householdHeadMemberId ?? ""}><option value="">Not designated</option>{headCandidates.map((item) => <option key={item.id} value={item.id}>{item.lastName}, {item.firstName}</option>)}</select></label>
+                <button className="secondary-button" disabled={busy}>Save household head</button>
+              </form>
+            </details>
           </>}
         </>}
       </>}

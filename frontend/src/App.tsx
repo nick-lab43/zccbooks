@@ -232,14 +232,14 @@ export default function App() {
         {currentAdmin?.permissions.includes("MEMBERS_VIEW") && <button className={activeModule === "membership" ? "active" : ""} onClick={() => setActiveModule("membership")}>Membership</button>}
         {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button className={activeModule === "access" ? "active" : ""} onClick={() => setActiveModule("access")}>Access Control</button>}
         <span className="menu-spacer" />
-        <span className="workspace-nav-status">AUTHENTICATED · {currentAdmin?.username}</span>
+        
       </nav>
 
       <section className="workspace-heading">
         <div>
-          <div className="breadcrumb">ZCC BOOKS / CENTRAL MANAGEMENT / {activeModule.toUpperCase()}</div>
+          <div className="breadcrumb">{activeModule.toUpperCase()}</div>
           <h1>{activeModule === "overview" ? "Central Management Overview" : activeModule === "organisation" ? "Organisation Management" : activeModule === "membership" ? "Membership Administration" : "Administrator Access Control"}</h1>
-          <p>{activeModule === "overview" ? "Organisation-wide position and administration entry points." : activeModule === "organisation" ? "Maintain the organisation record, branches and geographical structure." : activeModule === "membership" ? "Maintain member classifications, Cell-based membership and household records." : "Create administrator accounts, configure roles and assign geographical authority."}</p>
+          
         </div>
         <div className="record-stamp"><span>WORKSPACE</span><strong>{activeModule === "overview" ? "CEN-01" : activeModule === "organisation" ? "ORG-01" : activeModule === "membership" ? "MEM-01" : "ACL-01"}</strong><span>FOUNDATION RELEASE</span></div>
       </section>
@@ -249,14 +249,14 @@ export default function App() {
       {activeModule === "overview" && (
         <section className="central-overview">
           <div className="overview-context">
-            <div><span className="overview-eyebrow">ORGANISATION IN VIEW</span><strong>{selectedOrganisation?.name ?? "No organisation registered"}</strong><small>{selectedOrganisation ? "Central organisation record selected" : "Create an organisation to begin configuration"}</small></div>
+            <div><span className="overview-eyebrow">ORGANISATION IN VIEW</span><strong>{selectedOrganisation?.name ?? "No organisation registered"}</strong></div>
             <label>ACTIVE ORGANISATION<select value={organisationId} onChange={(e) => setOrganisationId(e.target.value)}><option value="">Select organisation</option>{organisations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
           </div>
           <div className="overview-stat-grid">
-            <article className="overview-stat"><span>ORGANISATIONS</span><strong>{organisations.length.toString().padStart(3, "0")}</strong><small>Central records</small></article>
-            <article className="overview-stat"><span>BRANCHES</span><strong>{branches.length.toString().padStart(3, "0")}</strong><small>In selected organisation</small></article>
-            <article className="overview-stat"><span>GEOGRAPHICAL UNITS</span><strong>{unitCount.toString().padStart(3, "0")}</strong><small>Country to Cell</small></article>
-            <article className="overview-stat"><span>MEMBERS IN VIEW</span><strong>{members.length.toString().padStart(3, "0")}</strong><small>{selectedBranch ? selectedBranch.name : "Select a branch in Membership"}</small></article>
+            <article className="overview-stat"><span>ORGANISATIONS</span><strong>{organisations.length.toString().padStart(3, "0")}</strong></article>
+            <article className="overview-stat"><span>BRANCHES</span><strong>{branches.length.toString().padStart(3, "0")}</strong></article>
+            <article className="overview-stat"><span>GEOGRAPHICAL UNITS</span><strong>{unitCount.toString().padStart(3, "0")}</strong></article>
+            <article className="overview-stat"><span>MEMBERS IN VIEW</span><strong>{members.length.toString().padStart(3, "0")}</strong></article>
           </div>
           <div className="overview-lower-grid">
             <section className="pos-window overview-window">
@@ -270,9 +270,9 @@ export default function App() {
             <section className="pos-window overview-window">
               <div className="pos-window-title"><div><span className="pos-window-icon">POL</span><strong>ADMINISTRATIVE PRINCIPLES</strong></div><span className="pos-window-reference">DESIGN RULES</span></div>
               <div className="overview-principles">
-                <div><strong>Central oversight</strong><p>Central management maintains the organisation framework and has visibility across its records.</p></div>
-                <div><strong>Local administration</strong><p>Local administrators will maintain records within their assigned geographical scope.</p></div>
-                <div><strong>Controlled authority</strong><p>Roles define permitted actions; geographical scope defines where those actions apply. The API checks both dimensions before protected operations.</p></div>
+                <div><strong>Central oversight</strong><p>Govern the organisation and its records.</p></div>
+                <div><strong>Local administration</strong><p>Maintain records within assigned scope.</p></div>
+                <div><strong>Controlled authority</strong><p>Roles control actions. Scope controls where they apply.</p></div>
               </div>
             </section>
           </div>
