@@ -33,6 +33,7 @@ A position may optionally permit concurrent appointments at different scopes. Wh
 ## API
 
 - `GET /api/appointments/positions` — list active position definitions for administrators with membership-view access.
+- `GET /api/appointments/positions/management-access` — report whether the signed-in administrator is the global Central Administrator.
 - `POST /api/appointments/positions` — create a position; Central Administration only.
 - `PATCH /api/appointments/positions/{positionId}` — update or deactivate a position; Central Administration only.
 - `GET /api/members/{memberId}/appointments` — read current and historical appointments within the member's permitted Cell scope.
