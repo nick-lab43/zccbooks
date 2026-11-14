@@ -43,6 +43,7 @@ public class MemberAppointmentController {
     }
 
     @PostMapping("/appointments/positions")
+    @Transactional
     public ResponseEntity<PositionDto> createPosition(@Valid @RequestBody CreatePosition request) {
         authorization.requireCentralAdministrator();
         String code = request.code().trim().toUpperCase();
@@ -64,6 +65,7 @@ public class MemberAppointmentController {
     }
 
     @PatchMapping("/appointments/positions/{positionId}")
+    @Transactional
     public PositionDto updatePosition(@PathVariable UUID positionId, @Valid @RequestBody UpdatePosition request) {
         authorization.requireCentralAdministrator();
         PositionDto existing = requirePosition(positionId);
