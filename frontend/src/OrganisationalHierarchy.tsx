@@ -38,7 +38,7 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
   const visibleLevels = LEVELS.slice(firstVisibleLevelIndex);
   const cellLevelIndex = visibleLevels.findIndex((level) => level.key === "CELL");
   const selectedCellId = cellLevelIndex >= 0 ? selected[cellLevelIndex] || "" : "";
-  const selectedUnit = units.find((unit) => unit.id === selected.filter(Boolean).at(-1));
+  const selectedUnit = units.find((unit) => unit.id === selected.filter(Boolean).slice(-1)[0]);
 
   async function loadUnits() {
     if (!organisationId) { setUnits([]); setSelected([]); return; }
