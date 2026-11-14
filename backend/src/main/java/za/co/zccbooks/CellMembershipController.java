@@ -24,6 +24,19 @@ public class CellMembershipController {
         this.audit = audit;
     }
 
+    @GetMapping("/units/{cellId}/classifications")
+    public List<ClassificationDto> classifications(@PathVariable UUID cellId) {
+        Cell cell = requireCell(cellId);
+        authorization.requireUnitPermission("MEMBERS_VIEW", cellId);
+        return jdbc.query("""
+            SELECT id, code, name, active FROM classifications
+            WHERE organisation_id = ? AND active = TRUE ORDER BY name
+            """, (rs, n) -> new ClassificationDto(
+                rs.getObject("id", UUID.class).toString(), rs.getString("code"),
+                rs.getString("name"), rs.getBoolean("active")
+            ), cell.organisationId());
+    }
+
     @GetMapping("/units/{cellId}/members")
     public List<CellMemberDto> members(@PathVariable UUID cellId, @RequestParam(required = false) String search) {
         Cell cell = requireCell(cellId);
@@ -146,6 +159,7 @@ public class CellMembershipController {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    public record ClassificationDto(String id, String code, String name, boolean active) {}
     public record CreateCellMember(@Size(max = 80) String zccAppNumber,
             @NotBlank @Size(max = 100) String firstName,
             @NotBlank @Size(max = 100) String lastName, UUID classificationId) {}
