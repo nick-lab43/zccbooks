@@ -128,7 +128,7 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
     <div className="register-heading"><div><h3>Exception register</h3><p>Every resolution requires a note and is written to the administrator audit history.</p></div><label className="checkbox-label"><input type="checkbox" checked={includeResolved} onChange={e => setIncludeResolved(e.target.checked)} />Include resolved</label></div>
     <div className="table-wrap"><table><thead><tr><th>TYPE / SOURCE</th><th>ISSUE</th><th>STATUS</th><th>RESOLUTION NOTE</th><th>ACTION</th></tr></thead><tbody>
       {rows.map(row => <tr key={row.id}>
-        <td><strong>{row.exceptionType.replaceAll("_", " ")}</strong><small className="table-subtext">{row.sourceType.replaceAll("_", " ")} · {row.scopeName}</small></td>
+        <td><strong>{row.exceptionType.replace(/_/g, " ")}</strong><small className="table-subtext">{row.sourceType.replace(/_/g, " ")} · {row.scopeName}</small></td>
         <td>{row.summary}<small className="table-subtext">{new Date(row.createdAt).toLocaleString()}</small></td>
         <td>{row.status}</td>
         <td>{row.status === "RESOLVED" ? row.resolutionNote : <input aria-label="Resolution note" value={resolutionNotes[row.id] ?? ""} onChange={e => setResolutionNotes(current => ({ ...current, [row.id]: e.target.value }))} maxLength={1000} placeholder="Required to resolve" />}</td>
