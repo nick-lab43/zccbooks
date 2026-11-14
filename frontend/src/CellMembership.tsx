@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import MemberProfile from "./MemberProfile";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string };
 type Classification = { id: string; code: string; name: string; active: boolean };
@@ -13,6 +14,7 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [cellId, setCellId] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
+  const [profileMemberId, setProfileMemberId] = useState("");
   const [households, setHouseholds] = useState<Household[]>([]);
   const [householdId, setHouseholdId] = useState("");
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
@@ -83,7 +85,7 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
       request<Classification[]>(`/api/units/${cellId}/classifications`),
       request<ActiveHouseholdMember[]>(`/api/units/${cellId}/household-members`)
     ]).then(([memberRows, householdRows, categoryRows, activeHouseholdRows]) => {
-      setMembers(memberRows); setHouseholds(householdRows); setClassifications(categoryRows);
+      setMembers(memberRows); setProfileMemberId((current) => memberRows.some((m) => m.id === current) ? current : ""); setHouseholds(householdRows); setClassifications(categoryRows);
       setActiveHouseholdMembers(activeHouseholdRows);
       setHouseholdId((current) => householdRows.some((h) => h.id === current) ? current : householdRows[0]?.id ?? "");
     }).catch((e: Error) => {
@@ -187,6 +189,14 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
             {members.map((member) => <tr key={member.id}><td><strong>{member.lastName}, {member.firstName}</strong></td><td>{member.zccAppNumber || "—"}</td><td>{member.classificationName || "Unassigned"}</td><td><span className="active-label">{member.active ? "ACTIVE" : "INACTIVE"}</span></td></tr>)}
             {!members.length && <tr><td colSpan={4} className="empty-table">No members registered in this Cell.</td></tr>}
           </tbody></table></div>
+          <div className="panel-divider" />
+          <label className="search-field"><span>OPEN MEMBER PROFILE</span>
+            <select value={profileMemberId} onChange={(e) => setProfileMemberId(e.target.value)}>
+              <option value="">Select a member</option>
+              {members.map((member) => <option key={member.id} value={member.id}>{member.lastName}, {member.firstName} · {member.zccAppNumber || "No app number"}</option>)}
+            </select>
+          </label>
+          {profileMemberId && <MemberProfile memberId={profileMemberId} authorizationHeader={authorizationHeader} />}
           <div className="panel-divider" />
           <details className="workflow-disclosure">
             <summary>Transfer a member to another Cell</summary>
