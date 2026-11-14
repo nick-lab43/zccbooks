@@ -133,6 +133,33 @@ public class ContributionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(requireContribution(contributionId));
     }
 
+    @GetMapping("/units/{cellId}/financial-members")
+    public List<FinancialMemberDto> financialMembers(@PathVariable UUID cellId,
+            @RequestParam UUID scopeUnitId) {
+        authorization.requireUnitPermission("FINANCE_CAPTURE", scopeUnitId);
+        Integer validScope = jdbc.queryForObject("""
+            WITH RECURSIVE ancestors AS (
+                SELECT id, parent_id, organisation_id, level
+                FROM organisational_units WHERE id = ?
+                UNION ALL
+                SELECT p.id, p.parent_id, p.organisation_id, p.level
+                FROM organisational_units p JOIN ancestors a
+                  ON p.id = a.parent_id AND p.organisation_id = a.organisation_id
+            )
+            SELECT COUNT(*) FROM ancestors WHERE id = ? AND level IN ('NYIKA', 'TABHERA', 'CELL')
+            """, Integer.class, cellId, scopeUnitId);
+        if (validScope == null || validScope == 0) {
+            throw new IllegalArgumentException("The selected Cell is outside the authorised financial scope.");
+        }
+        return jdbc.query("""
+            SELECT id, zcc_app_number, first_name, last_name
+            FROM members
+            WHERE cell_id = ? AND active = TRUE
+            ORDER BY last_name, first_name
+            """, (rs, n) -> new FinancialMemberDto(rs.getObject("id", UUID.class).toString(),
+                rs.getString("zcc_app_number"), rs.getString("first_name"), rs.getString("last_name")), cellId);
+    }
+
     @GetMapping("/organisations/{organisationId}/contributions")
     public List<ContributionDto> list(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId, @RequestParam(required = false) LocalDate from,
@@ -261,6 +288,7 @@ public class ContributionController {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    public record FinancialMemberDto(String id, String zccAppNumber, String firstName, String lastName) {}
     public record CaptureContribution(@NotNull UUID memberId, @NotNull UUID categoryId,
         @NotNull UUID scopeUnitId, @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount,
         @NotNull LocalDate contributionDate, @NotBlank String paymentMethod,
