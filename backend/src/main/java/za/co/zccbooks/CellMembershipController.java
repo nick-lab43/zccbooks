@@ -94,12 +94,14 @@ public class CellMembershipController {
         String closedHouseholdMembershipId = "";
         java.time.LocalDate transferDate = java.time.LocalDate.now();
         if (membershipId != null) {
-            Integer headCount = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM households
-                WHERE household_head_member_id = ?
-                  AND id = (SELECT household_id FROM member_household_memberships WHERE id = ?)
-                """, Integer.class, memberId, membershipId);
-            if (headCount != null && headCount > 0) {
+            UUID householdId = jdbc.queryForObject("""
+                SELECT household_id FROM member_household_memberships WHERE id = ?
+                """, UUID.class, membershipId);
+            UUID headId = jdbc.query("""
+                SELECT household_head_member_id FROM households WHERE id = ? FOR UPDATE
+                """, (rs, n) -> rs.getObject("household_head_member_id", UUID.class), householdId)
+                .stream().findFirst().orElse(null);
+            if (memberId.equals(headId)) {
                 throw new ConflictException("Clear or replace the household head designation before transferring this member.");
             }
             int closed = jdbc.update("""
@@ -108,6 +110,13 @@ public class CellMembershipController {
                 """, Date.valueOf(transferDate), membershipId);
             if (closed != 1) throw new ConflictException("Household membership changed during transfer. Reload and retry.");
             closedHouseholdMembershipId = membershipId.toString();
+        } else {
+            List<UUID> headHouseholds = jdbc.query("""
+                SELECT id FROM households WHERE household_head_member_id = ? FOR UPDATE
+                """, (rs, n) -> rs.getObject("id", UUID.class), memberId);
+            if (!headHouseholds.isEmpty()) {
+                throw new ConflictException("Clear or replace the household head designation before transferring this member.");
+            }
         }
 
         int updated = jdbc.update("""
