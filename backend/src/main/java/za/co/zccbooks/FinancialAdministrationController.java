@@ -60,7 +60,7 @@ public class FinancialAdministrationController {
     public ResponseEntity<FinancialStreamDto> createStream(@PathVariable UUID organisationId,
             @Valid @RequestBody CreateStream request) {
         requireOrganisation(organisationId);
-        authorization.requireCentralAdministrator();
+        requireFinancialConfigurationAuthority();
         String code = request.code().trim().toUpperCase();
         if (exists("SELECT COUNT(*) FROM financial_streams WHERE organisation_id = ? AND LOWER(code) = LOWER(?)",
                 organisationId, code)) {
@@ -84,7 +84,7 @@ public class FinancialAdministrationController {
     @PatchMapping("/financial-streams/{streamId}")
     @Transactional
     public FinancialStreamDto updateStream(@PathVariable UUID streamId, @Valid @RequestBody UpdateStream request) {
-        authorization.requireCentralAdministrator();
+        requireFinancialConfigurationAuthority();
         StreamRow stream = requireStream(streamId);
         if (!request.active()) {
             Integer activeCategories = jdbc.queryForObject("""
@@ -132,7 +132,7 @@ public class FinancialAdministrationController {
     public ResponseEntity<ContributionCategoryDto> createCategory(@PathVariable UUID organisationId,
             @Valid @RequestBody CreateCategory request) {
         requireOrganisation(organisationId);
-        authorization.requireCentralAdministrator();
+        requireFinancialConfigurationAuthority();
         validateScopeLevels(request.scopeLevels());
         if (!CONTRIBUTION_TYPES.contains(request.contributionType())) {
             throw new IllegalArgumentException("Unsupported contribution type.");
@@ -166,7 +166,7 @@ public class FinancialAdministrationController {
     @PatchMapping("/contribution-categories/{categoryId}")
     @Transactional
     public ContributionCategoryDto updateCategory(@PathVariable UUID categoryId, @Valid @RequestBody UpdateCategory request) {
-        authorization.requireCentralAdministrator();
+        requireFinancialConfigurationAuthority();
         ContributionCategoryDto existing = requireCategory(categoryId);
         validateScopeLevels(request.scopeLevels());
         if (!CONTRIBUTION_TYPES.contains(request.contributionType())) {
@@ -248,7 +248,7 @@ public class FinancialAdministrationController {
     public ResponseEntity<FinancialTargetDto> createTarget(@PathVariable UUID organisationId,
             @Valid @RequestBody CreateTarget request) {
         requireOrganisation(organisationId);
-        authorization.requireCentralAdministrator();
+        requireFinancialConfigurationAuthority();
         CategoryRow category = requireCategoryRow(request.categoryId());
         UnitRow unit = requireUnit(request.unitId());
         if (!category.organisationId().equals(organisationId) || !unit.organisationId().equals(organisationId)) {
@@ -350,6 +350,11 @@ public class FinancialAdministrationController {
             rs.getDate("period_start").toLocalDate().toString(),
             rs.getDate("period_end").toLocalDate().toString(),
             rs.getBigDecimal("target_amount"), rs.getString("currency"), rs.getString("note"));
+    }
+
+    private void requireFinancialConfigurationAuthority() {
+        authorization.requireCentralAdministrator();
+        authorization.requireGlobalPermission("FINANCE_CONFIGURE");
     }
 
     private void requireOrganisation(UUID id) {
