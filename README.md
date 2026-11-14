@@ -50,6 +50,7 @@ Open `http://localhost:5173`. Vite proxies `/api` requests to the backend.
 - Centrally governed church positions and date-effective member appointments.
 - Financial Administration foundation: configurable financial streams, contribution categories, category applicability by geographical level and period-based financial targets.
 - Scoped Financial Officer and Auditor access to financial configuration and target registers.
+- Scoped contribution capture for authorised finance roles, sequential receipts, idempotent posting, target achievement calculations and pending-deposit follow-ups.
 
 The membership application integration is not connected. Use fictional demonstration records only.
 
@@ -62,10 +63,14 @@ The membership application integration is not connected. Use fictional demonstra
 - `GET/POST /api/organisations/{organisationId}/financial-streams`
 - `GET/POST /api/organisations/{organisationId}/contribution-categories`
 - `GET/POST /api/organisations/{organisationId}/financial-targets`
+- `POST /api/organisations/{organisationId}/contributions`
+- `GET /api/contributions/{contributionId}/receipt`
+- `GET /api/organisations/{organisationId}/financial-target-progress`
+- `GET /api/organisations/{organisationId}/deposit-followups` and `PATCH /api/deposit-followups/{followupId}`
 
 ## Current limitations
 
-Financial configuration and target setup are implemented, but contribution posting, receipt issuance, target achievement calculations, pending-deposit follow-ups, deposits, allocation, scanning and reconciliation are not yet implemented. Do not use this development build for live financial or member records until the remaining workflows and operational controls are verified.
+Financial configuration, scoped contribution posting, receipt issuance, target achievement calculations and pending-deposit follow-ups are implemented. Bank deposits, deposit batch allocation, document scanning, bank reconciliation, reversals/refunds and independent financial reporting remain future work. Do not use this development build for live financial or member records until hosted verification and the remaining operational controls are completed.
 
 ## Cloud deployment (Vercel + Render + Neon)
 
@@ -97,7 +102,7 @@ Redeploy the frontend after saving the variable. The Vite development proxy rema
 
 - Render's `PORT` environment variable is honoured by the API.
 - The API allows browser requests only from the configured `FRONTEND_ORIGIN`.
-- The current release is a development foundation. Authentication and role-based access control are not implemented; do not enter real member or financial data or expose this system for operational use.
+- The current release remains a development foundation. Authentication, role permissions and geographical-scope checks are enforced by the backend, but operational security, financial controls and hosted workflows still require verification. Do not enter live member or financial data.
 
 
 ## Administrator access and deployment bootstrap
