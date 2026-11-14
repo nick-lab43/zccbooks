@@ -69,10 +69,15 @@ The membership application integration is not connected. Use fictional demonstra
 - `GET /api/contributions/{contributionId}/receipt`
 - `GET /api/organisations/{organisationId}/financial-target-progress`
 - `GET /api/organisations/{organisationId}/deposit-followups` and `PATCH /api/deposit-followups/{followupId}`
+- `GET /api/organisations/{organisationId}/unallocated-cash-contributions`
+- `GET/POST /api/organisations/{organisationId}/deposit-batches`
+- `GET/POST /api/organisations/{organisationId}/bank-statement-entries`
+- `GET /api/deposit-batches/{batchId}/allocations`, `POST /api/deposit-batches/{batchId}/allocations`, `DELETE /api/deposit-batches/{batchId}/allocations/{contributionId}`
+- `POST /api/deposit-batches/{batchId}/submit` and `POST /api/deposit-batches/{batchId}/reconcile`
 
 ## Current limitations
 
-Financial configuration, scoped contribution posting, receipt issuance, target achievement calculations and pending-deposit follow-ups are implemented. Bank deposits, deposit batch allocation, document scanning, bank reconciliation, reversals/refunds and independent financial reporting remain future work. Do not use this development build for live financial or member records until hosted verification and the remaining operational controls are completed.
+Financial configuration, scoped contribution posting, receipt issuance, target achievement calculations, pending-deposit follow-ups, cash deposit batching and manual bank-statement reconciliation are implemented. Bank file imports, automated matching, exception resolution, partial deposits, electronic settlement reconciliation, document scanning, reversals/refunds and independent financial reporting remain future work. Do not use this development build for live financial or member records until hosted verification and the remaining operational controls are completed.
 
 ## Cloud deployment (Vercel + Render + Neon)
 
