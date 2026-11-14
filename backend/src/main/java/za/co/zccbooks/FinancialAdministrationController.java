@@ -172,6 +172,14 @@ public class FinancialAdministrationController {
         if (!CONTRIBUTION_TYPES.contains(request.contributionType())) {
             throw new IllegalArgumentException("Unsupported contribution type.");
         }
+        if (request.active() && !exists("""
+            SELECT COUNT(*)
+            FROM financial_streams s
+            JOIN contribution_categories c ON c.stream_id = s.id AND c.organisation_id = s.organisation_id
+            WHERE c.id = ? AND s.active = TRUE
+            """, categoryId)) {
+            throw new ConflictException("Reactivate the category's financial stream before reactivating this category.");
+        }
         List<String> targetLevels = jdbc.query("""
             SELECT DISTINCT u.level
             FROM financial_targets t
@@ -372,10 +380,11 @@ public class FinancialAdministrationController {
     }
 
     private void requireStreamInOrganisation(UUID id, UUID organisationId, boolean active) {
-        Integer count = jdbc.queryForObject("""
+        String sql = """
             SELECT COUNT(*) FROM financial_streams
-            WHERE id = ? AND organisation_id = ? AND (? = FALSE OR active = TRUE)
-            """, Integer.class, id, organisationId, !active);
+            WHERE id = ? AND organisation_id = ?
+            """ + (active ? " AND active = TRUE" : "");
+        Integer count = jdbc.queryForObject(sql, Integer.class, id, organisationId);
         if (count == null || count == 0) throw new ResourceNotFoundException("Active financial stream not found in this organisation.");
     }
 
