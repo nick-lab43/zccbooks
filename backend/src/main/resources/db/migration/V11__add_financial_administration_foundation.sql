@@ -24,9 +24,11 @@ CREATE TABLE financial_streams (
     created_by UUID NOT NULL REFERENCES admin_users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_financial_streams_id_org UNIQUE (id, organisation_id),
-    CONSTRAINT uq_financial_streams_code UNIQUE (organisation_id, code)
+    CONSTRAINT uq_financial_streams_id_org UNIQUE (id, organisation_id)
 );
+
+CREATE UNIQUE INDEX uq_financial_streams_code_ci
+    ON financial_streams (organisation_id, LOWER(code));
 
 CREATE TABLE contribution_categories (
     id UUID PRIMARY KEY,
@@ -42,11 +44,13 @@ CREATE TABLE contribution_categories (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_contribution_categories_id_org UNIQUE (id, organisation_id),
-    CONSTRAINT uq_contribution_categories_code UNIQUE (organisation_id, code),
     CONSTRAINT fk_contribution_category_stream
         FOREIGN KEY (stream_id, organisation_id)
         REFERENCES financial_streams (id, organisation_id)
 );
+
+CREATE UNIQUE INDEX uq_contribution_categories_code_ci
+    ON contribution_categories (organisation_id, LOWER(code));
 
 CREATE TABLE contribution_category_scope_levels (
     category_id UUID NOT NULL REFERENCES contribution_categories(id),
