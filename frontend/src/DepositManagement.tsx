@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Receipt = { id: string; receiptNumber: string; memberName: string; amount: number; contributionDate: string; paymentMethod: string; paymentReference: string | null; categoryName: string; scopeUnitId: string };
@@ -37,10 +38,10 @@ export default function DepositManagement({ organisationId, authorizationHeader,
     if (!organisationId || !scopeUnitId) return;
     const [batchRows, receiptRows] = await Promise.all([
       request<Batch[]>(`/api/organisations/${organisationId}/deposit-batches?scopeUnitId=${scopeUnitId}`),
-      request<Receipt[]>(`/api/organisations/${organisationId}/contributions?scopeUnitId=${scopeUnitId}`)
+      request<Receipt[]>(`/api/organisations/${organisationId}/unallocated-cash-contributions?scopeUnitId=${scopeUnitId}`)
     ]);
     setBatches(batchRows);
-    setReceipts(receiptRows.filter(row => row.paymentMethod === "CASH"));
+    setReceipts(receiptRows);
     if (canReconcile) {
       setEntries(await request<StatementEntry[]>(`/api/organisations/${organisationId}/bank-statement-entries?scopeUnitId=${scopeUnitId}`));
     } else setEntries([]);
@@ -80,7 +81,7 @@ export default function DepositManagement({ organisationId, authorizationHeader,
     finally { setBusy(false); }
   }
 
-  async function createBatch(event: React.FormEvent<HTMLFormElement>) {
+  async function createBatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
     await perform(async () => {
       const created = await request<Batch>(`/api/organisations/${organisationId}/deposit-batches`, {
