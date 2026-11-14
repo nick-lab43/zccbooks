@@ -235,6 +235,27 @@ public class ContributionController {
             from, from, to, to);
     }
 
+    @GetMapping("/organisations/{organisationId}/unallocated-cash-contributions")
+    public List<ContributionDto> unallocatedCashContributions(@PathVariable UUID organisationId,
+            @RequestParam UUID scopeUnitId) {
+        authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
+        return jdbc.query("""
+            SELECT c.id, c.receipt_number, c.member_id, m.first_name, m.last_name,
+                   c.category_id, cat.name AS category_name, c.stream_id, fs.name AS stream_name,
+                   c.scope_unit_id, u.name AS scope_name, c.amount, c.currency,
+                   c.contribution_date, c.payment_method, c.payment_reference, c.note, c.captured_at
+            FROM contributions c
+            JOIN members m ON m.id = c.member_id
+            JOIN contribution_categories cat ON cat.id = c.category_id
+            JOIN financial_streams fs ON fs.id = c.stream_id
+            JOIN organisational_units u ON u.id = c.scope_unit_id
+            WHERE c.organisation_id = ? AND c.scope_unit_id = ?
+              AND c.payment_method = 'CASH'
+              AND NOT EXISTS (SELECT 1 FROM deposit_allocations a WHERE a.contribution_id = c.id)
+            ORDER BY c.contribution_date DESC, c.captured_at DESC
+            """, (rs, n) -> mapContribution(rs), organisationId, scopeUnitId);
+    }
+
     @GetMapping("/contributions/{contributionId}/receipt")
     public ContributionDto receipt(@PathVariable UUID contributionId) {
         ContributionDto row = requireContribution(contributionId);
