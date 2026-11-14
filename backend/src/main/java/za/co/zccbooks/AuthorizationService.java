@@ -36,7 +36,7 @@ public class AuthorizationService {
             WHERE a.revoked_at IS NULL
               AND a.user_id = (SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?))
               AND rp.permission_code = ?
-              AND a.scope_type IN ('GLOBAL', 'ORGANISATION')
+              AND a.scope_type IN ('GLOBAL', 'ORGANISATION', 'UNIT')
             """, Integer.class, username, permission);
         if (count == null || count == 0) throw new AccessDeniedException("Permission denied.");
     }
@@ -50,9 +50,37 @@ public class AuthorizationService {
               AND a.user_id = (SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?))
               AND rp.permission_code = ?
               AND (a.scope_type = 'GLOBAL'
+                   OR (a.scope_type IN ('ORGANISATION', 'UNIT') AND a.organisation_id = ?))
+            """, Integer.class, username, permission, organisationId);
+        return count != null && count > 0;
+    }
+
+    public boolean hasOrganisationWidePermission(String permission, UUID organisationId) {
+        String username = currentUsername();
+        Integer count = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM admin_role_assignments a
+            JOIN admin_role_permissions rp ON rp.role_id = a.role_id
+            WHERE a.revoked_at IS NULL
+              AND a.user_id = (SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?))
+              AND rp.permission_code = ?
+              AND (a.scope_type = 'GLOBAL'
                    OR (a.scope_type = 'ORGANISATION' AND a.organisation_id = ?))
             """, Integer.class, username, permission, organisationId);
         return count != null && count > 0;
+    }
+
+    public void requireOrganisationOrUnitPermission(String permission, UUID organisationId) {
+        if (!canAccessOrganisation(permission, organisationId)) {
+            throw new AccessDeniedException("Permission denied for this organisation.");
+        }
+    }
+
+    public String currentUsername() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Authentication required.");
+        }
+        return authentication.getName();
     }
 
     public void requireOrganisationPermission(String permission, UUID organisationId) {
@@ -95,11 +123,4 @@ public class AuthorizationService {
         if (count == null || count == 0) throw new AccessDeniedException("Permission denied for this geographical scope.");
     }
 
-    private String currentUsername() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            throw new AccessDeniedException("Authentication required.");
-        }
-        return authentication.getName();
-    }
 }

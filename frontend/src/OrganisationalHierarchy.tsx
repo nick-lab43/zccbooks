@@ -30,7 +30,9 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
 
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
   const authHeaders: Record<string, string> = authorizationHeader ? { Authorization: authorizationHeader } : {};
-  const selectedCellId = selected[5] || "";
+  const visibleLevels = LEVELS.filter((level) => units.some((unit) => unit.level === level.key));
+  const cellLevelIndex = visibleLevels.findIndex((level) => level.key === "CELL");
+  const selectedCellId = cellLevelIndex >= 0 ? selected[cellLevelIndex] || "" : "";
 
   async function loadUnits() {
     if (!organisationId) { setUnits([]); setSelected([]); return; }
@@ -55,15 +57,19 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
     loadHouseholds(selectedCellId).catch((e: Error) => setError(e.message));
   }, [selectedCellId]);
 
-  const options = useMemo(() => LEVELS.map((level, index) => {
-    const parentId = index === 0 ? null : selected[index - 1] || null;
+  const options = useMemo(() => visibleLevels.map((level, index) => {
+    if (index === 0) {
+      const visibleIds = new Set(units.map((unit) => unit.id));
+      return units.filter((unit) => !unit.parentId || !visibleIds.has(unit.parentId));
+    }
+    const parentId = selected[index - 1] || null;
     return units.filter((unit) => unit.level === level.key && unit.parentId === parentId);
-  }), [units, selected]);
+  }), [units, selected, visibleLevels]);
 
   const deepestSelected = selected.reduce((last, id, index) => id ? index : last, -1);
   const nextLevelIndex = deepestSelected + 1;
   const parentId = deepestSelected >= 0 ? selected[deepestSelected] : null;
-  const nextLevel = LEVELS[nextLevelIndex];
+  const nextLevel = visibleLevels[nextLevelIndex] ?? (units.length ? LEVELS[LEVELS.findIndex((level) => level.key === units[0].level) + visibleLevels.length] : LEVELS[0]);
 
   function chooseLevel(index: number, id: string) {
     setSelected((current) => {
@@ -140,8 +146,9 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
         <div className="pos-section-heading"><span>01</span> GEOGRAPHICAL LEVELS <small>COUNTRY → PROVINCE / STATE → DISTRICT → NYIKA → TABHERA → CELL</small></div>
         {!organisationId && <div className="pos-inline-warning">Select or create an organisation before maintaining its hierarchy.</div>}
         {organisationId && <>
+          {!units.length && <div className="pos-inline-warning">No geographical units are available within your assigned scope, or you do not have permission to view them.</div>}
           <div className="hierarchy-level-grid">
-            {LEVELS.map((level, index) => (
+            {visibleLevels.map((level, index) => (
               <label className="pos-field" key={level.key}>
                 <span><b>{String(index + 1).padStart(2, "0")}</b> {level.label.toUpperCase()}</span>
                 <select value={selected[index] ?? ""} disabled={index > 0 && !selected[index - 1]}
