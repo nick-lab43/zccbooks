@@ -5,7 +5,8 @@ type Unit = { id: string; parentId: string | null; level: string; code: string; 
 type Classification = { id: string; code: string; name: string; active: boolean };
 type Member = { id: string; cellId: string; zccAppNumber: string | null; firstName: string; lastName: string; classificationId: string | null; classificationName: string | null; active: boolean };
 type Household = { id: string; code: string; name: string; householdHeadMemberId: string | null; active: boolean };
-type ActiveHouseholdMember = { memberId: string };\ntype HouseholdMember = { id: string; zccAppNumber: string | null; firstName: string; lastName: string; relationshipLabel: string; validFrom: string; validTo: string | null };
+type ActiveHouseholdMember = { memberId: string };
+type HouseholdMember = { id: string; zccAppNumber: string | null; firstName: string; lastName: string; relationshipLabel: string; validFrom: string; validTo: string | null };
 
 export default function CellMembership({ organisationId, authorizationHeader }: { organisationId: string; authorizationHeader: string }) {
   const [units, setUnits] = useState<Unit[]>([]);
@@ -14,7 +15,8 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
   const [members, setMembers] = useState<Member[]>([]);
   const [households, setHouseholds] = useState<Household[]>([]);
   const [householdId, setHouseholdId] = useState("");
-  const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);\n  const [activeHouseholdMembers, setActiveHouseholdMembers] = useState<ActiveHouseholdMember[]>([]);
+  const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
+  const [activeHouseholdMembers, setActiveHouseholdMembers] = useState<ActiveHouseholdMember[]>([]);
   const [headCandidates, setHeadCandidates] = useState<Member[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -38,10 +40,12 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
     if (!id) { setMembers([]); setHouseholds([]); setActiveHouseholdMembers([]); return; }
     const [memberRows, householdRows, activeHouseholdRows] = await Promise.all([
       request<Member[]>(`/api/units/${id}/members`),
-      request<Household[]>(`/api/units/${id}/households`),\n      request<ActiveHouseholdMember[]>(`/api/units/${id}/household-members`)
+      request<Household[]>(`/api/units/${id}/households`),
+      request<ActiveHouseholdMember[]>(`/api/units/${id}/household-members`)
     ]);
     setMembers(memberRows);
     setHouseholds(householdRows);
+    setActiveHouseholdMembers(activeHouseholdRows);
   }
 
   async function loadHousehold(id: string) {
