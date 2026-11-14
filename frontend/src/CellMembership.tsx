@@ -20,7 +20,10 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-  const headers = useMemo<Record<string, string>>(() => authorizationHeader ? { Authorization: authorizationHeader } : {}, [authorizationHeader]);
+  const headers = useMemo((): Record<string, string> => {
+    if (!authorizationHeader) return {};
+    return { Authorization: authorizationHeader };
+  }, [authorizationHeader]);
 
   async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`${apiBase}${path}`, { ...options, headers: { "Content-Type": "application/json", ...headers, ...options?.headers } });
