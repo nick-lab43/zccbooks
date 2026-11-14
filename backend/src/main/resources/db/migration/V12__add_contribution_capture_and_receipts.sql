@@ -7,9 +7,10 @@ VALUES
 ON CONFLICT (permission_code) DO NOTHING;
 
 INSERT INTO admin_role_permissions (role_id, permission_code)
-SELECT id, 'FINANCE_CAPTURE'
-FROM admin_roles
-WHERE role_code IN ('NYIKA_SECRETARY', 'NYIKA_ADMIN')
+SELECT r.id, p.permission_code
+FROM admin_roles r
+CROSS JOIN (VALUES ('FINANCE_VIEW'), ('FINANCE_CAPTURE')) AS p(permission_code)
+WHERE r.role_code IN ('NYIKA_SECRETARY', 'NYIKA_ADMIN')
 ON CONFLICT DO NOTHING;
 
 CREATE TABLE financial_receipt_sequences (
