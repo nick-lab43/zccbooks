@@ -86,7 +86,7 @@ public class AdminController {
     public List<AdminUserDto> users() {
         authorization.requireGlobalPermission("ADMIN_MANAGE");
         return jdbc.query("""
-            SELECT u.id, u.username, u.display_name, u.enabled, u.created_at,
+            SELECT u.id, u.username, u.display_name, u.email, u.enabled, u.created_at,
                    COALESCE(string_agg(DISTINCT r.role_code || ':' || a.scope_type || ':' ||
                        COALESCE(o.name, '') || ':' || COALESCE(ou.name, ''), ', '), '') AS assignments
             FROM admin_users u
@@ -97,7 +97,7 @@ public class AdminController {
             WHERE a.revoked_at IS NULL OR a.id IS NULL
             GROUP BY u.id ORDER BY u.username
             """, (rs, n) -> new AdminUserDto(rs.getObject("id", UUID.class).toString(),
-                rs.getString("username"), rs.getString("display_name"), rs.getBoolean("enabled"),
+                rs.getString("username"), rs.getString("display_name"), rs.getString("email"), rs.getBoolean("enabled"),
                 rs.getString("created_at"), rs.getString("assignments")));
     }
 
@@ -112,7 +112,7 @@ public class AdminController {
             """, id, request.username().trim(), request.displayName().trim(), passwordEncoder.encode(request.password()));
         audit.record("ADMIN_CREATED", "ADMIN_USER", id, Map.of("username", request.username().trim()));
         return ResponseEntity.status(HttpStatus.CREATED).body(new AdminUserDto(id.toString(),
-            request.username().trim(), request.displayName().trim(), true, null, ""));
+            request.username().trim(), request.displayName().trim(), null, true, null, ""));
     }
 
     @Transactional
@@ -146,6 +146,10 @@ public class AdminController {
         Integer roleCount = jdbc.queryForObject("SELECT COUNT(*) FROM admin_roles WHERE id = ?", Integer.class, request.roleId());
         if (userCount == null || userCount == 0) throw new ResourceNotFoundException("Administrator account not found.");
         if (roleCount == null || roleCount == 0) throw new ResourceNotFoundException("Role not found.");
+        String roleCode = jdbc.queryForObject("SELECT role_code FROM admin_roles WHERE id = ?", String.class, request.roleId());
+        if ("NYIKA_ADMIN".equals(roleCode)) {
+            throw new IllegalArgumentException("Nyika administrator accounts must be created through the secure invitation workflow.");
+        }
         String scopeType = request.scopeType().trim().toUpperCase();
         if ("GLOBAL".equals(scopeType)) {
             if (request.organisationId() != null || request.scopeUnitId() != null) throw new IllegalArgumentException("Global assignments cannot specify an organisation or unit.");
@@ -216,6 +220,6 @@ public class AdminController {
                                    UUID organisationId, UUID scopeUnitId) {}
     public record RoleDto(String id, String code, String name, String description, boolean systemRole, String[] permissions) {}
     public record PermissionDto(String code, String name, String description) {}
-    public record AdminUserDto(String id, String username, String displayName, boolean enabled, String createdAt, String assignments) {}
+    public record AdminUserDto(String id, String username, String displayName, String email, boolean enabled, String createdAt, String assignments) {}
     public record AuditEventDto(String id, String actor, String action, String targetType, String targetId, String details, String occurredAt) {}
 }

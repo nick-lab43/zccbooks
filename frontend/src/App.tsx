@@ -5,10 +5,11 @@ import CellMembership from "./CellMembership";
 
 type Module = "overview" | "organisation" | "membership" | "access";
 type CurrentAdmin = { username: string; displayName: string; permissions: string[] };
-type AdminUser = { id: string; username: string; displayName: string; enabled: boolean; createdAt: string | null; assignments: string };
+type AdminUser = { id: string; username: string; displayName: string; email?: string | null; enabled: boolean; createdAt: string | null; assignments: string };
 type AdminRole = { id: string; code: string; name: string; description?: string; systemRole: boolean; permissions: string[] };
 type Permission = { code: string; name: string; description: string };
 type UnitOption = { id: string; level: string; code: string; name: string };
+type Invitation = { id: string; username: string; displayName: string; email: string; nyikaCode: string; nyikaName: string; expiresAt: string; status: string };
 type AuditEvent = { id: string; actor: string; action: string; targetType: string; targetId: string | null; details: string; occurredAt: string };
 type Organisation = { id: string; name: string; createdAt: string };
 type Branch = { id: string; organisationId: string; code: string; name: string; districtName?: string; countryCode?: string };
@@ -27,12 +28,13 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
   return response.status === 204 ? (undefined as T) : response.json() as Promise<T>;
 }
 
-export default function App() {
+function MainApp() {
   const [activeModule, setActiveModule] = useState<Module>("overview");
   const [authenticated, setAuthenticated] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<CurrentAdmin | null>(null);
   const [loginError, setLoginError] = useState("");
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [adminRoles, setAdminRoles] = useState<AdminRole[]>([]);
   const [permissionOptions, setPermissionOptions] = useState<Permission[]>([]);
   const [accessUnits, setAccessUnits] = useState<UnitOption[]>([]);
@@ -65,7 +67,8 @@ export default function App() {
       api<AdminRole[]>("/api/admin/roles"),
       api<Permission[]>("/api/admin/permissions"),
       api<AuditEvent[]>("/api/admin/audit"),
-    ]).then(([users, roles, permissions, events]) => { setAdminUsers(users); setAdminRoles(roles); setPermissionOptions(permissions); setAuditEvents(events); })
+      api<Invitation[]>("/api/admin/nyika-invitations"),
+    ]).then(([users, roles, permissions, events, inviteRows]) => { setAdminUsers(users); setAdminRoles(roles); setPermissionOptions(permissions); setAuditEvents(events); setInvitations(inviteRows); })
       .catch((e: Error) => setError(e.message));
   }, [authenticated, activeModule]);
 
@@ -125,6 +128,30 @@ export default function App() {
     currentAuthHeader = null; setAuthenticated(false); setCurrentAdmin(null);
     setAdminUsers([]); setAdminRoles([]); setOrganisations([]); setBranches([]); setMembers([]); setAccessOrganisationId(""); setAccessUnits([]); setAuditEvents([]); setActiveModule("overview");
     setOrganisationId(""); setBranchId(""); setError(""); setNotice("");
+  }
+
+  async function createNyikaInvitation(event: FormEvent<HTMLFormElement>) {
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    await submit(event, async () => {
+      const result = await api<{ username: string; status: string; expiresIn: string }>("/api/admin/nyika-invitations", {
+        method: "POST",
+        body: JSON.stringify({ nyikaId: form.get("nyikaId"), displayName: form.get("displayName"), email: form.get("email") }),
+      });
+      setInvitations(await api<Invitation[]>("/api/admin/nyika-invitations"));
+      setNotice(`Invitation emailed. Assigned username: ${result.username}. Link expires in ${result.expiresIn}.`);
+      formElement.reset();
+    });
+  }
+
+  async function revokeNyikaInvitation(id: string) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api(`/api/admin/nyika-invitations/${id}/revoke`, { method: "POST" });
+      setInvitations(await api<Invitation[]>("/api/admin/nyika-invitations"));
+      setNotice("Invitation revoked.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not revoke invitation."); }
+    finally { setBusy(false); }
   }
 
   async function createAdminUser(event: FormEvent<HTMLFormElement>) {
@@ -376,6 +403,24 @@ export default function App() {
           </section>
           <div className="access-right-column">
             <section className="panel">
+              <div className="panel-title"><div><span className="panel-index">01</span><h2>Invite a Nyika administrator</h2></div><span className="panel-tag">EMAIL INVITATION</span></div>
+              <p className="panel-description">Choose an active Nyika. The system assigns the administrator's username, role and geographical scope. The administrator creates their own password through a single-use email link.</p>
+              <form onSubmit={createNyikaInvitation} className="form-stack">
+                <label>Organisation<select value={accessOrganisationId} onChange={(e) => setAccessOrganisationId(e.target.value)} required><option value="">Select organisation</option>{organisations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
+                <label>Nyika<select name="nyikaId" required defaultValue=""><option value="">Select active Nyika</option>{accessUnits.filter((u) => u.level === "NYIKA").map((u) => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}</select></label>
+                <label>Administrator name<input name="displayName" required maxLength={160} /></label>
+                <label>Email address<input name="email" type="email" required maxLength={254} /></label>
+                <button className="primary-button" disabled={busy || !accessOrganisationId}>Send invitation</button>
+              </form>
+              <div className="panel-divider" />
+              <div className="panel-title"><div><span className="panel-index">02</span><h2>Invitation register</h2></div><span className="panel-tag">LATEST 100</span></div>
+              <div className="table-wrap"><table><thead><tr><th>USERNAME</th><th>NYIKA</th><th>EMAIL</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>
+                {invitations.map((invite) => <tr key={invite.id}><td><strong>{invite.username}</strong></td><td>{invite.nyikaCode} — {invite.nyikaName}</td><td>{invite.email}</td><td>{invite.status}</td><td>{invite.status === "PENDING" && <button className="secondary-button" disabled={busy} onClick={() => revokeNyikaInvitation(invite.id)}>Revoke</button>}</td></tr>)}
+                {!invitations.length && <tr><td colSpan={5} className="empty-table">No Nyika invitations issued.</td></tr>}
+              </tbody></table></div>
+            </section>
+
+            <section className="panel">
               <div className="panel-title"><div><span className="panel-index">03</span><h2>Assign role and scope</h2></div><span className="panel-tag">AUTHORITY</span></div>
               <form onSubmit={assignAdminRole} className="form-stack">
                 <label>Administrator<select name="userId" required defaultValue=""><option value="">Select account</option>{adminUsers.map((u) => <option key={u.id} value={u.id}>{u.username} — {u.displayName}</option>)}</select></label>
@@ -421,3 +466,42 @@ export default function App() {
     </main>
   );
 }
+
+function InvitationAcceptance() {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [complete, setComplete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const token = new URLSearchParams(window.location.search).get("token") ?? "";
+
+  async function activate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError("");
+    if (!token) { setError("The invitation link is missing its token."); return; }
+    if (password !== confirmation) { setError("The passwords do not match."); return; }
+    setBusy(true);
+    try {
+      await api("/api/invitations/accept", { method: "POST", body: JSON.stringify({ token, password }) });
+      setComplete(true);
+    } catch (e) { setError(e instanceof Error ? e.message : "Invitation activation failed."); }
+    finally { setBusy(false); }
+  }
+
+  return <main className="login-shell"><section className="login-panel">
+    <div className="login-kicker">ZCC BOOKS · ADMINISTRATOR ACCESS</div>
+    <h1>{complete ? "Account activated" : "Set your password"}</h1>
+    {complete ? <><p>Your administrator account is active. Sign in using the username provided in your invitation email and the password you just created.</p><a href="/" className="primary-button" style={{display:"inline-block",textDecoration:"none",padding:"12px 16px"}}>Go to sign in</a></> :
+      <><p>Create a password for your assigned Nyika administrator account. This invitation link can only be used once and expires after 48 hours.</p>
+      {error && <div className="message error" role="alert">{error}</div>}
+      <form className="form-stack" onSubmit={activate}>
+        <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} maxLength={100} autoComplete="new-password" /></label>
+        <label>Confirm password<input type="password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} required minLength={12} maxLength={100} autoComplete="new-password" /></label>
+        <button className="primary-button" disabled={busy || !token}>{busy ? "Activating…" : "Activate administrator account"}</button>
+      </form></>}
+  </section></main>;
+}
+
+export default function App() {
+  return window.location.pathname === "/accept-invitation" ? <InvitationAcceptance /> : <MainApp />;
+}
+
