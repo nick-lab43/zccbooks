@@ -205,20 +205,6 @@ export default function App() {
     });
   }
 
-  async function createMember(event: FormEvent<HTMLFormElement>) {
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    await submit(event, async () => {
-      await api(`/api/branches/${branchId}/members`, { method: "POST", body: JSON.stringify({
-        zccAppNumber: form.get("zccAppNumber"), firstName: form.get("firstName"), lastName: form.get("lastName"),
-        classificationId: form.get("classificationId") || null,
-      }) });
-      const params = new URLSearchParams();
-      if (search.trim()) params.set("search", search.trim());
-      setMembers(await api<Member[]>(`/api/branches/${branchId}/members?${params.toString()}`));
-      setNotice("Member registered in this branch."); formElement.reset();
-    });
-  }
 
   const selectedBranch = branches.find((item) => item.id === branchId);
   const selectedOrganisation = organisations.find((item) => item.id === organisationId);
@@ -277,7 +263,7 @@ export default function App() {
               <div className="pos-window-title"><div><span className="pos-window-icon">SYS</span><strong>CENTRAL ADMINISTRATION</strong></div><span className="pos-window-reference">CONTROL DESK</span></div>
               <div className="overview-module-list">
                 <button onClick={() => setActiveModule("organisation")}><span className="module-code">01</span><span><strong>Organisation management</strong><small>Organisation records, branches and geographical hierarchy</small></span><b>OPEN</b></button>
-                <button onClick={() => setActiveModule("membership")}><span className="module-code">02</span><span><strong>Membership administration</strong><small>Classifications, branch registers and member records</small></span><b>OPEN</b></button>
+                <button onClick={() => setActiveModule("membership")}><span className="module-code">02</span><span><strong>Membership administration</strong><small>Classifications, Cell registration and household records</small></span><b>OPEN</b></button>
                 {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button onClick={() => setActiveModule("access")}><span className="module-code">03</span><span><strong>Administrator access control</strong><small>Accounts, role definitions, permissions and geographical scopes</small></span><b>OPEN</b></button>}
               </div>
             </section>
@@ -331,8 +317,8 @@ export default function App() {
         <>
           <section className="selection-bar">
             <label>Organisation<select value={organisationId} onChange={(e) => setOrganisationId(e.target.value)}><option value="">Select organisation</option>{organisations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
-            <label>Branch<select value={branchId} onChange={(e) => setBranchId(e.target.value)} disabled={!branches.length}><option value="">Select branch</option>{branches.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
-            <div className="selection-summary"><span>MEMBERS IN SELECTED REGISTER</span><strong>{members.length.toString().padStart(3, "0")}</strong></div>
+            <label>Legacy branch records<select value={branchId} onChange={(e) => setBranchId(e.target.value)} disabled={!branches.length}><option value="">Select branch</option>{branches.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
+            <div className="selection-summary"><span>LEGACY RECORDS IN VIEW</span><strong>{members.length.toString().padStart(3, "0")}</strong></div>
           </section>
           <div className="content-grid membership-grid">
             <section className="panel">
@@ -348,20 +334,15 @@ export default function App() {
               </div>
             </section>
             <section className="panel member-panel">
-              <div className="panel-title"><div><span className="panel-index">02</span><h2>Branch membership register</h2></div><span className="panel-tag">MEMBER RECORDS</span></div>
-              <p className="panel-description">Member records are currently created against a branch. Household assignment and local-scoped registration will be developed as the next membership increment.</p>
-              <form onSubmit={createMember} className="form-stack">
-                <label>ZCC app number<input name="zccAppNumber" maxLength={80} placeholder="Enter member app number" /></label>
-                <div className="field-pair"><label>First name<input name="firstName" required maxLength={100} placeholder="First name" /></label><label>Last name<input name="lastName" required maxLength={100} placeholder="Last name" /></label></div>
-                <label>Member classification<select name="classificationId" defaultValue=""><option value="">Unassigned</option>{classifications.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name} ({item.code})</option>)}</select></label>
-                <button className="primary-button" disabled={busy || !branchId}>Add member to branch</button>
-              </form>
+              <div className="panel-title"><div><span className="panel-index">02</span><h2>Legacy branch register</h2></div><span className="panel-tag">MEMBER RECORDS</span></div>
+              <p className="panel-description">This is a read-only view of older branch-based records. Register new members in the Cell Membership section below so every new record has a canonical geographical location.</p>
+              <div className="legacy-record-notice"><strong>LEGACY REGISTER</strong><span>Existing records are preserved. New member registration is handled through Cell Membership.</span></div>
               <div className="panel-divider" />
               <div className="register-heading"><div><h2>Membership register</h2><p>{selectedBranch ? `${selectedBranch.name}${selectedBranch.districtName ? " · " + selectedBranch.districtName : ""}` : "Select a branch to view its register"}</p></div><span className="count-box">{members.length} RECORDS</span></div>
               <label className="search-field"><span>SEARCH REGISTER</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or ZCC app number" disabled={!branchId} /></label>
               <div className="table-wrap"><table><thead><tr><th>MEMBER</th><th>ZCC APP NO.</th><th>CLASSIFICATION</th><th>STATUS</th></tr></thead><tbody>
                 {members.map((member) => <tr key={member.id}><td><strong>{member.lastName}, {member.firstName}</strong></td><td>{member.zccAppNumber || "—"}</td><td>{member.classificationName || "Unassigned"}</td><td><span className="active-label">{member.active ? "ACTIVE" : "INACTIVE"}</span></td></tr>)}
-                {!members.length && <tr><td colSpan={4} className="empty-table">No member records found for this branch.</td></tr>}
+                {!members.length && <tr><td colSpan={4} className="empty-table">No legacy member records found for this branch.</td></tr>}
               </tbody></table></div>
             </section>
           </div>
