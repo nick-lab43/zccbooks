@@ -78,6 +78,10 @@ BEGIN
           AND x.member_id = NEW.household_head_member_id
           AND x.organisation_id = NEW.organisation_id
           AND x.valid_to IS NULL
+          AND EXISTS (
+              SELECT 1 FROM members m
+              WHERE m.id = x.member_id AND m.organisation_id = x.organisation_id AND m.active = TRUE
+          )
     ) THEN
         RAISE EXCEPTION 'Household head must have an active membership in this household'
             USING ERRCODE = '23514';
@@ -90,3 +94,26 @@ CREATE TRIGGER trg_household_head_membership
 BEFORE INSERT OR UPDATE OF household_head_member_id
 ON households
 FOR EACH ROW EXECUTE FUNCTION enforce_household_head_membership();
+
+-- Prevent ending the active membership of a household head until another head
+-- is designated or the current head is explicitly cleared.
+CREATE OR REPLACE FUNCTION protect_active_household_head()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.valid_to IS NULL AND NEW.valid_to IS NOT NULL
+       AND EXISTS (
+           SELECT 1 FROM households h
+           WHERE h.id = OLD.household_id
+             AND h.household_head_member_id = OLD.member_id
+       ) THEN
+        RAISE EXCEPTION 'Clear or replace the household head before ending their membership'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_protect_active_household_head
+BEFORE UPDATE OF valid_to
+ON member_household_memberships
+FOR EACH ROW EXECUTE FUNCTION protect_active_household_head();
