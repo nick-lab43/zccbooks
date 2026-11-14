@@ -69,9 +69,8 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
   const deepestSelected = selected.reduce((last, id, index) => id ? index : last, -1);
   const nextLevelIndex = deepestSelected + 1;
   const parentId = deepestSelected >= 0 ? selected[deepestSelected] : null;
-  const canCreateRootUnit = units.some((unit) => unit.level === "COUNTRY" && unit.parentId === null);
   const nextLevel = deepestSelected < 0
-    ? (canCreateRootUnit || units.length === 0 ? LEVELS[0] : null)
+    ? (units.length === 0 ? LEVELS[0] : null)
     : visibleLevels[nextLevelIndex] ?? null;
 
   function chooseLevel(index: number, id: string) {
