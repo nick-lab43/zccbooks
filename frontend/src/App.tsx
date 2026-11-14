@@ -29,6 +29,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
 
 export default function App() {
   const [activeModule, setActiveModule] = useState<Module>("overview");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<CurrentAdmin | null>(null);
   const [loginError, setLoginError] = useState("");
@@ -223,18 +224,21 @@ export default function App() {
   return (
     <main className="system">
       <header className="masthead">
-        <div className="masthead-brand"><img className="brand-logo" src="/zcc-star-logo.png" alt="Zion Christian Church star" /><div><strong>ZCC BOOKS</strong><small>CHURCH FINANCE &amp; RECORDS</small></div></div>
+        <div className="masthead-brand"><button className="mobile-nav-toggle" type="button" aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen((open) => !open)}>{mobileNavOpen ? "CLOSE" : "MENU"}</button><img className="brand-logo" src="/zcc-star-logo.png" alt="Zion Christian Church star" /><div><strong>ZCC BOOKS</strong><small>CHURCH FINANCE &amp; RECORDS</small></div></div>
         <div className="masthead-right"><span>{currentAdmin?.displayName ?? "ADMINISTRATOR"}</span><button className="logout-button" onClick={logout}>SIGN OUT</button><span className="system-state">SECURE SESSION</span></div>
       </header>
-      <nav className="menubar workspace-nav" aria-label="Main modules">
-        <button className={activeModule === "overview" ? "active" : ""} onClick={() => setActiveModule("overview")}>Overview</button>
-        {currentAdmin?.permissions.includes("ORG_VIEW") && <button className={activeModule === "organisation" ? "active" : ""} onClick={() => setActiveModule("organisation")}>Organisation</button>}
-        {currentAdmin?.permissions.includes("MEMBERS_VIEW") && <button className={activeModule === "membership" ? "active" : ""} onClick={() => setActiveModule("membership")}>Membership</button>}
-        {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button className={activeModule === "access" ? "active" : ""} onClick={() => setActiveModule("access")}>Access Control</button>}
-        <span className="menu-spacer" />
-        
-      </nav>
-
+      <div className="app-shell">
+        <aside className={`app-sidebar ${mobileNavOpen ? "is-open" : ""}`} aria-label="Application navigation">
+          <div className="sidebar-section-label">WORKSPACE</div>
+          <button className={activeModule === "overview" ? "sidebar-link active" : "sidebar-link"} onClick={() => { setActiveModule("overview"); setMobileNavOpen(false); }}><span className="sidebar-icon">OV</span><span>Overview</span></button>
+          <div className="sidebar-section-label">GENERAL ADMINISTRATION</div>
+          {currentAdmin?.permissions.includes("ORG_VIEW") && <button className={activeModule === "organisation" ? "sidebar-link active" : "sidebar-link"} onClick={() => { setActiveModule("organisation"); setMobileNavOpen(false); }}><span className="sidebar-icon">OR</span><span>Organisational structure</span></button>}
+          {currentAdmin?.permissions.includes("MEMBERS_VIEW") && <button className={activeModule === "membership" ? "sidebar-link active" : "sidebar-link"} onClick={() => { setActiveModule("membership"); setMobileNavOpen(false); }}><span className="sidebar-icon">MB</span><span>Membership</span></button>}
+          <div className="sidebar-section-label">SYSTEM ADMINISTRATION</div>
+          {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button className={activeModule === "access" ? "sidebar-link active" : "sidebar-link"} onClick={() => { setActiveModule("access"); setMobileNavOpen(false); }}><span className="sidebar-icon">AC</span><span>Users &amp; access</span></button>}
+          <div className="sidebar-footnote">Available sections depend on your assigned permissions.</div>
+        </aside>
+        <div className="workspace-main">
       <section className="workspace-heading">
         <div>
           <div className="breadcrumb">{activeModule.toUpperCase()}</div>
@@ -410,6 +414,8 @@ export default function App() {
       )}
 
       <footer className="system-footer"><span>ZCC BOOKS · CENTRAL MANAGEMENT</span><span>DEMONSTRATION DATA ONLY · NOT CONNECTED TO THE LIVE ZCC APP</span></footer>
+        </div>
+      </div>
     </main>
   );
 }
