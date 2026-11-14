@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import ContributionCapture from "./ContributionCapture";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Stream = { id: string; code: string; name: string; active: boolean };
@@ -12,8 +13,8 @@ const scopeOptions = [
   { value: "CELL", label: "Cell" }
 ];
 
-export default function FinancialAdministration({ organisationId, authorizationHeader }: {
-  organisationId: string; authorizationHeader: string;
+export default function FinancialAdministration({ organisationId, authorizationHeader, canCapture }: {
+  organisationId: string; authorizationHeader: string; canCapture: boolean;
 }) {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -203,13 +204,14 @@ export default function FinancialAdministration({ organisationId, authorizationH
           <button className="primary-button" disabled={busy || !activeCategories.length || !units.length}>Record financial target</button>
         </form>
       </>}
+      {canCapture && <ContributionCapture organisationId={organisationId} authorizationHeader={authorizationHeader} />}
       <div className="panel-divider" />
       <div className="register-heading"><div><h3>Target register</h3><p>Targets visible within the permitted financial scope</p></div></div>
       <div className="table-wrap"><table><thead><tr><th>CATEGORY</th><th>GEOGRAPHICAL UNIT</th><th>PERIOD</th><th>TARGET</th><th>PROGRESS</th></tr></thead><tbody>
         {targets.map(target => <tr key={target.id}><td><strong>{target.categoryName}</strong><small className="table-subtext">{target.streamName}</small></td><td>{target.unitLevel}<small className="table-subtext">{target.unitCode} — {target.unitName}</small></td><td>{target.periodStart} – {target.periodEnd}</td><td>{target.currency} {Number(target.targetAmount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><span className="inactive-label">AWAITING CONTRIBUTION POSTING</span></td></tr>)}
         {!targets.length && <tr><td colSpan={5} className="empty-table">No financial targets have been recorded in this scope.</td></tr>}
       </tbody></table></div>
-      <p className="empty-note">Target progress percentages will be calculated from posted contributions in the next financial development phase. The system does not report a fabricated 0% achievement before contribution capture exists.</p>
+      <p className="empty-note">Target achievement is calculated from posted contributions within the matching category, geographical unit and target period.</p>
     </>}
   </section>;
 }
