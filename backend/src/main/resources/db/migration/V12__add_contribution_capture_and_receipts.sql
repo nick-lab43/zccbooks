@@ -10,7 +10,7 @@ INSERT INTO admin_role_permissions (role_id, permission_code)
 SELECT r.id, p.permission_code
 FROM admin_roles r
 CROSS JOIN (VALUES ('FINANCE_VIEW'), ('FINANCE_CAPTURE')) AS p(permission_code)
-WHERE r.role_code IN ('NYIKA_SECRETARY', 'NYIKA_ADMIN')
+WHERE r.role_code IN ('NYIKA_SECRETARY', 'NYIKA_ADMIN', 'CENTRAL_ADMIN')
 ON CONFLICT DO NOTHING;
 
 CREATE TABLE financial_receipt_sequences (
