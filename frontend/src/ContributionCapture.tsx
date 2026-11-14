@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Category = { id: string; name: string; streamName: string; active: boolean; scopeLevels: string[] };
 type Member = { id: string; zccAppNumber: string | null; firstName: string; lastName: string };
+type Followup = { id: string; status: string; note: string | null; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string };
 type Receipt = { id: string; receiptNumber: string; memberName: string; categoryName: string; streamName: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; capturedAt: string };
 
 export default function ContributionCapture({ organisationId, authorizationHeader }: {
@@ -16,6 +17,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   const [memberId, setMemberId] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [followups, setFollowups] = useState<Followup[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -76,6 +78,27 @@ export default function ContributionCapture({ organisationId, authorizationHeade
       .then(setMembers).catch((e: Error) => setError(e.message));
   }, [cellId, scopeUnitId, authorizationHeader]);
 
+  async function reloadFollowups() {
+    if (!organisationId || !scopeUnitId) { setFollowups([]); return; }
+    const rows = await request<Followup[]>(`/api/organisations/${organisationId}/deposit-followups?scopeUnitId=${scopeUnitId}`);
+    setFollowups(rows);
+  }
+
+  useEffect(() => {
+    setFollowups([]);
+    if (organisationId && scopeUnitId) reloadFollowups().catch((e: Error) => setError(e.message));
+  }, [organisationId, scopeUnitId, authorizationHeader]);
+
+  async function updateFollowup(id: string, status: "ACKNOWLEDGED" | "RESOLVED") {
+    setError("");
+    try {
+      await request(`/api/deposit-followups/${id}`, {
+        method: "PATCH", body: JSON.stringify({ status, note: null })
+      });
+      await reloadFollowups();
+    } catch (e) { setError(e instanceof Error ? e.message : "Follow-up could not be updated."); }
+  }
+
   async function capture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = event.currentTarget; setBusy(true); setError(""); setReceipt(null);
     const data = new FormData(form);
@@ -90,6 +113,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
         })
       });
       setReceipt(result);
+      await reloadFollowups();
       form.reset();
       setMemberId("");
     } catch (e) { setError(e instanceof Error ? e.message : "Contribution could not be posted."); }
@@ -111,6 +135,12 @@ export default function ContributionCapture({ organisationId, authorizationHeade
       <label>Note<input name="note" maxLength={500} placeholder="Optional contribution note" /></label>
       <button className="primary-button" disabled={busy || !memberId || !applicableCategories.length}>{busy ? "Posting contribution…" : "Post contribution and issue receipt"}</button>
     </form>
+    <div className="panel-divider" />
+    <div className="register-heading"><div><h3>Pending deposit follow-ups</h3><p>Contributions awaiting deposit confirmation or follow-up</p></div><span className="count-box">{followups.length} OPEN</span></div>
+    <div className="table-wrap"><table><thead><tr><th>RECEIPT</th><th>MEMBER / CATEGORY</th><th>AMOUNT</th><th>STATUS</th><th></th></tr></thead><tbody>
+      {followups.map(item => <tr key={item.id}><td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate}</small></td><td>{item.memberName}<small className="table-subtext">{item.categoryName}</small></td><td>{item.currency} {Number(item.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td>{item.status}</td><td><div className="field-actions">{item.status === "PENDING" && <button type="button" className="secondary-button" onClick={() => updateFollowup(item.id, "ACKNOWLEDGED")}>Acknowledge</button>}<button type="button" className="secondary-button" onClick={() => updateFollowup(item.id, "RESOLVED")}>Resolve</button></div></td></tr>)}
+      {!followups.length && <tr><td colSpan={5} className="empty-table">No open deposit follow-ups in this scope.</td></tr>}
+    </tbody></table></div>
     {receipt && <div className="legacy-record-notice" role="status">
       <strong>RECEIPT ISSUED · {receipt.receiptNumber}</strong>
       <span>{receipt.memberName} · {receipt.categoryName} · {receipt.currency} {Number(receipt.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {receipt.contributionDate}</span>
