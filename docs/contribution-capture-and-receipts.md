@@ -24,6 +24,7 @@ Posted contribution rows are not edited by this phase. A correction, cancellatio
 ## Endpoints
 
 - POST /api/organisations/{organisationId}/contributions — post a contribution and issue a receipt.
+- GET /api/organisations/{organisationId}/financial-units — list geographical units visible for contribution capture.
 - GET /api/units/{cellId}/financial-members?scopeUnitId={unitId} — list active members of a Cell within the caller's authorised financial scope.
 - GET /api/contributions/{contributionId}/receipt — retrieve a receipt within the caller's view scope.
 - GET /api/organisations/{organisationId}/contributions?scopeUnitId={unitId} — list contributions for a scope, optionally filtered by from and to.
@@ -37,7 +38,7 @@ A contribution counts toward a target only when organisation, category, exact ge
 
 ## Pending deposits
 
-Every posted contribution creates one PENDING follow-up. An authorised finance capturer can move it to ACKNOWLEDGED or RESOLVED. This is a follow-up register, not a bank deposit or reconciliation ledger. Deposit batches, bank evidence, allocation, reconciliation and cash custody controls remain separate future work.
+Every posted contribution creates one PENDING follow-up. An authorised finance capturer can move it to ACKNOWLEDGED or RESOLVED. Resolved follow-ups cannot be reopened. This is a follow-up register, not a bank deposit or reconciliation ledger. Deposit batches, bank evidence, allocation, reconciliation and cash custody controls remain separate future work.
 
 ## Verification still required
 
