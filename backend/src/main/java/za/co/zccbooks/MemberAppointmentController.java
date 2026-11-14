@@ -136,7 +136,7 @@ public class MemberAppointmentController {
             """ + (position.allowConcurrent() ? " AND scope_unit_id = ?" : "");
         Object[] overlapArgs = position.allowConcurrent()
             ? new Object[] { member.organisationId(), member.id(), request.positionId(), end == null ? null : Date.valueOf(end), Date.valueOf(start), scope.id() }
-            : new Object[] { member.organisationId(), member.id(), positionId(request.positionId()), end == null ? null : Date.valueOf(end), Date.valueOf(start) };
+            : new Object[] { member.organisationId(), member.id(), request.positionId(), end == null ? null : Date.valueOf(end), Date.valueOf(start) };
         Integer overlap = jdbc.queryForObject(overlapSql, Integer.class, overlapArgs);
         if (overlap != null && overlap > 0) {
             throw new ConflictException(position.allowConcurrent()
