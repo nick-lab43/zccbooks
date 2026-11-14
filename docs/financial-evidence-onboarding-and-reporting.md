@@ -9,6 +9,8 @@ ZCC Books serves one provisioned organisation: Zion Christian Church. Central Ad
 
 The canonical geographical hierarchy is Country → Province/State → District → Nyika → Tabhera → Cell. A household is a membership grouping beneath a Cell, not a geographical level.
 
+**Governance boundary:** Central Administration creates and maintains Countries, Provinces/States, Districts and Nyikas. A Nyika administrator maintains Tabheras and Cells beneath their own assigned Nyika. This delegated authority does not permit changing the Nyika's parent District, moving the Nyika, or accessing another Nyika. Central administrators retain organisation-wide oversight. All create, rename, deactivate and structural-change actions must be permission-checked and audited. Deactivation must be blocked or controlled when active descendants or financial/member records depend on the unit.
+
 Every record and workflow must be scoped to the acting administrator's authorised unit and permitted descendants. A user must not choose or change their own organisational scope during onboarding.
 
 ## 2. Contribution-to-deposit lifecycle
@@ -26,7 +28,7 @@ The system must distinguish at least: not yet deposited, included in a draft dep
 
 ## 3. Deposit records and allocation breakdown
 
-A bank deposit is a separate financial event and may cover multiple contribution transactions and categories. A single deposit may therefore have several allocation lines.
+A bank deposit is a separate financial event and may cover multiple contribution transactions and categories. A single deposit may therefore have several allocation lines. **A deposit belongs to exactly one Nyika.** Contributions from different Nyikas must never be combined in one deposit record or allocated across Nyika boundaries. Each Nyika operates as a separate financial and operational unit for this workflow. A deposit may include contributions from multiple Cells or Tabheras within the same Nyika, subject to the authorised submitter's scope and the church's review rules.
 
 A deposit record should capture:
 - Geographical unit and submitting administrator.
@@ -43,7 +45,7 @@ Each allocation line should identify the contribution category or programme and 
 
 Example: a R5,000 deposit may contain R2,000 Building Fund, R2,000 Tithing and R1,000 Youth. These allocations must be visible as structured lines, not only buried in free-text notes. A note field should remain available for explanations and for transcribing information written on the reverse of the physical slip.
 
-The system must support partial allocation where the real process requires it, but must prevent the same contribution amount from being allocated to multiple deposits. Unallocated and unmatched amounts must remain visible as exceptions.
+The system must support partial allocation and partial banking as an exception-capable workflow, even if this is uncommon in normal practice. If only part of the collected money is banked, the administrator must record the amount deposited and leave the remainder visibly outstanding with an explanation or note. The system must prevent the same contribution amount from being allocated to multiple deposits. Unallocated, unbanked and unmatched amounts must remain visible as exceptions until resolved.
 
 ## 4. Deposit slip scanner
 
@@ -95,7 +97,7 @@ Review outcomes should include acceptance, query/clarification and rejection wit
 Central Administration provisions an administrator account by selecting an existing geographical unit, role, name and email address.
 
 The system:
-1. Generates a username from a centrally governed, stable Nyika code or other approved unit-code convention.
+1. Generates a username using the Nyika name or, preferably, a stable centrally assigned Nyika code, followed by `_admin` (for example, `seshego_admin`). The display name can remain the full official Nyika name. If a collision occurs, append a deterministic numeric suffix (for example, `seshego_admin2`) rather than assigning the same username to two people.
 2. Creates a single-use, time-limited invitation.
 3. Emails the invitation link to the supplied address.
 4. Lets the recipient verify the invitation and establish their own password.
@@ -103,7 +105,7 @@ The system:
 
 Do not email a permanent plaintext password. Invitation tokens must be unpredictable, single-use, expire, and be stored securely (for example, as a hash). Resend, expiry, cancellation and already-used invitation cases need explicit handling. The user cannot choose a different Nyika, edit their assigned scope or grant themselves permissions during activation.
 
-Username generation must be deterministic and collision-safe. The final username convention and whether it includes a sequence suffix require a product decision. Email delivery requires a configured provider; until configured, the system must not claim that an invitation was sent.
+Username generation must be deterministic and collision-safe. Use a normalised, stable Nyika identifier rather than a mutable display name as the underlying source, so a later spelling correction does not unexpectedly change an administrator's login. Email delivery requires a configured provider; until configured, the system must not claim that an invitation was sent.
 
 Application roles/permissions are separate from church appointments and positions.
 
@@ -152,7 +154,7 @@ Each Word report should use the official ZCC star logo without stretching, recol
 
 ## 11. Proposed delivery sequence
 
-1. **Domain and workflow foundation:** confirm contribution/deposit states, allocation invariants, roles, scope and audit events. Reconcile legacy branch records with the canonical Cell-based hierarchy before financial capture.
+1. **Domain and workflow foundation:** implement the confirmed governance boundary (Central Administration owns Country through Nyika; Nyika administrators own Tabhera and Cell beneath their Nyika), contribution/deposit states, one-Nyika deposit invariant, allocation rules, roles, scope and audit events. Reconcile legacy branch records with the canonical Cell-based hierarchy before financial capture.
 2. **Contribution and receipt lifecycle:** implement contribution posting, receipt issuance and persistent pending-deposit follow-ups.
 3. **Deposit package and allocation:** implement deposit records, allocation lines, contribution matching, notes and central submission/review.
 4. **Scanner experience:** implement capture/upload, crop, perspective correction, enhancement, original preservation and PDF/image output.
@@ -163,10 +165,10 @@ Each Word report should use the official ZCC star logo without stretching, recol
 
 ## 12. Decisions still requiring confirmation
 
-- Whether one deposit may include Main and Miscellaneous financial streams together, or whether those must be separate deposits.
-- Whether a deposit can contain contributions from more than one Cell, Tabhera or Nyika, and who is authorised to submit such a combined deposit.
-- Whether partial deposits and cash held over multiple days are permitted, and the required accountability process.
-- The approved username format and uniqueness convention.
+- **Confirmed provisionally:** Main and Miscellaneous financial streams may appear on the same deposit slip/deposit record. The data model must retain each allocation line's stream so reporting and reconciliation can still separate them. This remains subject to revision if church policy later requires separate deposits.
+- **Confirmed:** A deposit is restricted to one Nyika. It may include contributions from multiple Cells and Tabheras within that Nyika where the submitter is authorised to access them. Contributions from different Nyikas must never be combined.
+- **Operational exception:** Partial banking is not expected to be common, but the system must support it. The administrator records the actual banked amount; the remainder stays outstanding and requires an explanation and follow-up.
+- **Proposed username convention:** normalised Nyika identifier/name plus `_admin` (for example `seshego_admin`), with deterministic numeric suffixes for collisions. Prefer a stable Nyika code as the identifier source.
 - The church-approved list of member positions and rules for concurrent appointments.
 - Which report fields are sensitive and which roles may view named contributor rankings.
 - The official source/format for the ZCC logo and any required report wording or confidentiality footer.
