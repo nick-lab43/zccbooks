@@ -112,7 +112,7 @@ public class AdminController {
             """, id, request.username().trim(), request.displayName().trim(), passwordEncoder.encode(request.password()));
         audit.record("ADMIN_CREATED", "ADMIN_USER", id, Map.of("username", request.username().trim()));
         return ResponseEntity.status(HttpStatus.CREATED).body(new AdminUserDto(id.toString(),
-            request.username().trim(), request.displayName().trim(), true, null, ""));
+            request.username().trim(), request.displayName().trim(), null, true, null, ""));
     }
 
     @Transactional
