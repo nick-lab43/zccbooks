@@ -336,7 +336,8 @@ public class OrganisationalUnitController {
             throw new ResourceNotFoundException("Organisation not found.");
     }
 
-    public record CreateUnit(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}\n    public record UpdateUnitStatus(boolean active) {}
+    public record CreateUnit(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
+    public record UpdateUnitStatus(boolean active) {}
     public record CreateHousehold(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
     public record AddHouseholdMember(@jakarta.validation.constraints.NotNull UUID memberId,
                                      @NotBlank @Size(max = 80) String relationshipLabel,
