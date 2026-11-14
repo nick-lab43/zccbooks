@@ -80,6 +80,15 @@ public class ContributionController {
         if (!context.scopeContainsMember()) throw new IllegalArgumentException("The selected financial scope must contain the member's assigned Cell.");
         if (!context.categoryAllowsScope()) throw new IllegalArgumentException("The category is not configured for the selected geographical level.");
 
+        jdbc.update("""
+            INSERT INTO financial_receipt_sequences (organisation_id, next_number)
+            VALUES (?, 1) ON CONFLICT (organisation_id) DO NOTHING
+            """, organisationId);
+        jdbc.queryForObject("""
+            SELECT next_number FROM financial_receipt_sequences
+            WHERE organisation_id = ? FOR UPDATE
+            """, Long.class, organisationId);
+
         ContributionDto existing = jdbc.query("""
             SELECT c.id, c.receipt_number, c.member_id, m.first_name, m.last_name,
                    c.category_id, cat.name AS category_name, c.stream_id, fs.name AS stream_name,
@@ -98,11 +107,9 @@ public class ContributionController {
         UUID actorId = jdbc.queryForObject("SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?)",
             UUID.class, authorization.currentUsername());
         Long sequence = jdbc.queryForObject("""
-            INSERT INTO financial_receipt_sequences (organisation_id, next_number)
-            VALUES (?, 2)
-            ON CONFLICT (organisation_id) DO UPDATE
-              SET next_number = financial_receipt_sequences.next_number + 1,
-                  updated_at = CURRENT_TIMESTAMP
+            UPDATE financial_receipt_sequences
+            SET next_number = next_number + 1, updated_at = CURRENT_TIMESTAMP
+            WHERE organisation_id = ?
             RETURNING next_number - 1
             """, Long.class, organisationId);
         if (sequence == null) throw new IllegalStateException("Receipt sequence could not be allocated.");
