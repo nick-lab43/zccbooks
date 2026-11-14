@@ -102,9 +102,11 @@ export default function MemberAppointments({ organisationId, authorizationHeader
   async function endAppointment(id: string) {
     setBusy(true); setError(""); setNotice("");
     try {
+      const today = new Date();
+      const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
       await request(`/api/appointments/${id}/end`, {
         method: "PATCH",
-        body: JSON.stringify({ validTo: new Date().toISOString().slice(0, 10) })
+        body: JSON.stringify({ validTo: localDate })
       });
       await loadAppointments(memberId);
       setNotice("Appointment ended. Its history has been retained.");
