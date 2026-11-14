@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import OrganisationalHierarchy from "./OrganisationalHierarchy";
+import CellMembership from "./CellMembership";
 
 type Module = "overview" | "organisation" | "membership" | "access";
 type CurrentAdmin = { username: string; displayName: string; permissions: string[] };
@@ -252,7 +253,7 @@ export default function App() {
         <div>
           <div className="breadcrumb">ZCC BOOKS / CENTRAL MANAGEMENT / {activeModule.toUpperCase()}</div>
           <h1>{activeModule === "overview" ? "Central Management Overview" : activeModule === "organisation" ? "Organisation Management" : activeModule === "membership" ? "Membership Administration" : "Administrator Access Control"}</h1>
-          <p>{activeModule === "overview" ? "Organisation-wide position and administration entry points." : activeModule === "organisation" ? "Maintain the organisation record, branches and geographical structure." : activeModule === "membership" ? "Maintain member classifications and branch membership records." : "Create administrator accounts, configure roles and assign geographical authority."}</p>
+          <p>{activeModule === "overview" ? "Organisation-wide position and administration entry points." : activeModule === "organisation" ? "Maintain the organisation record, branches and geographical structure." : activeModule === "membership" ? "Maintain member classifications, Cell-based membership and household records." : "Create administrator accounts, configure roles and assign geographical authority."}</p>
         </div>
         <div className="record-stamp"><span>WORKSPACE</span><strong>{activeModule === "overview" ? "CEN-01" : activeModule === "organisation" ? "ORG-01" : activeModule === "membership" ? "MEM-01" : "ACL-01"}</strong><span>FOUNDATION RELEASE</span></div>
       </section>
@@ -364,6 +365,7 @@ export default function App() {
               </tbody></table></div>
             </section>
           </div>
+          <CellMembership organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />
         </>
       )}
 
