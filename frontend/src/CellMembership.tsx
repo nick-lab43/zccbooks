@@ -132,6 +132,18 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
     });
   }
 
+  async function transferMember(event: FormEvent<HTMLFormElement>) {
+    await submit(event, async (data) => {
+      const memberId = String(data.get("memberId") ?? "");
+      await request(`/api/members/${memberId}/transfer`, {
+        method: "POST",
+        body: JSON.stringify({ destinationCellId: data.get("destinationCellId") })
+      });
+      await loadCellData(cellId);
+      setNotice("Member transferred. Their previous household membership remains in the historical record.");
+    });
+  }
+
   async function setHead(event: FormEvent<HTMLFormElement>) {
     await submit(event, async (data) => {
       await request(`/api/households/${householdId}/head`, { method: "PUT", body: JSON.stringify({ memberId: data.get("memberId") || null }) });
@@ -176,6 +188,21 @@ export default function CellMembership({ organisationId, authorizationHeader }: 
             {!members.length && <tr><td colSpan={4} className="empty-table">No members registered in this Cell.</td></tr>}
           </tbody></table></div>
           <div className="panel-divider" />
+          <details className="workflow-disclosure">
+            <summary>Transfer a member to another Cell</summary>
+            <form onSubmit={transferMember} className="form-stack">
+              <label>Member<select name="memberId" required defaultValue="">
+                <option value="">Select active member</option>
+                {members.filter((member) => member.active).map((member) => <option key={member.id} value={member.id}>{member.lastName}, {member.firstName}</option>)}
+              </select></label>
+              <label>Destination Cell<select name="destinationCellId" required defaultValue="">
+                <option value="">Select destination Cell</option>
+                {units.filter((unit) => unit.level === "CELL" && unit.id !== cellId).map((unit) => <option key={unit.id} value={unit.id}>{unit.code} — {unit.name}</option>)}
+              </select></label>
+              <p className="empty-note">Requires management access to both Cells. Active household membership is closed and retained in history. A household head must be replaced or cleared first.</p>
+              <button className="secondary-button" disabled={busy || !members.some((member) => member.active) || !units.some((unit) => unit.level === "CELL" && unit.id !== cellId)}>Transfer member</button>
+            </form>
+          </details>
           <div className="panel-title"><div><span className="panel-index">05</span><h2>Households</h2></div><span className="panel-tag">{households.length} HOUSEHOLDS</span></div>
           <details className="workflow-disclosure">
             <summary>Create household</summary>
