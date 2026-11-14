@@ -6,14 +6,15 @@ type Member = { id: string; cellId: string; zccAppNumber: string | null; firstNa
 type Position = { id: string; code: string; name: string; description: string | null; allowConcurrent: boolean; active: boolean };
 type Appointment = { id: string; positionId: string; positionCode: string; positionName: string; scopeUnitId: string; scopeLevel: string; scopeName: string; validFrom: string; validTo: string | null; note: string | null };
 
-export default function MemberAppointments({ organisationId, authorizationHeader, canConfigurePositions }: {
-  organisationId: string; authorizationHeader: string; canConfigurePositions: boolean;
+export default function MemberAppointments({ organisationId, authorizationHeader }: {
+  organisationId: string; authorizationHeader: string;
 }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [cellId, setCellId] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
   const [memberId, setMemberId] = useState("");
   const [positions, setPositions] = useState<Position[]>([]);
+  const [canConfigurePositions, setCanConfigurePositions] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -48,6 +49,8 @@ export default function MemberAppointments({ organisationId, authorizationHeader
       }).catch((e: Error) => setError(e.message));
     request<Position[]>("/api/appointments/positions")
       .then(setPositions).catch((e: Error) => setError(e.message));
+    request<boolean>("/api/appointments/positions/management-access")
+      .then(setCanConfigurePositions).catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
 
   useEffect(() => {
@@ -170,13 +173,19 @@ export default function MemberAppointments({ organisationId, authorizationHeader
           <div className="panel-divider" />
           <div className="register-heading"><div><h3>Appointment history</h3><p>Current and previous appointments</p></div></div>
           <div className="table-wrap"><table><thead><tr><th>POSITION</th><th>SCOPE</th><th>FROM</th><th>TO</th><th>STATUS</th><th></th></tr></thead><tbody>
-            {appointments.map(item => <tr key={item.id}>
-              <td><strong>{item.positionName}</strong><small className="table-subtext">{item.positionCode}</small></td>
-              <td>{item.scopeLevel}<small className="table-subtext">{item.scopeName}</small></td>
-              <td>{item.validFrom}</td><td>{item.validTo || "—"}</td>
-              <td><span className={item.validTo ? "inactive-label" : "active-label"}>{item.validTo ? "ENDED" : "CURRENT"}</span></td>
-              <td>{!item.validTo && <button type="button" className="secondary-button" disabled={busy} onClick={() => endAppointment(item.id)}>End appointment</button>}</td>
-            </tr>)}
+            {appointments.map(item => {
+              const today = new Date();
+              const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+              const scheduled = item.validFrom > localToday && !item.validTo;
+              const status = item.validTo ? "ENDED" : scheduled ? "SCHEDULED" : "CURRENT";
+              return <tr key={item.id}>
+                <td><strong>{item.positionName}</strong><small className="table-subtext">{item.positionCode}</small></td>
+                <td>{item.scopeLevel}<small className="table-subtext">{item.scopeName}</small></td>
+                <td>{item.validFrom}</td><td>{item.validTo || "—"}</td>
+                <td><span className={item.validTo ? "inactive-label" : "active-label"}>{status}</span></td>
+                <td>{!item.validTo && !scheduled && <button type="button" className="secondary-button" disabled={busy} onClick={() => endAppointment(item.id)}>End appointment</button>}</td>
+              </tr>;
+            })}
             {!appointments.length && <tr><td colSpan={6} className="empty-table">No appointments recorded for this member.</td></tr>}
           </tbody></table></div>
         </>}
