@@ -151,7 +151,7 @@ export default function MemberAppointments({ organisationId, authorizationHeader
         <label className="search-field"><span>MEMBER</span>
           <select value={memberId} onChange={e => setMemberId(e.target.value)}>
             <option value="">Select member</option>
-            {members.map(member => <option key={member.id} value={member.id}>{member.lastName}, {member.firstName}{member.zccAppNumber ? ` · ${member.zccAppNumber}` : ""}</option>)}
+            {members.filter(member => member.active).map(member => <option key={member.id} value={member.id}>{member.lastName}, {member.firstName}{member.zccAppNumber ? ` · ${member.zccAppNumber}` : ""}</option>)}
           </select>
         </label>
         {memberId && <>
