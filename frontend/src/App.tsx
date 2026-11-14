@@ -306,7 +306,8 @@ function MainApp() {
               <div className="overview-module-list">
                 <button onClick={() => setActiveModule("organisation")}><span className="module-code">01</span><span><strong>Organisation management</strong><small>Organisation records, branches and geographical hierarchy</small></span><b>OPEN</b></button>
                 <button onClick={() => setActiveModule("membership")}><span className="module-code">02</span><span><strong>Membership administration</strong><small>Classifications, Cell registration and household records</small></span><b>OPEN</b></button>
-                {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button onClick={() => setActiveModule("access")}><span className="module-code">03</span><span><strong>Administrator access control</strong><small>Accounts, role definitions, permissions and geographical scopes</small></span><b>OPEN</b></button>}
+                {currentAdmin?.permissions.includes("FINANCE_VIEW") && <button onClick={() => setActiveModule("financial")}><span className="module-code">03</span><span><strong>Financial Administration</strong><small>Financial streams, contribution categories and geographical targets</small></span><b>OPEN</b></button>}
+                {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button onClick={() => setActiveModule("access")}><span className="module-code">04</span><span><strong>Administrator access control</strong><small>Accounts, role definitions, permissions and geographical scopes</small></span><b>OPEN</b></button>}
               </div>
             </section>
             <section className="pos-window overview-window">
@@ -318,7 +319,7 @@ function MainApp() {
               </div>
             </section>
           </div>
-          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION AND MEMBERSHIP FOUNDATION · FINANCIAL WORKFLOWS NOT YET ENABLED</div>
+          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION, MEMBERSHIP AND FINANCIAL CONFIGURATION · CONTRIBUTION POSTING NOT YET ENABLED</div>
         </section>
       )}
 
