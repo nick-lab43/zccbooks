@@ -63,6 +63,7 @@ The membership application integration is not connected. Use fictional demonstra
 - `GET/POST /api/organisations/{organisationId}/financial-streams`
 - `GET/POST /api/organisations/{organisationId}/contribution-categories`
 - `GET/POST /api/organisations/{organisationId}/financial-targets`
+- `GET /api/organisations/{organisationId}/financial-units`
 - `POST /api/organisations/{organisationId}/contributions`
 - `GET /api/contributions/{contributionId}/receipt`
 - `GET /api/organisations/{organisationId}/financial-target-progress`
