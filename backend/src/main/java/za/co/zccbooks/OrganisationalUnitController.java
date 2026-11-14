@@ -29,17 +29,47 @@ public class OrganisationalUnitController {
     @GetMapping("/organisations/{organisationId}/units")
     public List<UnitDto> units(@PathVariable UUID organisationId) {
         requireOrganisation(organisationId);
-        authorization.requireOrganisationPermission("ORG_VIEW", organisationId);
-        return jdbc.query("""
+        authorization.requireOrganisationOrUnitPermission("ORG_VIEW", organisationId);
+        String sql = """
             SELECT id, organisation_id, parent_id, level, code, name, active
             FROM organisational_units WHERE organisation_id = ?
             ORDER BY level, name
-            """, (rs, n) -> new UnitDto(
-                rs.getObject("id", UUID.class).toString(),
-                rs.getObject("organisation_id", UUID.class).toString(),
-                rs.getObject("parent_id") == null ? null : rs.getObject("parent_id", UUID.class).toString(),
-                rs.getString("level"), rs.getString("code"), rs.getString("name"), rs.getBoolean("active")
-            ), organisationId);
+            """;
+        Object[] parameters = new Object[] { organisationId };
+        if (!authorization.hasOrganisationWidePermission("ORG_VIEW", organisationId)) {
+            sql = """
+                WITH RECURSIVE visible_units AS (
+                    SELECT ou.id, ou.organisation_id, ou.parent_id
+                    FROM organisational_units ou
+                    JOIN admin_role_assignments a ON a.scope_unit_id = ou.id
+                    JOIN admin_users u ON u.id = a.user_id
+                    JOIN admin_role_permissions rp ON rp.role_id = a.role_id
+                    WHERE ou.organisation_id = ?
+                      AND a.organisation_id = ?
+                      AND a.scope_type = 'UNIT'
+                      AND a.revoked_at IS NULL
+                      AND LOWER(u.username) = LOWER(?)
+                      AND rp.permission_code = 'ORG_VIEW'
+                    UNION
+                    SELECT child.id, child.organisation_id, child.parent_id
+                    FROM organisational_units child
+                    JOIN visible_units parent
+                      ON child.parent_id = parent.id
+                     AND child.organisation_id = parent.organisation_id
+                )
+                SELECT ou.id, ou.organisation_id, ou.parent_id, ou.level, ou.code, ou.name, ou.active
+                FROM organisational_units ou
+                JOIN visible_units v ON v.id = ou.id
+                ORDER BY ou.level, ou.name
+                """;
+            parameters = new Object[] { organisationId, organisationId, authorization.currentUsername() };
+        }
+        return jdbc.query(sql, (rs, n) -> new UnitDto(
+            rs.getObject("id", UUID.class).toString(),
+            rs.getObject("organisation_id", UUID.class).toString(),
+            rs.getObject("parent_id") == null ? null : rs.getObject("parent_id", UUID.class).toString(),
+            rs.getString("level"), rs.getString("code"), rs.getString("name"), rs.getBoolean("active")
+        ), parameters);
     }
 
     @GetMapping("/units/{parentId}/children")

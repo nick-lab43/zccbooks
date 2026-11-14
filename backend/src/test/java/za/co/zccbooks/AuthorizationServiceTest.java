@@ -47,6 +47,25 @@ class AuthorizationServiceTest {
             () -> authorization.requireOrganisationPermission("MEMBERS_VIEW", organisationId));
     }
 
+
+    @Test
+    void unitScopedAdministratorCanDiscoverAssignedOrganisation() {
+        authenticate();
+        UUID organisationId = UUID.randomUUID();
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("central.operator"), eq("ORG_VIEW"), eq(organisationId))).thenReturn(1);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        assertDoesNotThrow(() -> authorization.requireOrganisationOrUnitPermission("ORG_VIEW", organisationId));
+    }
+
+    @Test
+    void unitScopedAdministratorDoesNotReceiveOrganisationWideAccess() {
+        authenticate();
+        UUID organisationId = UUID.randomUUID();
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("central.operator"), eq("ORG_VIEW"), eq(organisationId))).thenReturn(0);
+        assertThrows(AccessDeniedException.class,
+            () -> authorization.requireOrganisationOrUnitPermission("ORG_VIEW", organisationId));
+    }
+
     @Test
     void unitPermissionDeniesWhenNoAncestorScopeGrantsThePermission() {
         authenticate();

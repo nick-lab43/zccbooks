@@ -79,15 +79,21 @@ export default function App() {
       setBranches([]); setClassifications([]); setBranchId(""); setUnitCount(0);
       return;
     }
-    Promise.all([
+    Promise.allSettled([
       api<Branch[]>(`/api/organisations/${organisationId}/branches`),
       api<Classification[]>(`/api/organisations/${organisationId}/classifications`),
       api<unknown[]>(`/api/organisations/${organisationId}/units`),
-    ]).then(([branchRows, classificationRows, units]) => {
+    ]).then(([branchResult, classificationResult, unitResult]) => {
+      const branchRows = branchResult.status === "fulfilled" ? branchResult.value : [];
+      const classificationRows = classificationResult.status === "fulfilled" ? classificationResult.value : [];
+      if (unitResult.status === "rejected") throw unitResult.reason;
       setBranches(branchRows);
       setClassifications(classificationRows);
-      setUnitCount(units.length);
+      setUnitCount(unitResult.value.length);
       setBranchId((current) => branchRows.some((b) => b.id === current) ? current : branchRows[0]?.id ?? "");
+      if (branchResult.status === "rejected" && classificationResult.status === "rejected") {
+        setNotice("Organisation access is limited to your assigned geographical scope. Branch-based membership maintenance is not available to this account.");
+      }
     }).catch((e: Error) => setError(e.message));
   }, [organisationId]);
 
