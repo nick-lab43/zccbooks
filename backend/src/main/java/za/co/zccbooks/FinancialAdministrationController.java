@@ -172,6 +172,15 @@ public class FinancialAdministrationController {
         if (!CONTRIBUTION_TYPES.contains(request.contributionType())) {
             throw new IllegalArgumentException("Unsupported contribution type.");
         }
+        List<String> targetLevels = jdbc.query("""
+            SELECT DISTINCT u.level
+            FROM financial_targets t
+            JOIN organisational_units u ON u.id = t.unit_id AND u.organisation_id = t.organisation_id
+            WHERE t.category_id = ?
+            """, (rs, n) -> rs.getString(1), categoryId);
+        if (targetLevels.stream().anyMatch(level -> !request.scopeLevels().contains(level))) {
+            throw new ConflictException("The category scope cannot exclude a geographical level that already has financial targets.");
+        }
         jdbc.update("""
             UPDATE contribution_categories
             SET name = ?, description = ?, contribution_type = ?, active = ?, updated_at = CURRENT_TIMESTAMP
