@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api")
@@ -22,6 +23,33 @@ public class CellMembershipController {
         this.jdbc = jdbc;
         this.authorization = authorization;
         this.audit = audit;
+    }
+
+    @PatchMapping("/members/{memberId}/status")
+    @Transactional
+    public ResponseEntity<Void> updateMemberStatus(@PathVariable UUID memberId,
+            @Valid @RequestBody UpdateMemberStatus request) {
+        MemberStatus member = jdbc.query("""
+            SELECT id, organisation_id, cell_id, active, zcc_app_number
+            FROM members WHERE id = ? FOR UPDATE
+            """, (rs, n) -> new MemberStatus(rs.getObject("id", UUID.class),
+                rs.getObject("organisation_id", UUID.class), rs.getObject("cell_id", UUID.class),
+                rs.getBoolean("active"), rs.getString("zcc_app_number")), memberId).stream().findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("Member not found."));
+        authorization.requireUnitPermission("MEMBERS_MANAGE", member.cellId());
+        if (member.active() == request.active()) return ResponseEntity.noContent().build();
+        if (!request.active()) {
+            Integer headCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM households WHERE household_head_member_id = ?", Integer.class, memberId);
+            if (headCount != null && headCount > 0) {
+                throw new ConflictException("Clear or replace the household head designation before deactivating this member.");
+            }
+        }
+        jdbc.update("UPDATE members SET active = ? WHERE id = ?", request.active(), memberId);
+        audit.record(request.active() ? "MEMBER_REACTIVATED" : "MEMBER_DEACTIVATED", "MEMBER", memberId,
+            Map.of("organisationId", member.organisationId().toString(), "cellId", member.cellId().toString(),
+                "zccAppNumber", member.zccAppNumber() == null ? "" : member.zccAppNumber()));
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/units/{cellId}/classifications")
@@ -164,6 +192,8 @@ public class CellMembershipController {
             @NotBlank @Size(max = 100) String firstName,
             @NotBlank @Size(max = 100) String lastName, UUID classificationId) {}
     public record SetHouseholdHead(UUID memberId) {}
+    public record UpdateMemberStatus(boolean active) {}
+    private record MemberStatus(UUID id, UUID organisationId, UUID cellId, boolean active, String zccAppNumber) {}
     public record CellMemberDto(String id, String organisationId, String cellId, String zccAppNumber,
             String firstName, String lastName, String classificationId, String classificationName, boolean active) {}
     private record Cell(UUID id, UUID organisationId, String level) {}

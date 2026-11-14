@@ -5,10 +5,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.sql.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -20,10 +22,12 @@ public class OrganisationalUnitController {
 
     private final JdbcTemplate jdbc;
     private final AuthorizationService authorization;
+    private final AdminAuditService audit;
 
-    public OrganisationalUnitController(JdbcTemplate jdbc, AuthorizationService authorization) {
+    public OrganisationalUnitController(JdbcTemplate jdbc, AuthorizationService authorization, AdminAuditService audit) {
         this.jdbc = jdbc;
         this.authorization = authorization;
+        this.audit = audit;
     }
 
     @GetMapping("/organisations/{organisationId}/units")
@@ -160,6 +164,7 @@ public class OrganisationalUnitController {
     }
 
     @PostMapping("/households/{householdId}/members")
+    @Transactional
     public ResponseEntity<Void> addHouseholdMember(@PathVariable UUID householdId,
             @Valid @RequestBody AddHouseholdMember request) {
         HouseholdRow household = requireHousehold(householdId);
@@ -171,28 +176,40 @@ public class OrganisationalUnitController {
         if (memberCount == null || memberCount == 0) {
             throw new ResourceNotFoundException("Member not found in this organisation.");
         }
+        java.time.LocalDate validFrom = request.validFrom() == null ? java.time.LocalDate.now() : request.validFrom();
+        UUID membershipId = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO member_household_memberships
                 (id, organisation_id, household_id, member_id, relationship_label, valid_from)
             VALUES (?, ?, ?, ?, ?, ?)
-            """, UUID.randomUUID(), household.organisationId(), household.id(), request.memberId(),
-            request.relationshipLabel().trim(), request.validFrom() == null ? Date.valueOf(java.time.LocalDate.now()) : Date.valueOf(request.validFrom()));
+            """, membershipId, household.organisationId(), household.id(), request.memberId(),
+            request.relationshipLabel().trim(), Date.valueOf(validFrom));
+        audit.record("HOUSEHOLD_MEMBER_ADDED", "HOUSEHOLD_MEMBERSHIP", membershipId,
+            Map.of("householdId", household.id().toString(), "memberId", request.memberId().toString(),
+                "relationshipLabel", request.relationshipLabel().trim(), "validFrom", validFrom.toString()));
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
     @PostMapping("/households/{householdId}/members/{memberId}/end")
+    @Transactional
     public ResponseEntity<Void> endHouseholdMembership(@PathVariable UUID householdId,
             @PathVariable UUID memberId, @Valid @RequestBody EndHouseholdMembership request) {
         HouseholdRow household = requireHousehold(householdId);
         authorization.requireUnitPermission("MEMBERS_MANAGE", household.cellId());
-        int updated = jdbc.update("""
-            UPDATE member_household_memberships
-            SET valid_to = ?
+        UUID membershipId = jdbc.query("""
+            SELECT id FROM member_household_memberships
             WHERE household_id = ? AND member_id = ? AND valid_to IS NULL
-            """, Date.valueOf(request.validTo()), householdId, memberId);
-        if (updated == 0) {
-            throw new ResourceNotFoundException("Active household membership not found.");
-        }
+            """, (rs, n) -> rs.getObject("id", UUID.class), householdId, memberId)
+            .stream().findFirst().orElseThrow(() ->
+                new ResourceNotFoundException("Active household membership not found."));
+        int updated = jdbc.update("""
+            UPDATE member_household_memberships SET valid_to = ?
+            WHERE id = ? AND valid_to IS NULL
+            """, Date.valueOf(request.validTo()), membershipId);
+        if (updated == 0) throw new ResourceNotFoundException("Active household membership not found.");
+        audit.record("HOUSEHOLD_MEMBER_REMOVED", "HOUSEHOLD_MEMBERSHIP", membershipId,
+            Map.of("householdId", household.id().toString(), "memberId", memberId.toString(),
+                "validTo", request.validTo().toString()));
         return ResponseEntity.noContent().build();
     }
 
