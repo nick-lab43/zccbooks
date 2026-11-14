@@ -165,9 +165,9 @@ public class OrganisationalUnitController {
         HouseholdRow household = requireHousehold(householdId);
         authorization.requireUnitPermission("MEMBERS_MANAGE", household.cellId());
         Integer memberCount = jdbc.queryForObject("""
-            SELECT COUNT(*) FROM members m JOIN branches b ON b.id = m.branch_id
-            WHERE m.id = ? AND b.organisation_id = ?
-            """, Integer.class, request.memberId(), household.organisationId());
+            SELECT COUNT(*) FROM members m
+            WHERE m.id = ? AND m.organisation_id = ? AND m.cell_id = ?
+            """, Integer.class, request.memberId(), household.organisationId(), household.cellId());
         if (memberCount == null || memberCount == 0) {
             throw new ResourceNotFoundException("Member not found in this organisation.");
         }
