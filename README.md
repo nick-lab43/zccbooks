@@ -51,6 +51,7 @@ Open `http://localhost:5173`. Vite proxies `/api` requests to the backend.
 - Financial Administration foundation: configurable financial streams, contribution categories, category applicability by geographical level and period-based financial targets.
 - Scoped Financial Officer and Auditor access to financial configuration and target registers.
 - Scoped contribution capture for authorised finance roles, sequential receipts, idempotent posting, target achievement calculations and pending-deposit follow-ups.
+- Cash deposit batches with full-receipt allocation, submission controls and exact bank-statement reconciliation.
 
 The membership application integration is not connected. Use fictional demonstration records only.
 
