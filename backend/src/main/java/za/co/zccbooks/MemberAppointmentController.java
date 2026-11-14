@@ -100,6 +100,7 @@ public class MemberAppointmentController {
         if (!member.organisationId().equals(scope.organisationId())) {
             throw new IllegalArgumentException("Appointment scope must belong to the member's organisation.");
         }
+        authorization.requireUnitPermission("MEMBERS_MANAGE", scope.id());
         if (!List.of("NYIKA", "TABHERA", "CELL").contains(scope.level()) || !scope.active()) {
             throw new IllegalArgumentException("Appointment scope must be an active Nyika, Tabhera or Cell.");
         }
@@ -134,7 +135,7 @@ public class MemberAppointmentController {
               AND COALESCE(valid_to, DATE '9999-12-31') >= ?
             """ + (position.allowConcurrent() ? " AND scope_unit_id = ?" : "");
         Object[] overlapArgs = position.allowConcurrent()
-            ? new Object[] { member.organisationId(), member.id(), positionId(request.positionId()), end == null ? null : Date.valueOf(end), Date.valueOf(start), scope.id() }
+            ? new Object[] { member.organisationId(), member.id(), request.positionId(), end == null ? null : Date.valueOf(end), Date.valueOf(start), scope.id() }
             : new Object[] { member.organisationId(), member.id(), positionId(request.positionId()), end == null ? null : Date.valueOf(end), Date.valueOf(start) };
         Integer overlap = jdbc.queryForObject(overlapSql, Integer.class, overlapArgs);
         if (overlap != null && overlap > 0) {
@@ -179,6 +180,7 @@ public class MemberAppointmentController {
                 rs.getObject("cell_id", UUID.class)), appointmentId).stream().findFirst()
             .orElseThrow(() -> new ResourceNotFoundException("Appointment not found."));
         authorization.requireUnitPermission("MEMBERS_MANAGE", row.cellId());
+        authorization.requireUnitPermission("MEMBERS_MANAGE", row.scopeUnitId());
         if (row.validTo() != null) throw new ConflictException("This appointment has already ended.");
         if (request.validTo().isBefore(row.validFrom())) throw new IllegalArgumentException("End date cannot be before the appointment start date.");
         jdbc.update("UPDATE member_appointments SET valid_to = ? WHERE id = ? AND valid_to IS NULL",
@@ -248,7 +250,6 @@ public class MemberAppointmentController {
             id).stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Church position not found."));
     }
 
-    private static UUID positionId(UUID id) { return id; }
     private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
 
     public record CreatePosition(@NotBlank @Pattern(regexp = "[A-Za-z0-9_-]{2,60}") String code,
