@@ -2,6 +2,7 @@ package za.co.zccbooks;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +50,78 @@ public class CellMembershipController {
         audit.record(request.active() ? "MEMBER_REACTIVATED" : "MEMBER_DEACTIVATED", "MEMBER", memberId,
             Map.of("organisationId", member.organisationId().toString(), "cellId", member.cellId().toString(),
                 "zccAppNumber", member.zccAppNumber() == null ? "" : member.zccAppNumber()));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/members/{memberId}/transfer")
+    @Transactional
+    public ResponseEntity<Void> transferMember(@PathVariable UUID memberId,
+            @Valid @RequestBody TransferMember request) {
+        MemberStatus member = jdbc.query("""
+            SELECT id, organisation_id, cell_id, active, zcc_app_number
+            FROM members WHERE id = ? FOR UPDATE
+            """, (rs, n) -> new MemberStatus(rs.getObject("id", UUID.class),
+                rs.getObject("organisation_id", UUID.class), rs.getObject("cell_id", UUID.class),
+                rs.getBoolean("active"), rs.getString("zcc_app_number")), memberId).stream().findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("Member not found."));
+        if (member.cellId() == null) {
+            throw new ConflictException("Only members already assigned to a Cell can be transferred through this workflow.");
+        }
+        if (!member.active()) throw new ConflictException("Inactive members cannot be transferred.");
+
+        Cell destination = jdbc.query("""
+            SELECT id, organisation_id, level FROM organisational_units
+            WHERE id = ? AND active = TRUE
+            """, (rs, n) -> new Cell(rs.getObject("id", UUID.class),
+                rs.getObject("organisation_id", UUID.class), rs.getString("level")), request.destinationCellId())
+            .stream().findFirst().orElseThrow(() ->
+                new ResourceNotFoundException("Destination Cell not found or inactive."));
+        if (!"CELL".equals(destination.level()) || !member.organisationId().equals(destination.organisationId())) {
+            throw new IllegalArgumentException("Destination must be an active Cell in the member's organisation.");
+        }
+        authorization.requireUnitPermission("MEMBERS_MANAGE", member.cellId());
+        authorization.requireUnitPermission("MEMBERS_MANAGE", destination.id());
+        if (member.cellId().equals(destination.id())) {
+            throw new IllegalArgumentException("The destination Cell must differ from the current Cell.");
+        }
+
+        UUID membershipId = jdbc.query("""
+            SELECT id FROM member_household_memberships
+            WHERE member_id = ? AND organisation_id = ? AND valid_to IS NULL
+            FOR UPDATE
+            """, (rs, n) -> rs.getObject("id", UUID.class), memberId, member.organisationId())
+            .stream().findFirst().orElse(null);
+        String closedHouseholdMembershipId = "";
+        java.time.LocalDate transferDate = java.time.LocalDate.now();
+        if (membershipId != null) {
+            Integer headCount = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM households
+                WHERE household_head_member_id = ?
+                  AND id = (SELECT household_id FROM member_household_memberships WHERE id = ?)
+                """, Integer.class, memberId, membershipId);
+            if (headCount != null && headCount > 0) {
+                throw new ConflictException("Clear or replace the household head designation before transferring this member.");
+            }
+            int closed = jdbc.update("""
+                UPDATE member_household_memberships SET valid_to = ?
+                WHERE id = ? AND valid_to IS NULL
+                """, Date.valueOf(transferDate), membershipId);
+            if (closed != 1) throw new ConflictException("Household membership changed during transfer. Reload and retry.");
+            closedHouseholdMembershipId = membershipId.toString();
+        }
+
+        int updated = jdbc.update("""
+            UPDATE members SET cell_id = ?, cell_level = 'CELL'
+            WHERE id = ? AND organisation_id = ? AND cell_id = ?
+            """, destination.id(), memberId, member.organisationId(), member.cellId());
+        if (updated != 1) throw new ConflictException("Member's Cell changed during transfer. Reload and retry.");
+
+        audit.record("MEMBER_TRANSFERRED", "MEMBER", memberId,
+            Map.of("organisationId", member.organisationId().toString(),
+                "sourceCellId", member.cellId().toString(),
+                "destinationCellId", destination.id().toString(),
+                "householdMembershipClosed", closedHouseholdMembershipId,
+                "transferDate", transferDate.toString()));
         return ResponseEntity.noContent().build();
     }
 
@@ -193,6 +266,7 @@ public class CellMembershipController {
             @NotBlank @Size(max = 100) String lastName, UUID classificationId) {}
     public record SetHouseholdHead(UUID memberId) {}
     public record UpdateMemberStatus(boolean active) {}
+    public record TransferMember(@NotNull UUID destinationCellId) {}
     private record MemberStatus(UUID id, UUID organisationId, UUID cellId, boolean active, String zccAppNumber) {}
     public record CellMemberDto(String id, String organisationId, String cellId, String zccAppNumber,
             String firstName, String lastName, String classificationId, String classificationName, boolean active) {}
