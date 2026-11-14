@@ -108,6 +108,21 @@ public class OrganisationalUnitController {
         return createUnit(parent.organisationId(), parent.id(), LEVELS.get(parentIndex + 1), request);
     }
 
+    @GetMapping("/units/{cellId}/household-members")
+    public List<ActiveHouseholdMemberDto> activeHouseholdMembers(@PathVariable UUID cellId) {
+        UnitRow cell = requireCell(cellId);
+        authorization.requireUnitPermission("MEMBERS_VIEW", cellId);
+        return jdbc.query("""
+            SELECT x.member_id
+            FROM member_household_memberships x
+            JOIN households h ON h.id = x.household_id
+            WHERE h.organisation_id = ? AND h.cell_id = ? AND x.valid_to IS NULL
+            ORDER BY x.member_id
+            """, (rs, n) -> new ActiveHouseholdMemberDto(
+                rs.getObject("member_id", UUID.class).toString()
+            ), cell.organisationId(), cell.id());
+    }
+
     @GetMapping("/units/{cellId}/households")
     public List<HouseholdDto> households(@PathVariable UUID cellId) {
         UnitRow cell = requireCell(cellId);
@@ -244,7 +259,7 @@ public class OrganisationalUnitController {
                                      java.time.LocalDate validFrom) {}
     public record EndHouseholdMembership(@jakarta.validation.constraints.NotNull java.time.LocalDate validTo) {}
     public record UnitDto(String id, String organisationId, String parentId, String level, String code, String name, boolean active) {}
-    public record HouseholdDto(String id, String code, String name, String householdHeadMemberId, boolean active) {}
+    public record HouseholdDto(String id, String code, String name, String householdHeadMemberId, boolean active) {}\n    public record ActiveHouseholdMemberDto(String memberId) {}
     public record HouseholdMemberDto(String id, String zccAppNumber, String firstName, String lastName,
                                      String relationshipLabel, String validFrom, String validTo) {}
     private record UnitRow(UUID id, UUID organisationId, String level) {}
