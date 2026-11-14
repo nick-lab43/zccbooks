@@ -725,3 +725,38 @@ input, select { border-radius: 5px !important; }
 @media (max-width: 640px) {
   .workflow-disclosure > summary { min-height: 44px; }
 }
+
+
+/* Task-oriented application navigation */
+.app-shell { display:grid; grid-template-columns:248px minmax(0,1fr); min-height:calc(100vh - 64px); align-items:start; }
+.app-sidebar { position:sticky; top:0; min-height:calc(100vh - 64px); padding:22px 14px; border-right:1px solid var(--line); background:#fff; display:flex; flex-direction:column; gap:5px; }
+.sidebar-section-label { margin:17px 10px 7px; color:#858c94; font-size:9px; font-weight:800; letter-spacing:.11em; }
+.sidebar-section-label:first-child { margin-top:3px; }
+.sidebar-link { display:flex; align-items:center; gap:11px; width:100%; min-height:44px; padding:8px 10px; border:1px solid transparent; border-radius:6px; color:#505962; background:transparent; text-align:left; font-size:12px; font-weight:600; cursor:pointer; }
+.sidebar-link:hover { background:#f4f5f6; }
+.sidebar-link.active { color:#252b31; background:#f0f2f4; border-color:#e0e3e6; box-shadow:inset 3px 0 #8b929a; }
+.sidebar-icon { display:grid; place-items:center; width:27px; height:27px; flex:0 0 27px; border:1px solid #d9dde1; border-radius:5px; color:#626b74; background:#fff; font-size:8px; font-weight:800; letter-spacing:.04em; }
+.sidebar-footnote { margin-top:auto; padding:12px 9px 0; border-top:1px solid #e7e9ec; color:#858c94; font-size:10px; line-height:1.5; }
+.workspace-main { min-width:0; padding-bottom:18px; }
+.workspace-main > .workspace-heading { width:min(var(--content-width),calc(100% - 48px)); }
+.workspace-main > .message { width:min(var(--content-width),calc(100% - 48px)); }
+.workspace-main > .system-footer { width:min(var(--content-width),calc(100% - 48px)); }
+.mobile-nav-toggle { display:none; }
+@media(max-width:900px) {
+ .app-shell { grid-template-columns:210px minmax(0,1fr); }
+ .app-sidebar { padding-inline:9px; }
+ .sidebar-link { font-size:11px; }
+}
+@media(max-width:700px) {
+ .mobile-nav-toggle { display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:0 10px; border:1px solid var(--line); border-radius:5px; color:#424a52; background:#f7f8f9; font-size:9px; font-weight:800; letter-spacing:.05em; }
+ .masthead-brand { gap:8px; }
+ .app-shell { display:block; min-height:0; }
+ .app-sidebar { display:none; position:relative; top:auto; min-height:0; padding:12px; border-right:0; border-bottom:1px solid var(--line); }
+ .app-sidebar.is-open { display:flex; }
+ .sidebar-section-label { margin:12px 8px 5px; }
+ .sidebar-footnote { margin-top:10px; }
+ .workspace-main > .workspace-heading,
+ .workspace-main > .message,
+ .workspace-main > .system-footer { width:calc(100% - 24px); }
+ .workspace-main { padding-bottom:12px; }
+}
