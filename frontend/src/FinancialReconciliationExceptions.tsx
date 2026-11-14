@@ -67,6 +67,8 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
   async function importFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!file || !scopeUnitId) return;
+    const form = event.currentTarget;
+    let importSummary = "";
     await perform(async () => {
       const data = new FormData();
       data.append("file", file);
@@ -74,10 +76,11 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
         `/api/organisations/${organisationId}/bank-statement-imports?scopeUnitId=${scopeUnitId}`,
         { method: "POST", body: data }
       );
-      setNotice(`Imported ${result.importedRows} transactions from ${result.fileName}; skipped ${result.duplicateRows} duplicate rows.`);
+      importSummary = `Imported ${result.importedRows} transactions from ${result.fileName}; skipped ${result.duplicateRows} duplicate rows.`;
       setFile(null);
-      event.currentTarget.reset();
+      form.reset();
     }, "Statement import completed.");
+    if (importSummary) setNotice(importSummary);
   }
 
   async function scan() {
