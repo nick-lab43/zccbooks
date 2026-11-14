@@ -40,7 +40,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
     setMembers([]); setReceipt(null); setError("");
     if (!organisationId) return;
     Promise.all([
-      request<Unit[]>(`/api/organisations/${organisationId}/units`),
+      request<Unit[]>(`/api/organisations/${organisationId}/financial-units`),
       request<Category[]>(`/api/organisations/${organisationId}/contribution-categories`)
     ]).then(([unitRows, categoryRows]) => {
       setUnits(unitRows.filter(unit => unit.active && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)));
