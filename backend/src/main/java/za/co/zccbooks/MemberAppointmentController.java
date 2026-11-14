@@ -42,6 +42,12 @@ public class MemberAppointmentController {
                 rs.getString("description"), rs.getBoolean("allow_concurrent"), rs.getBoolean("active")));
     }
 
+    @GetMapping("/appointments/positions/management-access")
+    public boolean positionManagementAccess() {
+        authorization.requireAnyOrganisationPermission("MEMBERS_VIEW");
+        return authorization.isCentralAdministrator();
+    }
+
     @PostMapping("/appointments/positions")
     @Transactional
     public ResponseEntity<PositionDto> createPosition(@Valid @RequestBody CreatePosition request) {
