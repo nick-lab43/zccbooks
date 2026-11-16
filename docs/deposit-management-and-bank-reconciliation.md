@@ -70,7 +70,7 @@ Each deposit batch can retain up to 10 uploaded evidence files per request. Supp
 
 Original file bytes are stored in the private PostgreSQL database. The API derives the content type from the file signature rather than trusting the browser-provided MIME type, computes a SHA-256 digest, rejects an identical file already attached to the same batch and records the uploader and timestamp. Evidence is immutable through the application: there is no overwrite or delete operation. Access to metadata and content is checked against the deposit's geographical scope on every request. Content responses are marked no-store.
 
-Evidence may be added while a batch is DRAFT, SUBMITTED or PARTIALLY_RECONCILED. Fully reconciled batches are read-only. The evidence file is supporting documentation only; upload does not verify bank settlement or authenticity. Image cropping, perspective correction, enhancement and generated PDF derivatives remain a later scanner-experience increment. The original upload must remain preserved when those processing features are introduced.
+Evidence may be added while a batch is DRAFT, SUBMITTED or PARTIALLY_RECONCILED. Fully reconciled batches are read-only. The evidence file is supporting documentation only; upload does not verify bank settlement or authenticity. Scanner-generated PDFs are separate derivatives. The original upload remains preserved byte-for-byte.
 
 
 ## Deposit document scanner and PDF derivatives
