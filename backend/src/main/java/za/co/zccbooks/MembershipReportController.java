@@ -170,6 +170,42 @@ public class MembershipReportController {
         }
     }
 
+    @GetMapping(value = "/export/pdf", produces = "application/pdf")
+    public ResponseEntity<byte[]> exportPdf(@PathVariable UUID organisationId, @RequestParam UUID scopeUnitId,
+            @RequestParam LocalDate from, @RequestParam LocalDate to, @RequestParam String type) throws IOException {
+        ReportContext context = context(organisationId, scopeUnitId, from, to);
+        if (!List.of("MEMBER_REGISTER", "APPOINTMENT_REGISTER").contains(type))
+            throw new IllegalArgumentException("Unsupported membership report type.");
+        List<String> headers;
+        List<String[]> rows;
+        if (type.equals("MEMBER_REGISTER")) {
+            headers = List.of("Member", "ZCC App Number", "Classification", "Cell", "Registered", "Status");
+            rows = members(organisationId, scopeUnitId, from, to).stream().map(item -> new String[] {
+                item.lastName() + ", " + item.firstName(), item.zccAppNumber(), item.classification(),
+                item.cellCode() + " - " + item.cellName(), item.registeredOn().toString(),
+                item.active() ? "ACTIVE" : "INACTIVE"
+            }).toList();
+        } else {
+            headers = List.of("Member", "ZCC App Number", "Position", "Scope", "From", "To", "Note");
+            rows = appointments(organisationId, scopeUnitId, from, to).stream().map(item -> new String[] {
+                item.lastName() + ", " + item.firstName(), item.zccAppNumber(),
+                item.positionName() + " (" + item.positionCode() + ")",
+                item.appointmentLevel() + " - " + item.appointmentScope(), item.validFrom().toString(),
+                item.validTo() == null ? "Ongoing" : item.validTo().toString(), item.note()
+            }).toList();
+        }
+        byte[] bytes = ReportPdfWriter.create(
+            type.equals("MEMBER_REGISTER") ? "MEMBERSHIP REGISTER" : "CHURCH APPOINTMENTS REGISTER",
+            context.unitLevel() + " - " + context.unitName(), from.toString(), to.toString(),
+            authorization.currentUsername(), headers, rows);
+        audit.record("MEMBERSHIP_REPORT_GENERATED", "MEMBERSHIP_REPORT", UUID.randomUUID(),
+            Map.of("organisationId", organisationId.toString(), "scopeUnitId", scopeUnitId.toString(),
+                "type", type, "format", "PDF", "from", from.toString(), "to", to.toString()));
+        String filename = "zcc-" + type.toLowerCase().replace('_', '-') + "-" + from + "-to-" + to + ".pdf";
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+            .contentType(MediaType.APPLICATION_PDF).body(bytes);
+    }
+
     private ReportContext context(UUID organisationId, UUID scopeUnitId, LocalDate from, LocalDate to) {
         authorization.requireUnitPermission("MEMBERS_VIEW", scopeUnitId);
         if (from == null || to == null || from.isAfter(to))

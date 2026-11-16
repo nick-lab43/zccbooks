@@ -425,6 +425,73 @@ public class FinancialReportController {
         }
     }
 
+    @GetMapping(value = "/export/pdf", produces = "application/pdf")
+    public ResponseEntity<byte[]> exportPdf(@PathVariable UUID organisationId, @RequestParam UUID scopeUnitId,
+            @RequestParam LocalDate from, @RequestParam LocalDate to,
+            @RequestParam(defaultValue = "CONTRIBUTION_SUMMARY") String type) throws IOException {
+        ReportContext context = context(organisationId, scopeUnitId, from, to);
+        if (!List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER", "DEPOSIT_REGISTER",
+                "EXPENDITURE_REGISTER", "INCOME_EXPENDITURE", "BUDGET_PERFORMANCE", "EXCEPTION_REGISTER").contains(type))
+            throw new IllegalArgumentException("Unsupported report type.");
+
+        List<String> headers;
+        List<String[]> rows = new java.util.ArrayList<>();
+        if (type.equals("CONTRIBUTION_SUMMARY")) {
+            headers = List.of("Financial stream", "Category", "Transactions", "Currency", "Total");
+            ContributionSummary report = summary(organisationId, scopeUnitId, from, to);
+            for (ContributionGroup item : report.groups())
+                rows.add(new String[] { item.streamName(), item.categoryName(), Long.toString(item.contributionCount()),
+                    item.currency(), item.totalAmount().toPlainString() });
+            for (CurrencyTotal total : report.currencyTotals())
+                rows.add(new String[] { "TOTAL CONTRIBUTIONS", "", "", total.currency(), total.totalAmount().toPlainString() });
+            rows.add(new String[] { "TRANSACTIONS", Long.toString(report.contributionCount()), "", "", "" });
+        } else if (type.equals("CONTRIBUTION_REGISTER")) {
+            headers = List.of("Date", "Receipt", "Contributor", "Category", "Stream", "Payment", "Currency", "Amount");
+            for (ContributionLine item : contributions(organisationId, scopeUnitId, from, to))
+                rows.add(new String[] { item.contributionDate().toString(), item.receiptNumber(),
+                    item.firstName() + " " + item.lastName(), item.categoryName(), item.streamName(),
+                    item.paymentMethod(), item.currency(), item.amount().toPlainString() });
+        } else if (type.equals("DEPOSIT_REGISTER")) {
+            headers = List.of("Date", "Unit", "Bank", "Reference", "Expected", "Allocated", "Banked", "Outstanding", "Status");
+            for (DepositLine item : deposits(organisationId, scopeUnitId, from, to))
+                rows.add(new String[] { item.depositDate().toString(), item.unitName(), item.bankName(),
+                    item.bankReference(), item.expectedAmount().toPlainString(), item.allocatedAmount().toPlainString(),
+                    item.bankedAmount().toPlainString(), item.outstandingAmount().toPlainString(), item.status() });
+        } else if (type.equals("EXPENDITURE_REGISTER")) {
+            headers = List.of("Date", "Unit", "Category", "Payee", "Description", "Reference", "Amount", "Currency", "Status");
+            for (ExpenseLine item : expenses(organisationId, scopeUnitId, from, to))
+                rows.add(new String[] { item.expenseDate().toString(), item.unitName(), item.categoryName(),
+                    item.payee(), item.description(), item.reference(), item.amount().toPlainString(),
+                    item.currency(), item.status() });
+        } else if (type.equals("BUDGET_PERFORMANCE")) {
+            headers = List.of("Period start", "Period end", "Unit", "Category", "Budget", "Actual",
+                "Variance", "Utilisation", "Currency", "Status");
+            for (BudgetPerformanceLine item : budgetPerformance(organisationId, scopeUnitId, from, to))
+                rows.add(new String[] { item.periodStart().toString(), item.periodEnd().toString(), item.unitName(),
+                    item.categoryName(), item.budgetAmount().toPlainString(), item.actualAmount().toPlainString(),
+                    item.remainingAmount().toPlainString(), item.utilisationPercentage().toPlainString() + "%",
+                    item.currency(), item.remainingAmount().signum() < 0 ? "OVER BUDGET" : "WITHIN BUDGET" });
+        } else if (type.equals("INCOME_EXPENDITURE")) {
+            headers = List.of("Currency", "Income", "Approved expenditure", "Net position");
+            for (CurrencyPosition item : incomeExpenditure(organisationId, scopeUnitId, from, to).positions())
+                rows.add(new String[] { item.currency(), item.income().toPlainString(),
+                    item.expenditure().toPlainString(), item.netPosition().toPlainString() });
+        } else {
+            headers = List.of("Date", "Unit", "Type", "Status", "Summary");
+            for (ExceptionLine item : exceptions(organisationId, scopeUnitId, from, to))
+                rows.add(new String[] { item.createdAt(), item.unitName(), item.exceptionType(), item.status(), item.summary() });
+        }
+
+        byte[] bytes = ReportPdfWriter.create(reportTitle(type), context.unitName(), from.toString(), to.toString(),
+            authorization.currentUsername(), headers, rows);
+        audit.record("FINANCIAL_REPORT_GENERATED", "FINANCIAL_REPORT", UUID.randomUUID(),
+            Map.of("organisationId", organisationId.toString(), "scopeUnitId", scopeUnitId.toString(),
+                "type", type, "format", "PDF", "from", from.toString(), "to", to.toString()));
+        String filename = "zcc-" + type.toLowerCase().replace('_', '-') + "-" + from + "-to-" + to + ".pdf";
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+            .contentType(MediaType.APPLICATION_PDF).body(bytes);
+    }
+
     private ReportContext context(UUID organisationId, UUID scopeUnitId, LocalDate from, LocalDate to) {
         authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
         if (from == null || to == null || from.isAfter(to)) {
