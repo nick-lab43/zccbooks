@@ -21,7 +21,8 @@ export default function FinancialReports({ organisationId, authorizationHeader }
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [exceptions, setExceptions] = useState<Exception[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [incomeExpenditure, setIncomeExpenditure] = useState<IncomeExpenditure | null>(null);\n  const [budgetPerformance, setBudgetPerformance] = useState<BudgetPerformance[]>([]);
+  const [incomeExpenditure, setIncomeExpenditure] = useState<IncomeExpenditure | null>(null);
+  const [budgetPerformance, setBudgetPerformance] = useState<BudgetPerformance[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -66,7 +67,8 @@ export default function FinancialReports({ organisationId, authorizationHeader }
       if (type === "DEPOSIT_REGISTER") setDeposits(await request<Deposit[]>(`/api/organisations/${organisationId}/financial-reports/deposits?${query}`));
       if (type === "EXCEPTION_REGISTER") setExceptions(await request<Exception[]>(`/api/organisations/${organisationId}/financial-reports/exceptions?${query}`));
       if (type === "EXPENDITURE_REGISTER") setExpenses(await request<Expense[]>(`/api/organisations/${organisationId}/financial-reports/expenses?${query}`));
-      if (type === "INCOME_EXPENDITURE") setIncomeExpenditure(await request<IncomeExpenditure>(`/api/organisations/${organisationId}/financial-reports/income-expenditure?${query}`));\n      if (type === "BUDGET_PERFORMANCE") setBudgetPerformance(await request<BudgetPerformance[]>(`/api/organisations/${organisationId}/financial-reports/budget-performance?${query}`));
+      if (type === "INCOME_EXPENDITURE") setIncomeExpenditure(await request<IncomeExpenditure>(`/api/organisations/${organisationId}/financial-reports/income-expenditure?${query}`));
+      if (type === "BUDGET_PERFORMANCE") setBudgetPerformance(await request<BudgetPerformance[]>(`/api/organisations/${organisationId}/financial-reports/budget-performance?${query}`));
     } catch (e) { setError(e instanceof Error ? e.message : "Report could not be loaded."); }
     finally { setBusy(false); }
   }
@@ -101,7 +103,8 @@ export default function FinancialReports({ organisationId, authorizationHeader }
           <option value="CONTRIBUTION_REGISTER">Contributor and receipt register</option>
           <option value="DEPOSIT_REGISTER">Deposit register</option>
           <option value="EXPENDITURE_REGISTER">Expenditure register</option>
-          <option value="INCOME_EXPENDITURE">Income and expenditure summary</option>\n          <option value="BUDGET_PERFORMANCE">Expenditure budget performance</option>
+          <option value="INCOME_EXPENDITURE">Income and expenditure summary</option>
+          <option value="BUDGET_PERFORMANCE">Expenditure budget performance</option>
           <option value="EXCEPTION_REGISTER">Reconciliation exceptions</option>
         </select></label>
         <label>Geographical scope<select value={scopeUnitId} onChange={e => setScopeUnitId(e.target.value)}><option value="">Select scope</option>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
