@@ -58,6 +58,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired DepositEvidenceController depositEvidence;
     @Autowired DepositDocumentController depositDocuments;
     @Autowired ExpenditureEvidenceController expenditureEvidence;
+    @Autowired AdminController adminController;
 
     @AfterEach
     void clearAuthentication() {
@@ -1048,6 +1049,71 @@ class FinancialReportPostgresIntegrationTest {
             Integer.class, documentId));
         assertArrayEquals(originalBytes, jdbc.queryForObject(
             "SELECT file_data FROM deposit_evidence WHERE id = ?", byte[].class, evidenceId));
+    }
+
+    @Test
+    void auditLogSupportsScopedFiltersDateRangesAndStablePagination() {
+        Fixture fixture = fixture();
+        UUID auditActorId = UUID.randomUUID();
+        String auditActorUsername = "audit.tester." + auditActorId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Audit Tester', 'not-used-in-direct-controller-test', TRUE)
+            """, auditActorId, auditActorUsername);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
+            """, UUID.randomUUID(), auditActorId);
+
+        UUID contributionTarget = UUID.randomUUID();
+        UUID depositTarget = UUID.randomUUID();
+        UUID laterContributionTarget = UUID.randomUUID();
+        insertAuditEvent(auditActorId, "CONTRIBUTION_POSTED", "CONTRIBUTION",
+            contributionTarget, "{\"receiptNumber\":\"R-100\"}", "2026-02-02T10:00:00Z");
+        insertAuditEvent(auditActorId, "DEPOSIT_RECONCILED", "DEPOSIT_BATCH",
+            depositTarget, "{\"bankReference\":\"BANK-200\"}", "2026-02-03T10:00:00Z");
+        insertAuditEvent(auditActorId, "CONTRIBUTION_POSTED", "CONTRIBUTION",
+            laterContributionTarget, "{\"receiptNumber\":\"R-101\"}", "2026-02-03T12:00:00Z");
+        authenticateAs(auditActorUsername);
+
+        var filtered = adminController.auditEvents(LocalDate.parse("2026-02-02"),
+            LocalDate.parse("2026-02-03"), "CONTRIBUTION", auditActorUsername,
+            "CONTRIBUTION", null, null, 1, 0);
+        assertEquals(1, filtered.size());
+        assertEquals(laterContributionTarget.toString(), filtered.get(0).targetId());
+        assertEquals("CONTRIBUTION_POSTED", filtered.get(0).action());
+
+        var secondPage = adminController.auditEvents(LocalDate.parse("2026-02-02"),
+            LocalDate.parse("2026-02-03"), "CONTRIBUTION", auditActorUsername,
+            "CONTRIBUTION", null, null, 1, 1);
+        assertEquals(1, secondPage.size());
+        assertEquals(contributionTarget.toString(), secondPage.get(0).targetId());
+
+        var searched = adminController.auditEvents(null, null, null, auditActorUsername,
+            null, null, "R-100", 20, 0);
+        assertEquals(1, searched.size());
+        assertEquals(contributionTarget.toString(), searched.get(0).targetId());
+
+        var targeted = adminController.auditEvents(null, null, null, null,
+            null, depositTarget, null, 20, 0);
+        assertEquals(1, targeted.size());
+        assertEquals("DEPOSIT_RECONCILED", targeted.get(0).action());
+
+        assertThrows(IllegalArgumentException.class, () -> adminController.auditEvents(
+            LocalDate.parse("2026-02-04"), LocalDate.parse("2026-02-03"),
+            null, null, null, null, null, 100, 0));
+        assertThrows(IllegalArgumentException.class, () -> adminController.auditEvents(
+            null, null, null, null, null, null, null, 501, 0));
+        assertThrows(IllegalArgumentException.class, () -> adminController.auditEvents(
+            null, null, null, null, null, null, null, 100, -1));
+    }
+
+    private void insertAuditEvent(UUID actorId, String action, String targetType,
+            UUID targetId, String details, String occurredAt) {
+        jdbc.update("""
+            INSERT INTO admin_audit_events (id, actor_user_id, action_code, target_type, target_id, details, occurred_at)
+            VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::timestamptz)
+            """, UUID.randomUUID(), actorId, action, targetType, targetId, details, occurredAt);
     }
 
     private Fixture fixture() {
