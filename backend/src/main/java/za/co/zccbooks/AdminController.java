@@ -202,8 +202,8 @@ public class AdminController {
             WHERE 1 = 1
             """);
         java.util.List<Object> parameters = new java.util.ArrayList<>();
-        if (from != null) { sql.append(" AND e.occurred_at >= ?::date"); parameters.add(from); }
-        if (to != null) { sql.append(" AND e.occurred_at < (?::date + INTERVAL '1 day')"); parameters.add(to); }
+        if (from != null) { sql.append(" AND e.occurred_at >= (?::date::timestamp AT TIME ZONE 'UTC')"); parameters.add(from); }
+        if (to != null) { sql.append(" AND e.occurred_at < ((?::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'UTC')"); parameters.add(to); }
         if (action != null && !action.isBlank()) { sql.append(" AND e.action_code ILIKE ?"); parameters.add("%" + action.trim() + "%"); }
         if (actor != null && !actor.isBlank()) { sql.append(" AND u.username ILIKE ?"); parameters.add("%" + actor.trim() + "%"); }
         if (targetType != null && !targetType.isBlank()) { sql.append(" AND e.target_type ILIKE ?"); parameters.add("%" + targetType.trim() + "%"); }
