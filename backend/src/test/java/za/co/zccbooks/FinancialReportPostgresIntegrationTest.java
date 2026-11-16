@@ -3,6 +3,9 @@ package za.co.zccbooks;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -51,6 +54,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired ExpenditureManagementController expenditureManagement;
     @Autowired BudgetManagementController budgetManagement;
     @Autowired DepositEvidenceController depositEvidence;
+    @Autowired DepositDocumentController depositDocuments;
 
     @AfterEach
     void clearAuthentication() {
@@ -935,6 +939,48 @@ class FinancialReportPostgresIntegrationTest {
         Integer retained = jdbc.queryForObject(
             "SELECT COUNT(*) FROM deposit_evidence WHERE id = ?", Integer.class, evidenceId);
         assertEquals(1, retained);
+    }
+
+    @Test
+    void scannedDepositDocumentCreatesMultiPagePdfWithoutChangingOriginalEvidence() throws Exception {
+        Fixture fixture = fixture();
+        authenticate(fixture);
+        UUID batchId = jdbc.queryForObject(
+            "SELECT id FROM deposit_batches WHERE organisation_id = ? AND bank_reference = 'BANK-A-1'",
+            UUID.class, fixture.organisationId());
+
+        BufferedImage pageImage = new BufferedImage(600, 800, BufferedImage.TYPE_INT_RGB);
+        var graphics = pageImage.createGraphics();
+        graphics.fillRect(0, 0, 600, 800);
+        graphics.drawString("Deposit slip page one", 80, 120);
+        graphics.dispose();
+        ByteArrayOutputStream imageOutput = new ByteArrayOutputStream();
+        ImageIO.write(pageImage, "png", imageOutput);
+        byte[] originalBytes = imageOutput.toByteArray();
+        UUID evidenceId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_evidence
+                (id, deposit_batch_id, original_filename, content_type, file_size, sha256, file_data, uploaded_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, evidenceId, batchId, "deposit-page.png", "image/png", originalBytes.length,
+            "b".repeat(64), originalBytes, fixture.adminId());
+
+        var page = new org.springframework.mock.web.MockMultipartFile(
+            "pages", "deposit-page-scan.jpg", "image/jpeg", originalBytes);
+        var created = depositDocuments.create(batchId, List.of(page), List.of(evidenceId));
+        assertEquals(1, created.size());
+        assertEquals(1, created.get(0).pageCount());
+        assertTrue(created.get(0).fileSize() > 0);
+
+        UUID documentId = UUID.fromString(created.get(0).id());
+        byte[] pdf = depositDocuments.content(batchId, documentId).getBody();
+        assertNotNull(pdf);
+        assertTrue(new String(pdf, 0, 5, java.nio.charset.StandardCharsets.US_ASCII).startsWith("%PDF-"));
+        assertEquals(1, jdbc.queryForObject(
+            "SELECT COUNT(*) FROM deposit_document_sources WHERE document_id = ? AND evidence_id = ?",
+            Integer.class, documentId, evidenceId));
+        assertArrayEquals(originalBytes, jdbc.queryForObject(
+            "SELECT file_data FROM deposit_evidence WHERE id = ?", byte[].class, evidenceId));
     }
 
     private Fixture fixture() {
