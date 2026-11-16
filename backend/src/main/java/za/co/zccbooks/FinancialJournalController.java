@@ -161,6 +161,17 @@ public class FinancialJournalController {
                 organisationId, number)) {
             throw new ConflictException("A journal with this number already exists in the organisation.");
         }
+        String sourceType = request.sourceType() == null ? "MANUAL" : request.sourceType();
+        if ("RECONCILIATION_EXCEPTION".equals(sourceType)) {
+            if (request.sourceId() == null || !exists("""
+                SELECT COUNT(*) FROM reconciliation_exceptions
+                WHERE id = ? AND organisation_id = ? AND scope_unit_id = ?
+                """, request.sourceId(), organisationId, request.scopeUnitId())) {
+                throw new IllegalArgumentException("The linked reconciliation exception must exist in the same organisation and financial scope.");
+            }
+        } else if (request.sourceId() != null) {
+            throw new IllegalArgumentException("A manual journal cannot specify a source record.");
+        }
         UUID id = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO finance_journals
@@ -168,7 +179,7 @@ public class FinancialJournalController {
                  description, source_type, source_id, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, id, organisationId, request.scopeUnitId(), number, request.journalDate(), currency,
-            request.description().trim(), request.sourceType(), request.sourceId(), actorId());
+            request.description().trim(), sourceType, request.sourceId(), actorId());
         for (FinanceJournalLineRequest line : request.lines()) {
             insertLine(id, organisationId, currency, line);
         }
