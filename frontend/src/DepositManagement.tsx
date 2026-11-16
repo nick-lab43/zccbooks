@@ -240,17 +240,19 @@ export default function DepositManagement({ organisationId, authorizationHeader,
       <div className="register-heading"><div><h3>Submitted deposits awaiting reconciliation</h3></div></div>
       <div className="table-wrap"><table><thead><tr><th>DEPOSIT</th><th>ALLOCATED</th><th>BANKED</th><th>OUTSTANDING</th><th>DATE</th><th>MATCHING CREDIT</th><th>EXPLANATION / ACTION</th></tr></thead><tbody>
         {batches.filter(batch => ["SUBMITTED", "PARTIALLY_RECONCILED"].includes(batch.status)).map(batch => {
-          const candidate = entries.find(entry => !entry.reconciled && entry.entryType === "CREDIT" && entry.bankReference.toLowerCase() === batch.bankReference.toLowerCase() && Number(entry.amount) > 0 && Number(entry.amount) <= Number(batch.outstandingAmount) && Math.abs(new Date(entry.transactionDate).getTime() - new Date(batch.depositDate).getTime()) <= 3 * 86400000);
+          const candidates = entries.filter(entry => !entry.reconciled && entry.entryType === "CREDIT" && entry.bankReference.toLowerCase() === batch.bankReference.toLowerCase() && Number(entry.amount) > 0 && Number(entry.amount) <= Number(batch.outstandingAmount) && Math.abs(new Date(entry.transactionDate).getTime() - new Date(batch.depositDate).getTime()) <= 3 * 86400000);
           const note = partialNotes[batch.id] ?? "";
-          const needsExplanation = !!candidate && Number(candidate.amount) < Number(batch.outstandingAmount);
           return <tr key={batch.id}>
             <td><strong>{batch.bankReference}</strong><small className="table-subtext">{batch.status}</small></td>
             <td>ZAR {Number(batch.allocatedAmount).toFixed(2)}</td>
             <td>ZAR {Number(batch.bankedAmount).toFixed(2)}</td>
             <td>ZAR {Number(batch.outstandingAmount).toFixed(2)}</td>
             <td>{batch.depositDate}</td>
-            <td>{candidate ? `ZAR ${Number(candidate.amount).toFixed(2)} · ${candidate.transactionDate}` : "No eligible credit"}</td>
-            <td>{candidate && <><input aria-label={`Outstanding balance explanation for ${batch.bankReference}`} value={note} maxLength={500} placeholder="Required if partial" onChange={event => setPartialNotes(rows => ({ ...rows, [batch.id]: event.target.value }))} /><button type="button" className="secondary-button" disabled={busy || (needsExplanation && !note.trim())} onClick={() => reconcile(batch, candidate, note)}>Apply credit</button></>}</td>
+            <td>{candidates.length ? <div className="form-stack">{candidates.map(candidate => <div key={candidate.id}><strong>ZAR {Number(candidate.amount).toFixed(2)}</strong><small className="table-subtext">{candidate.transactionDate} · {candidate.description || candidate.bankReference}</small></div>)}</div> : "No eligible credit"}</td>
+            <td>{candidates.length > 0 && <div className="form-stack"><input aria-label={`Outstanding balance explanation for ${batch.bankReference}`} value={note} maxLength={500} placeholder="Required if partial" onChange={event => setPartialNotes(rows => ({ ...rows, [batch.id]: event.target.value }))} />{candidates.map(candidate => {
+              const needsExplanation = Number(candidate.amount) < Number(batch.outstandingAmount);
+              return <button key={candidate.id} type="button" className="secondary-button" disabled={busy || (needsExplanation && !note.trim())} onClick={() => reconcile(batch, candidate, note)}>Apply ZAR {Number(candidate.amount).toFixed(2)}</button>;
+            })}</div>}</td>
           </tr>;
         })}
         {!batches.some(batch => ["SUBMITTED", "PARTIALLY_RECONCILED"].includes(batch.status)) && <tr><td colSpan={7} className="empty-table">No submitted deposits awaiting reconciliation.</td></tr>}
