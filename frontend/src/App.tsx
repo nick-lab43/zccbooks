@@ -9,6 +9,7 @@ import FinancialReports from "./FinancialReports";
 import ExpenditureManagement from "./ExpenditureManagement";
 import BudgetManagement from "./BudgetManagement";
 import DepositReview from "./DepositReview";
+import AdminAuditLog from "./AdminAuditLog";
 
 type Module = "overview" | "organisation" | "membership" | "appointments" | "membershipReports" | "financial" | "reports" | "expenditure" | "budgets" | "depositReview" | "access";
 type CurrentAdmin = { username: string; displayName: string; permissions: string[] };
@@ -481,14 +482,7 @@ function MainApp() {
               <p className="panel-description access-help">System roles are protected. Create a custom role to define a different permission set. Use Ctrl or Command to select multiple permissions.</p>
             </section>
           </div>
-          
-            <section className="panel">
-              <div className="panel-title"><div><span className="panel-index">05</span><h2>Administrator audit history</h2></div><span className="panel-tag">LATEST 250 EVENTS</span></div>
-              <div className="table-wrap"><table><thead><tr><th>DATE / TIME</th><th>ACTOR</th><th>ACTION</th><th>RECORD</th><th>DETAILS</th></tr></thead><tbody>
-                {auditEvents.map((event) => <tr key={event.id}><td>{new Date(event.occurredAt).toLocaleString()}</td><td>{event.actor}</td><td><strong>{event.action}</strong></td><td>{event.targetType}</td><td>{event.details}</td></tr>)}
-                {!auditEvents.length && <tr><td colSpan={5} className="empty-table">No administrator events recorded.</td></tr>}
-              </tbody></table></div>
-            </section>
+            <AdminAuditLog authorizationHeader={currentAuthHeader ?? ""} />
         </div>
       )}
 
