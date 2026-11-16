@@ -6,6 +6,10 @@ type ExceptionRow = {
   id: string; sourceType: string; sourceId: string; exceptionType: string; status: string;
   summary: string; resolutionNote: string | null; createdAt: string; updatedAt: string; scopeName: string;
 };
+type ExceptionHistory = {
+  id: string; previousStatus: string | null; newStatus: string; action: string;
+  note: string | null; changedBy: string; changedAt: string;
+};
 
 export default function FinancialReconciliationExceptions({ organisationId, authorizationHeader, canImport, canManage }: {
   organisationId: string; authorizationHeader: string; canImport: boolean; canManage: boolean;
@@ -16,6 +20,9 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
   const [includeResolved, setIncludeResolved] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
+  const [historyOpen, setHistoryOpen] = useState<Record<string, boolean>>({});
+  const [historyRows, setHistoryRows] = useState<Record<string, ExceptionHistory[]>>({});
+  const [historyLoading, setHistoryLoading] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -93,6 +100,22 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
     }, "Exception scan completed.");
   }
 
+  async function toggleHistory(row: ExceptionRow) {
+    const nextOpen = !historyOpen[row.id];
+    setHistoryOpen(current => ({ ...current, [row.id]: nextOpen }));
+    if (!nextOpen || historyRows[row.id]) return;
+    setHistoryLoading(current => ({ ...current, [row.id]: true }));
+    try {
+      const result = await request<ExceptionHistory[]>(`/api/reconciliation-exceptions/${row.id}/history`);
+      setHistoryRows(current => ({ ...current, [row.id]: result }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load exception history.");
+      setHistoryOpen(current => ({ ...current, [row.id]: false }));
+    } finally {
+      setHistoryLoading(current => ({ ...current, [row.id]: false }));
+    }
+  }
+
   async function updateException(row: ExceptionRow, status: "UNDER_REVIEW" | "RESOLVED") {
     await perform(async () => {
       await request(`/api/reconciliation-exceptions/${row.id}`, {
@@ -132,8 +155,27 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
         <td>{row.summary}<small className="table-subtext">{new Date(row.createdAt).toLocaleString()}</small></td>
         <td>{row.status}</td>
         <td>{row.status === "RESOLVED" ? row.resolutionNote : <input aria-label="Resolution note" value={resolutionNotes[row.id] ?? ""} onChange={e => setResolutionNotes(current => ({ ...current, [row.id]: e.target.value }))} maxLength={1000} placeholder="Required to resolve" />}</td>
-        <td>{canManage && row.status !== "RESOLVED" && <div className="action-stack"><button type="button" className="secondary-button" disabled={busy || row.status === "UNDER_REVIEW"} onClick={() => updateException(row, "UNDER_REVIEW")}>Review</button><button type="button" className="primary-button" disabled={busy || !(resolutionNotes[row.id] ?? "").trim()} onClick={() => updateException(row, "RESOLVED")}>Resolve</button></div>}</td>
-      </tr>)}
+        <td><div className="action-stack">
+          <button type="button" className="secondary-button" disabled={busy || historyLoading[row.id]} onClick={() => toggleHistory(row)}>
+            {historyLoading[row.id] ? "Loading…" : historyOpen[row.id] ? "Hide history" : "History"}
+          </button>
+          {canManage && row.status !== "RESOLVED" && <>
+            <button type="button" className="secondary-button" disabled={busy || row.status === "UNDER_REVIEW"} onClick={() => updateException(row, "UNDER_REVIEW")}>Review</button>
+            <button type="button" className="primary-button" disabled={busy || !(resolutionNotes[row.id] ?? "").trim()} onClick={() => updateException(row, "RESOLVED")}>Resolve</button>
+          </>}
+        </div></td>
+      </tr>
+      {historyOpen[row.id] && <tr key={row.id + "-history"}><td colSpan={5}>
+        <strong>Immutable status history</strong>
+        {historyLoading[row.id] ? <p>Loading history…</p> : <ol className="audit-history-list">
+          {(historyRows[row.id] ?? []).map(item => <li key={item.id}>
+            <strong>{item.action === "CREATED" ? "Exception created" : `${item.previousStatus} → ${item.newStatus}`}</strong>
+            <small className="table-subtext">{item.changedBy} · {new Date(item.changedAt).toLocaleString()}</small>
+            {item.note && <p>{item.note}</p>}
+          </li>)}
+          {!historyRows[row.id]?.length && <li>No history recorded.</li>}
+        </ol>}
+      </td></tr>})}
       {!rows.length && <tr><td colSpan={5} className="empty-table">No reconciliation exceptions in this scope.</td></tr>}
     </tbody></table></div>
   </section>;
