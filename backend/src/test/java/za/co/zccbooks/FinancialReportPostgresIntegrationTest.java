@@ -965,20 +965,33 @@ class FinancialReportPostgresIntegrationTest {
             """, evidenceId, batchId, "deposit-page.png", "image/png", originalBytes.length,
             "b".repeat(64), originalBytes, fixture.adminId());
 
-        var page = new org.springframework.mock.web.MockMultipartFile(
-            "pages", "deposit-page-scan.jpg", "image/jpeg", originalBytes);
-        var created = depositDocuments.create(batchId, List.of(page), List.of(evidenceId));
+        UUID secondEvidenceId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_evidence
+                (id, deposit_batch_id, original_filename, content_type, file_size, sha256, file_data, uploaded_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, secondEvidenceId, batchId, "deposit-page-two.png", "image/png", originalBytes.length,
+            "c".repeat(64), originalBytes, fixture.adminId());
+        var firstPage = new org.springframework.mock.web.MockMultipartFile(
+            "pages", "deposit-page-one-scan.jpg", "image/jpeg", originalBytes);
+        var secondPage = new org.springframework.mock.web.MockMultipartFile(
+            "pages", "deposit-page-two-scan.jpg", "image/jpeg", originalBytes);
+        var created = depositDocuments.create(batchId, List.of(firstPage, secondPage),
+            List.of(evidenceId, secondEvidenceId));
         assertEquals(1, created.size());
-        assertEquals(1, created.get(0).pageCount());
+        assertEquals(2, created.get(0).pageCount());
         assertTrue(created.get(0).fileSize() > 0);
 
         UUID documentId = UUID.fromString(created.get(0).id());
         byte[] pdf = depositDocuments.content(batchId, documentId).getBody();
         assertNotNull(pdf);
         assertTrue(new String(pdf, 0, 5, java.nio.charset.StandardCharsets.US_ASCII).startsWith("%PDF-"));
-        assertEquals(1, jdbc.queryForObject(
-            "SELECT COUNT(*) FROM deposit_document_sources WHERE document_id = ? AND evidence_id = ?",
-            Integer.class, documentId, evidenceId));
+        try (var parsedPdf = org.apache.pdfbox.Loader.loadPDF(pdf)) {
+            assertEquals(2, parsedPdf.getNumberOfPages());
+        }
+        assertEquals(2, jdbc.queryForObject(
+            "SELECT COUNT(*) FROM deposit_document_sources WHERE document_id = ?",
+            Integer.class, documentId));
         assertArrayEquals(originalBytes, jdbc.queryForObject(
             "SELECT file_data FROM deposit_evidence WHERE id = ?", byte[].class, evidenceId));
     }
