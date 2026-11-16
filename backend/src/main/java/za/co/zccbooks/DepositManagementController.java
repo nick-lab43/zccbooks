@@ -186,7 +186,7 @@ public class DepositManagementController {
         authorization.requireUnitPermission("FINANCE_RECONCILE", scopeUnitId);
         return jdbc.query("""
             SELECT e.id, e.scope_unit_id, u.name AS scope_name, e.transaction_date,
-                   e.bank_reference, e.amount, e.description, e.recorded_at,
+                   e.bank_reference, e.amount, e.entry_type, e.description, e.recorded_at,
                    (r.id IS NOT NULL) AS reconciled
             FROM bank_statement_entries e
             JOIN organisational_units u ON u.id = e.scope_unit_id
@@ -196,7 +196,8 @@ public class DepositManagementController {
             """, (rs, n) -> new BankStatementEntryDto(rs.getObject("id", UUID.class).toString(),
                 rs.getObject("scope_unit_id", UUID.class).toString(), rs.getString("scope_name"),
                 rs.getDate("transaction_date").toLocalDate().toString(), rs.getString("bank_reference"),
-                rs.getBigDecimal("amount"), rs.getString("description"), rs.getBoolean("reconciled")),
+                rs.getBigDecimal("amount"), rs.getString("entry_type"), rs.getString("description"),
+                rs.getBoolean("reconciled")),
             organisationId, scopeUnitId);
     }
 
@@ -210,7 +211,7 @@ public class DepositManagementController {
         }
         BankStatementEntryDto entry = jdbc.query("""
             SELECT e.id, e.scope_unit_id, u.name AS scope_name, e.transaction_date,
-                   e.bank_reference, e.amount, e.description, e.recorded_at,
+                   e.bank_reference, e.amount, e.entry_type, e.description, e.recorded_at,
                    (r.id IS NOT NULL) AS reconciled
             FROM bank_statement_entries e
             JOIN organisational_units u ON u.id = e.scope_unit_id
@@ -219,11 +220,15 @@ public class DepositManagementController {
             """, (rs, n) -> new BankStatementEntryDto(rs.getObject("id", UUID.class).toString(),
                 rs.getObject("scope_unit_id", UUID.class).toString(), rs.getString("scope_name"),
                 rs.getDate("transaction_date").toLocalDate().toString(), rs.getString("bank_reference"),
-                rs.getBigDecimal("amount"), rs.getString("description"), rs.getBoolean("reconciled")),
+                rs.getBigDecimal("amount"), rs.getString("entry_type"), rs.getString("description"),
+                rs.getBoolean("reconciled")),
             request.statementEntryId(), batch.organisationId()).stream().findFirst()
             .orElseThrow(() -> new ResourceNotFoundException("Bank statement entry not found."));
         if (!batch.scopeUnitId().toString().equals(entry.scopeUnitId())) {
             throw new IllegalArgumentException("The bank statement entry must belong to the same geographical unit.");
+        }
+        if (!"CREDIT".equals(entry.entryType())) {
+            throw new IllegalArgumentException("Only bank credit entries can be applied to a deposit batch.");
         }
         if (entry.reconciled()) throw new ConflictException("This bank statement entry has already been reconciled.");
         if (!batch.bankReference().equalsIgnoreCase(entry.bankReference())) {
@@ -320,7 +325,7 @@ public class DepositManagementController {
     private BankStatementEntryDto requireStatementEntry(UUID id) {
         return jdbc.query("""
             SELECT e.id, e.scope_unit_id, u.name AS scope_name, e.transaction_date,
-                   e.bank_reference, e.amount, e.description, e.recorded_at,
+                   e.bank_reference, e.amount, e.entry_type, e.description, e.recorded_at,
                    (r.id IS NOT NULL) AS reconciled
             FROM bank_statement_entries e JOIN organisational_units u ON u.id = e.scope_unit_id
             LEFT JOIN deposit_reconciliations r ON r.statement_entry_id = e.id
@@ -328,7 +333,8 @@ public class DepositManagementController {
             """, (rs, n) -> new BankStatementEntryDto(rs.getObject("id", UUID.class).toString(),
                 rs.getObject("scope_unit_id", UUID.class).toString(), rs.getString("scope_name"),
                 rs.getDate("transaction_date").toLocalDate().toString(), rs.getString("bank_reference"),
-                rs.getBigDecimal("amount"), rs.getString("description"), rs.getBoolean("reconciled")), id)
+                rs.getBigDecimal("amount"), rs.getString("entry_type"), rs.getString("description"),
+                rs.getBoolean("reconciled")), id)
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Statement entry not found."));
     }
 
@@ -357,7 +363,8 @@ public class DepositManagementController {
         BigDecimal allocatedAmount, long receiptCount, BigDecimal bankedAmount,
         BigDecimal outstandingAmount, String outstandingNote, String createdAt) {}
     public record BankStatementEntryDto(String id, String scopeUnitId, String scopeName,
-        String transactionDate, String bankReference, BigDecimal amount, String description, boolean reconciled) {}
+        String transactionDate, String bankReference, BigDecimal amount, String entryType,
+        String description, boolean reconciled) {}
     private record DepositTotals(long receiptCount, BigDecimal allocatedAmount) {}
     private record DepositBatchContext(UUID id, UUID organisationId, UUID scopeUnitId, String depositDate,
         String bankReference, BigDecimal expectedAmount, String status) {}
