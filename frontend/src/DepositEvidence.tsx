@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import DepositScanner from "./DepositScanner";
 
 type Evidence = {
   id: string;
@@ -108,5 +109,6 @@ export default function DepositEvidence({ batchId, status, authorizationHeader }
       {!items.length && <tr><td colSpan={5} className="empty-table">No evidence attached to this deposit.</td></tr>}
     </tbody></table></div>
     <small className="table-subtext">Evidence is access-controlled and retained as submitted. A scan or photograph is supporting documentation, not independent proof of bank settlement or authenticity.</small>
+    <DepositScanner batchId={batchId} authorizationHeader={authorizationHeader} evidence={items} />
   </section>;
 }
