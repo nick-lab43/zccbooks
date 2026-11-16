@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import org.apache.poi.xwpf.usermodel.*;
 import org.springframework.http.HttpHeaders;
@@ -76,23 +77,22 @@ public class FinancialReportController {
               WHERE child.organisation_id = ?
             )
             SELECT c.category_id, cat.name AS category_name, c.stream_id, fs.name AS stream_name,
-                   COUNT(*) AS contribution_count, SUM(c.amount) AS total_amount
+                   c.currency, COUNT(*) AS contribution_count, SUM(c.amount) AS total_amount
             FROM contributions c
             JOIN visible_units vu ON vu.id = c.scope_unit_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             JOIN financial_streams fs ON fs.id = c.stream_id
             WHERE c.organisation_id = ? AND c.contribution_date BETWEEN ? AND ?
-            GROUP BY c.category_id, cat.name, c.stream_id, fs.name
-            ORDER BY fs.name, cat.name
+            GROUP BY c.category_id, cat.name, c.stream_id, fs.name, c.currency
+            ORDER BY fs.name, cat.name, c.currency
             """, (rs,n) -> new ContributionGroup(
                 rs.getObject("category_id", UUID.class).toString(), rs.getString("category_name"),
                 rs.getObject("stream_id", UUID.class).toString(), rs.getString("stream_name"),
-                rs.getLong("contribution_count"), rs.getBigDecimal("total_amount")),
+                rs.getString("currency"), rs.getLong("contribution_count"), rs.getBigDecimal("total_amount")),
             scopeUnitId, organisationId, organisationId, organisationId, from, to);
-        BigDecimal total = groups.stream().map(ContributionGroup::totalAmount)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<CurrencyTotal> currencyTotals = totalsByCurrency(groups);
         long count = groups.stream().mapToLong(ContributionGroup::contributionCount).sum();
-        return new ContributionSummary(context, count, total, groups);
+        return new ContributionSummary(context, count, currencyTotals, groups);
     }
 
     @GetMapping("/contributions")
@@ -148,7 +148,7 @@ public class FinancialReportController {
             WHERE d.organisation_id = ? AND d.deposit_date BETWEEN ? AND ?
             GROUP BY d.id, d.deposit_date, d.bank_name, d.bank_reference, d.expected_amount,
                      d.status, u.name
-            ORDER BY d.deposit_date, d.created_at
+            ORDER BY d.deposit_date, d.id
             """, (rs,n) -> new DepositLine(rs.getObject("id", UUID.class).toString(),
                 rs.getDate("deposit_date").toLocalDate(), rs.getString("unit_name"),
                 rs.getString("bank_name"), rs.getString("bank_reference"), rs.getBigDecimal("expected_amount"),
@@ -210,23 +210,27 @@ public class FinancialReportController {
 
             if (type.equals("CONTRIBUTION_SUMMARY")) {
                 ContributionSummary report = summary(organisationId, scopeUnitId, from, to);
-                XWPFTable table = document.createTable(1, 4);
-                setRow(table.getRow(0), "Financial stream", "Category", "Transactions", "Total (ZAR)");
+                XWPFTable table = document.createTable(1, 5);
+                setRow(table.getRow(0), "Financial stream", "Category", "Transactions", "Currency", "Total");
                 for (ContributionGroup item : report.groups()) {
                     setRow(table.createRow(), item.streamName(), item.categoryName(),
-                        Long.toString(item.contributionCount()), item.totalAmount().toPlainString());
+                        Long.toString(item.contributionCount()), item.currency(), item.totalAmount().toPlainString());
                 }
-                XWPFParagraph total = document.createParagraph();
-                total.createRun().setBold(true);
-                total.createRun().setText("Total contributions: ZAR " + report.totalAmount().toPlainString()
-                    + " across " + report.contributionCount() + " transactions");
+                for (CurrencyTotal total : report.currencyTotals()) {
+                    XWPFParagraph totalParagraph = document.createParagraph();
+                    totalParagraph.createRun().setBold(true);
+                    totalParagraph.createRun().setText("Total contributions (" + total.currency() + "): "
+                        + total.totalAmount().toPlainString());
+                }
+                XWPFParagraph countParagraph = document.createParagraph();
+                countParagraph.createRun().setText("Transactions: " + report.contributionCount());
             } else if (type.equals("CONTRIBUTION_REGISTER")) {
-                XWPFTable table = document.createTable(1, 7);
-                setRow(table.getRow(0), "Date", "Receipt", "Contributor", "Category", "Stream", "Payment", "Amount");
+                XWPFTable table = document.createTable(1, 8);
+                setRow(table.getRow(0), "Date", "Receipt", "Contributor", "Category", "Stream", "Payment", "Currency", "Amount");
                 for (ContributionLine item : contributions(organisationId, scopeUnitId, from, to)) {
                     setRow(table.createRow(), item.contributionDate().toString(), item.receiptNumber(),
                         item.firstName() + " " + item.lastName(), item.categoryName(), item.streamName(),
-                        item.paymentMethod(), item.currency() + " " + item.amount().toPlainString());
+                        item.paymentMethod(), item.currency(), item.amount().toPlainString());
                 }
             } else if (type.equals("DEPOSIT_REGISTER")) {
                 XWPFTable table = document.createTable(1, 7);
@@ -271,6 +275,13 @@ public class FinancialReportController {
             .orElseThrow(() -> new ResourceNotFoundException("Reporting scope was not found in this organisation."));
     }
 
+    static List<CurrencyTotal> totalsByCurrency(List<ContributionGroup> groups) {
+        Map<String, BigDecimal> totals = new TreeMap<>();
+        groups.forEach(group -> totals.merge(group.currency(), group.totalAmount(), BigDecimal::add));
+        return totals.entrySet().stream()
+            .map(entry -> new CurrencyTotal(entry.getKey(), entry.getValue())).toList();
+    }
+
     private static String reportTitle(String type) {
         return switch (type) {
             case "CONTRIBUTION_REGISTER" -> "CONTRIBUTION REGISTER";
@@ -290,9 +301,10 @@ public class FinancialReportController {
     public record ReportUnit(String id, String level, String code, String name) {}
     public record ReportContext(String unitId, String unitName, String unitLevel, LocalDate from, LocalDate to) {}
     public record ContributionGroup(String categoryId, String categoryName, String streamId, String streamName,
-        long contributionCount, BigDecimal totalAmount) {}
-    public record ContributionSummary(ReportContext context, long contributionCount, BigDecimal totalAmount,
-        List<ContributionGroup> groups) {}
+        String currency, long contributionCount, BigDecimal totalAmount) {}
+    public record CurrencyTotal(String currency, BigDecimal totalAmount) {}
+    public record ContributionSummary(ReportContext context, long contributionCount,
+        List<CurrencyTotal> currencyTotals, List<ContributionGroup> groups) {}
     public record ContributionLine(String receiptNumber, LocalDate contributionDate, String firstName,
         String lastName, String categoryName, String streamName, String recordedUnit, String paymentMethod,
         BigDecimal amount, String currency) {}
