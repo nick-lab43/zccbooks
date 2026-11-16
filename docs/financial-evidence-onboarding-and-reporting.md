@@ -1,7 +1,7 @@
 # Financial evidence, deposit workflow, administrator onboarding and reporting
 
-**Status:** Proposed product requirements  
-**Scope:** Requirements clarification only. This document does not implement the workflows or authorise database changes.
+**Status:** Product requirements and implementation tracker  
+**Scope:** Records the agreed financial workflow requirements and current delivery status. Implementation status must be verified against merged code and automated checks.
 
 ## 1. Product operating model
 
@@ -156,13 +156,14 @@ Each Word report should use the official ZCC star logo without stretching, recol
 
 1. **Organisation and access foundation — implemented:** canonical Country → Province/State → District → Nyika → Tabhera → Cell hierarchy, scoped administrator roles and append-only administrative audit events. Legacy branch records remain separate and must be reconciled before financial capture uses them.
 2. **Membership and appointments — implemented:** Cell-based membership, household history, member contact profiles, centrally governed church positions and date-effective appointments.
-3. **Financial Administration configuration — implemented in the current development branch:** centrally governed financial streams, contribution categories, geographical applicability and period-based targets. See `docs/financial-administration-foundation.md`. Contribution posting and target achievement calculations are not yet implemented.
-4. **Contribution and receipt lifecycle — next:** post contributions against the actual member, approved category, amount, date, stream and authorised geographical scope; issue receipts; preserve immutable transaction history; and maintain pending-deposit follow-ups.
-5. **Deposit package and allocation:** implement one-Nyika deposits, structured category/stream allocation lines, partial banking, contribution matching and Central Financial Administration review.
-6. **Scanner experience:** implement capture/upload, crop, perspective correction, enhancement, original preservation and PDF/image output.
-7. **Administrator invitations:** complete email delivery, invitation lifecycle, deterministic username generation and pre-scoped account activation.
-8. **Reporting:** implement permission-scoped Word templates for census, contribution, receipt, deposit and expenditure reports; then expand report configuration.
-9. **Verification:** test cross-Nyika isolation, partial deposits, multiple categories and streams per deposit, delayed banking, duplicate/over-allocation prevention, rejected/resubmitted packages, invitation expiry and report scope.
+3. **Financial Administration configuration — implemented:** centrally governed financial streams, contribution categories, geographical applicability and period-based targets. See `docs/financial-administration-foundation.md`.
+4. **Contribution and receipt lifecycle — implemented:** contribution posting against a member, approved category, amount, date, stream and authorised geographical scope; receipt issuance; and pending-deposit follow-ups.
+5. **Deposit package and allocation — implemented:** one-Nyika deposit batches, contribution allocations, submission, bank statement import and reconciliation exception handling. Partial banking and advanced review-history requirements still require verification against the full operating policy.
+6. **Scanner experience — outstanding:** implement capture/upload, crop, perspective correction, enhancement, original preservation and PDF/image output.
+7. **Administrator invitations — partially implemented:** invitation provisioning and activation exist; verify production email delivery, invitation lifecycle, deterministic username generation and pre-scoped account activation.
+8. **Financial reporting v1 — implemented:** permission-scoped contribution summaries, contributor/receipt registers, deposit registers and reconciliation exception registers, with downloadable Word reports and report-generation audit events. This is not yet the complete reporting family.
+9. **Reporting hardening — in progress:** verify database query compatibility, currency-safe aggregation, cross-Nyika isolation, report export integrity and audit records. Census, member, appointment, top-contributor, income and expenditure reports remain future work; expenditure reporting depends on an expenditure capture model.
+10. **End-to-end verification — outstanding:** test cross-Nyika isolation, partial deposits, multiple categories and streams per deposit, delayed banking, duplicate/over-allocation prevention, rejected/resubmitted packages, invitation expiry and report scope.
 
 ## 12. Decisions still requiring confirmation
 
