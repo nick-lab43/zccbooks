@@ -118,6 +118,7 @@ public class FinancialReportController {
             JOIN financial_streams fs ON fs.id = c.stream_id
             JOIN organisational_units u ON u.id = c.scope_unit_id
             WHERE c.organisation_id = ? AND c.contribution_date BETWEEN ? AND ?
+              AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
             ORDER BY c.contribution_date, c.receipt_sequence
             """, (rs,n) -> new ContributionLine(rs.getString("receipt_number"),
                 rs.getDate("contribution_date").toLocalDate(), rs.getString("first_name"),
@@ -210,6 +211,7 @@ public class FinancialReportController {
             SELECT currency, SUM(amount) AS total
             FROM contributions c JOIN visible_units vu ON vu.id = c.scope_unit_id
             WHERE c.organisation_id = ? AND c.contribution_date BETWEEN ? AND ?
+              AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
             GROUP BY currency
             """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
                 income.put(rs.getString("currency"), rs.getBigDecimal("total"));
