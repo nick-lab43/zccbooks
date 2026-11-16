@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import DepositEvidence from "./DepositEvidence";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Receipt = { id: string; receiptNumber: string; memberName: string; amount: number; contributionDate: string; paymentMethod: string; paymentReference: string | null; categoryName: string; scopeUnitId: string };
@@ -167,6 +168,7 @@ export default function DepositManagement({ organisationId, authorizationHeader,
         {!batches.length && <tr><td colSpan={6} className="empty-table">No deposit batches recorded for this scope.</td></tr>}
       </tbody></table></div>
       {selectedBatch && <div className="panel-divider">
+        <DepositEvidence batchId={selectedBatch.id} status={selectedBatch.status} authorizationHeader={authorizationHeader} />
         <div className="register-heading"><div><h3>Batch {selectedBatch.bankReference}</h3><p>{selectedBatch.status} · {selectedBatch.receiptCount} allocated receipts</p></div><strong>Allocated ZAR {Number(selectedBatch.allocatedAmount).toFixed(2)}<small className="table-subtext">Banked ZAR {Number(selectedBatch.bankedAmount).toFixed(2)} · Outstanding ZAR {Number(selectedBatch.outstandingAmount).toFixed(2)}</small></strong></div>
         <div className="table-wrap"><table><thead><tr><th>RECEIPT</th><th>MEMBER</th><th>DATE</th><th>AMOUNT</th><th></th></tr></thead><tbody>
           {allocations.map(item => <tr key={item.contributionId}><td>{item.receiptNumber}</td><td>{item.memberName}</td><td>{item.contributionDate}</td><td>ZAR {Number(item.amount).toFixed(2)}</td><td>{selectedBatch.status === "DRAFT" && <button type="button" className="secondary-button" disabled={busy} onClick={() => removeAllocation(item)}>Remove</button>}</td></tr>)}
