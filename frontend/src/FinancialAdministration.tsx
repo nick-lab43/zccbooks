@@ -16,8 +16,8 @@ const scopeOptions = [
   { value: "CELL", label: "Cell" }
 ];
 
-export default function FinancialAdministration({ organisationId, authorizationHeader, canCapture, canDeposit, canReconcile, canManageExceptions }: {
-  organisationId: string; authorizationHeader: string; canCapture: boolean; canDeposit: boolean; canReconcile: boolean; canManageExceptions: boolean;
+export default function FinancialAdministration({ organisationId, authorizationHeader, canCapture, canDeposit, canReconcile, canManageExceptions, canReverse }: {
+  organisationId: string; authorizationHeader: string; canCapture: boolean; canDeposit: boolean; canReconcile: boolean; canManageExceptions: boolean; canReverse: boolean;
 }) {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -210,7 +210,7 @@ export default function FinancialAdministration({ organisationId, authorizationH
           <button className="primary-button" disabled={busy || !activeCategories.length || !units.length}>Record financial target</button>
         </form>
       </>}
-      {canCapture && <ContributionCapture organisationId={organisationId} authorizationHeader={authorizationHeader} />}
+      {canCapture && <ContributionCapture organisationId={organisationId} authorizationHeader={authorizationHeader} canReverse={canReverse} />}
       {(canDeposit || canReconcile) && <DepositManagement organisationId={organisationId} authorizationHeader={authorizationHeader} canDeposit={canDeposit} canReconcile={canReconcile} />}
       {(canReconcile || canManageExceptions) && <FinancialReconciliationExceptions organisationId={organisationId} authorizationHeader={authorizationHeader} canImport={canReconcile} canManage={canManageExceptions} />}
       <div className="panel-divider" />
