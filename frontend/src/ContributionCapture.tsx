@@ -109,8 +109,11 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   }
 
   useEffect(() => {
-    setFollowups([]);
-    if (organisationId && scopeUnitId) reloadFollowups().catch((e: Error) => setError(e.message));
+    setFollowups([]); setRegister([]); setReversalTarget(null); setReversalNotice("");
+    if (organisationId && scopeUnitId) {
+      reloadFollowups().catch((e: Error) => setError(e.message));
+      reloadRegister().catch((e: Error) => setError(e.message));
+    }
   }, [organisationId, scopeUnitId, authorizationHeader]);
 
   async function updateFollowup(id: string, status: "ACKNOWLEDGED" | "RESOLVED") {
