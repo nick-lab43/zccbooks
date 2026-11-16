@@ -21,7 +21,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 @SpringBootTest
 class FinancialReportPostgresIntegrationTest {
 
@@ -53,7 +53,7 @@ class FinancialReportPostgresIntegrationTest {
     @Test
     void unitListAndAllRegistersStayInsideAssignedNyika() {
         Fixture fixture = fixture();
-        authenticate();
+        authenticate(fixture);
 
         List<FinancialReportController.ReportUnit> units = reports.units(fixture.organisationId());
 
@@ -97,7 +97,7 @@ class FinancialReportPostgresIntegrationTest {
         contribution(fixture.organisationId(), memberId, categoryId, streamId, fixture.nyikaA(),
             fixture.adminId(), "RCP-OUT-2", 6, new BigDecimal("800.00"), "USD", LocalDate.parse("2027-01-01"));
 
-        authenticate();
+        authenticate(fixture);
         LocalDate from = LocalDate.parse("2026-01-01");
         LocalDate to = LocalDate.parse("2026-12-31");
         FinancialReportController.ContributionSummary summary =
@@ -127,7 +127,7 @@ class FinancialReportPostgresIntegrationTest {
     @Test
     void userCannotRequestAnotherNyikasReports() {
         Fixture fixture = fixture();
-        authenticate();
+        authenticate(fixture);
 
         assertThrows(org.springframework.security.access.AccessDeniedException.class,
             () -> reports.summary(fixture.organisationId(), fixture.nyikaB(),
@@ -210,7 +210,7 @@ class FinancialReportPostgresIntegrationTest {
     @Test
     void assignedNyikaCanReadDescendantButNotSiblingNyikaReports() {
         Fixture fixture = fixture();
-        authenticate();
+        authenticate(fixture);
         LocalDate from = LocalDate.parse("2026-01-01");
         LocalDate to = LocalDate.parse("2026-12-31");
 
@@ -222,7 +222,7 @@ class FinancialReportPostgresIntegrationTest {
     @Test
     void everyWordExportTypeWritesAnAuditEvent() throws Exception {
         Fixture fixture = fixture();
-        authenticate();
+        authenticate(fixture);
         LocalDate from = LocalDate.parse("2026-01-01");
         LocalDate to = LocalDate.parse("2026-12-31");
 
@@ -248,7 +248,7 @@ class FinancialReportPostgresIntegrationTest {
             UPDATE admin_role_assignments SET revoked_at = CURRENT_TIMESTAMP
             WHERE user_id = ? AND scope_unit_id = ?
             """, fixture.adminId(), fixture.nyikaA());
-        authenticate();
+        authenticate(fixture);
 
         assertThrows(org.springframework.security.access.AccessDeniedException.class,
             () -> reports.summary(fixture.organisationId(), fixture.nyikaA(),
@@ -258,7 +258,7 @@ class FinancialReportPostgresIntegrationTest {
     @Test
     void wordExportProducesReadableDocxAndWritesAuditEvent() throws Exception {
         Fixture fixture = fixture();
-        authenticate();
+        authenticate(fixture);
 
         var response = reports.export(fixture.organisationId(), fixture.nyikaA(),
             LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31"), "CONTRIBUTION_SUMMARY");
@@ -285,7 +285,7 @@ class FinancialReportPostgresIntegrationTest {
     @Test
     void everyWordRegisterExportContainsExpectedHeadersAndFixtureRecords() throws Exception {
         Fixture fixture = fixture();
-        authenticate();
+        authenticate(fixture);
         LocalDate from = LocalDate.parse("2026-01-01");
         LocalDate to = LocalDate.parse("2026-12-31");
 
@@ -333,7 +333,7 @@ class FinancialReportPostgresIntegrationTest {
                     'Out of period exception', TIMESTAMPTZ '2025-12-31 12:00:00+00')
             """, UUID.randomUUID(), fixture.organisationId(), fixture.nyikaA(), UUID.randomUUID());
 
-        authenticate();
+        authenticate(fixture);
         LocalDate from = LocalDate.parse("2026-01-01");
         LocalDate to = LocalDate.parse("2026-12-31");
 
@@ -403,10 +403,11 @@ class FinancialReportPostgresIntegrationTest {
         UUID cellB = unit(organisationId, tabheraB, "CELL", "Cell B");
 
         UUID adminId = UUID.randomUUID();
+        String username = "finance.reporter." + adminId.toString().replace("-", "").substring(0, 12);
         jdbc.update("""
             INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
-            VALUES (?, 'finance.reporter', 'Financial Reporter', 'not-used-in-direct-controller-test', TRUE)
-            """, adminId);
+            VALUES (?, ?, 'Financial Reporter', 'not-used-in-direct-controller-test', TRUE)
+            """, adminId, username);
         jdbc.update("""
             INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
             VALUES (?, ?, '10000000-0000-0000-0000-000000000003', 'UNIT', ?, ?)
@@ -459,7 +460,7 @@ class FinancialReportPostgresIntegrationTest {
             VALUES (?, ?, ?, 'DEPOSIT_BATCH', ?, 'DEPOSIT_AMOUNT_MISMATCH', 'Other Nyika exception')
             """, UUID.randomUUID(), organisationId, nyikaB, depositIdB);
 
-        return new Fixture(organisationId, adminId, nyikaA, cellA, nyikaB, cellB);
+        return new Fixture(organisationId, adminId, username, nyikaA, cellA, nyikaB, cellB);
     }
 
     private UUID unit(UUID organisationId, UUID parentId, String level, String name) {
@@ -505,8 +506,8 @@ class FinancialReportPostgresIntegrationTest {
             receipt, sequence, amount, currency, contributionDate, "IDEMP-" + receipt, adminId);
     }
 
-    private void authenticate() {
-        authenticateAs("finance.reporter");
+    private void authenticate(Fixture fixture) {
+        authenticateAs(fixture.username());
     }
 
     private void authenticateAs(String username) {
@@ -514,6 +515,6 @@ class FinancialReportPostgresIntegrationTest {
             new UsernamePasswordAuthenticationToken(username, "not-used", List.of()));
     }
 
-    private record Fixture(UUID organisationId, UUID adminId, UUID nyikaA, UUID cellA,
-                           UUID nyikaB, UUID cellB) {}
+    private record Fixture(UUID organisationId, UUID adminId, String username,
+                           UUID nyikaA, UUID cellA, UUID nyikaB, UUID cellB) {}
 }
