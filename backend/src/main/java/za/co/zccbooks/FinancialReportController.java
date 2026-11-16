@@ -28,6 +28,41 @@ public class FinancialReportController {
         this.audit = audit;
     }
 
+    @GetMapping("/units")
+    public List<ReportUnit> units(@PathVariable UUID organisationId) {
+        authorization.requireOrganisationOrUnitPermission("FINANCE_VIEW", organisationId);
+        String sql = """
+            SELECT id, level, code, name FROM organisational_units
+            WHERE organisation_id = ? AND active = TRUE
+            ORDER BY level, name
+            """;
+        Object[] parameters = new Object[] { organisationId };
+        if (!authorization.hasOrganisationWidePermission("FINANCE_VIEW", organisationId)) {
+            sql = """
+                WITH RECURSIVE visible_units AS (
+                  SELECT a.scope_unit_id AS id
+                  FROM admin_role_assignments a
+                  JOIN admin_users u ON u.id = a.user_id
+                  JOIN admin_role_permissions rp ON rp.role_id = a.role_id
+                  WHERE a.scope_type = 'UNIT' AND a.organisation_id = ?
+                    AND a.revoked_at IS NULL AND LOWER(u.username) = LOWER(?)
+                    AND rp.permission_code = 'FINANCE_VIEW'
+                  UNION
+                  SELECT child.id FROM organisational_units child
+                  JOIN visible_units parent ON child.parent_id = parent.id
+                  WHERE child.organisation_id = ?
+                )
+                SELECT ou.id, ou.level, ou.code, ou.name
+                FROM organisational_units ou JOIN visible_units v ON v.id = ou.id
+                WHERE ou.organisation_id = ? AND ou.active = TRUE
+                ORDER BY ou.level, ou.name
+                """;
+            parameters = new Object[] { organisationId, authorization.currentUsername(), organisationId, organisationId };
+        }
+        return jdbc.query(sql, (rs,n) -> new ReportUnit(rs.getObject("id", UUID.class).toString(),
+            rs.getString("level"), rs.getString("code"), rs.getString("name")), parameters);
+    }
+
     @GetMapping("/summary")
     public ContributionSummary summary(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to) {
