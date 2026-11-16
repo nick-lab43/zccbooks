@@ -45,6 +45,7 @@ class FinancialReportPostgresIntegrationTest {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired FinancialReportController reports;
+    @Autowired AdminAuditService audit;
 
     @AfterEach
     void clearAuthentication() {
