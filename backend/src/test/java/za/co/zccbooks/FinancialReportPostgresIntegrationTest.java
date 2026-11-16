@@ -1068,16 +1068,16 @@ class FinancialReportPostgresIntegrationTest {
         UUID contributionTarget = UUID.randomUUID();
         UUID depositTarget = UUID.randomUUID();
         UUID laterContributionTarget = UUID.randomUUID();
-        insertAuditEvent(fixture.adminId(), "CONTRIBUTION_POSTED", "CONTRIBUTION",
+        insertAuditEvent(auditActorId, "CONTRIBUTION_POSTED", "CONTRIBUTION",
             contributionTarget, "{\"receiptNumber\":\"R-100\"}", "2026-02-02T10:00:00Z");
-        insertAuditEvent(fixture.adminId(), "DEPOSIT_RECONCILED", "DEPOSIT_BATCH",
+        insertAuditEvent(auditActorId, "DEPOSIT_RECONCILED", "DEPOSIT_BATCH",
             depositTarget, "{\"bankReference\":\"BANK-200\"}", "2026-02-03T10:00:00Z");
-        insertAuditEvent(fixture.adminId(), "CONTRIBUTION_POSTED", "CONTRIBUTION",
+        insertAuditEvent(auditActorId, "CONTRIBUTION_POSTED", "CONTRIBUTION",
             laterContributionTarget, "{\"receiptNumber\":\"R-101\"}", "2026-02-03T12:00:00Z");
-        authenticate(fixture);
+        authenticateAs(auditActorUsername);
 
         var filtered = adminController.auditEvents(LocalDate.parse("2026-02-02"),
-            LocalDate.parse("2026-02-03"), "CONTRIBUTION", fixture.username(),
+            LocalDate.parse("2026-02-03"), "CONTRIBUTION", auditActorUsername,
             "CONTRIBUTION", null, null, 1, 1);
         assertEquals(1, filtered.size());
         assertEquals(laterContributionTarget.toString(), filtered.get(0).targetId());
