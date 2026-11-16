@@ -145,8 +145,17 @@ class FinancialReportPostgresIntegrationTest {
             """, userId);
         jdbc.update("""
             INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
-            VALUES (?, ?, '10000000-0000-0000-0000-000000000006', 'UNIT', ?, ?)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000004', 'UNIT', ?, ?)
             """, UUID.randomUUID(), userId, fixture.organisationId(), fixture.nyikaA());
+
+        Integer financeViewAssignments = jdbc.queryForObject("""
+            SELECT COUNT(*)
+            FROM admin_role_assignments a
+            JOIN admin_role_permissions rp ON rp.role_id = a.role_id
+            WHERE a.user_id = ? AND a.revoked_at IS NULL
+              AND rp.permission_code = 'FINANCE_VIEW'
+            """, Integer.class, userId);
+        assertEquals(0, financeViewAssignments);
 
         authenticateAs("membership.only");
 
