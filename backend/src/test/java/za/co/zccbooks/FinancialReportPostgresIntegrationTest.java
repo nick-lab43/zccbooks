@@ -136,6 +136,32 @@ class FinancialReportPostgresIntegrationTest {
 
 
     @Test
+    void financialReportsCannotCrossOrganisationBoundaries() {
+        Fixture assigned = fixture();
+        Fixture otherOrganisation = fixture();
+        authenticate(assigned);
+
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.units(otherOrganisation.organisationId()));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.summary(otherOrganisation.organisationId(), otherOrganisation.nyikaA(),
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.contributions(otherOrganisation.organisationId(), otherOrganisation.nyikaA(),
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.deposits(otherOrganisation.organisationId(), otherOrganisation.nyikaA(),
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.exceptions(otherOrganisation.organisationId(), otherOrganisation.nyikaA(),
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")));
+
+        assertThrows(ResourceNotFoundException.class,
+            () -> reports.summary(otherOrganisation.organisationId(), assigned.nyikaA(),
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")));
+    }
+
+    @Test
     void userWithoutFinanceViewCannotReadOrExportReports() {
         Fixture fixture = fixture();
         UUID userId = UUID.randomUUID();
