@@ -32,7 +32,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
 
   useEffect(() => {
     if (!organisationId) return;
-    request<Unit[]>(`/api/organisations/${organisationId}/units`)
+    request<Unit[]>(`/api/organisations/${organisationId}/financial-reports/units`)
       .then(rows => {
         const available = rows.filter(row => ["NYIKA", "TABHERA", "CELL"].includes(row.level));
         setUnits(available);
