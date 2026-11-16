@@ -175,9 +175,11 @@ public class ContributionController {
         audit.record("CONTRIBUTION_REVERSED", "CONTRIBUTION", contributionId,
             Map.of("reversalId", reversalId.toString(), "receiptNumber", contribution.receiptNumber(),
                 "amount", contribution.amount().toPlainString(), "reason", request.reason().trim()));
+        String reversedAt = jdbc.queryForObject("SELECT reversed_at::text FROM contribution_reversals WHERE id = ?",
+            String.class, reversalId);
         return ResponseEntity.status(HttpStatus.CREATED).body(new ContributionReversalDto(
             reversalId.toString(), contributionId.toString(), contribution.receiptNumber(),
-            contribution.amount(), request.reason().trim(), authorization.currentUsername(), null));
+            contribution.amount(), request.reason().trim(), authorization.currentUsername(), reversedAt));
     }
 
     @GetMapping("/contributions/{contributionId}/reversal")
