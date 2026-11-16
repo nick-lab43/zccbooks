@@ -21,7 +21,8 @@ CREATE INDEX ix_contribution_reversals_reversed_at
 CREATE FUNCTION prevent_contribution_reversal_mutation()
 RETURNS TRIGGER AS $$
 BEGIN
-    RAISE EXCEPTION 'Contribution reversal records are immutable';
+    RAISE EXCEPTION 'Contribution reversal records are immutable'
+        USING ERRCODE = '23514';
 END;
 $$ LANGUAGE plpgsql;
 
