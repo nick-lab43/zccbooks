@@ -52,6 +52,7 @@ Open `http://localhost:5173`. Vite proxies `/api` requests to the backend.
 - Scoped Financial Officer and Auditor access to financial configuration and target registers.
 - Scoped contribution capture for authorised finance roles, sequential receipts, idempotent posting, target achievement calculations and pending-deposit follow-ups.
 - Cash deposit batches with full-receipt allocation, submission controls and exact bank-statement reconciliation.
+- Scoped bank statement CSV imports, duplicate detection and an audited reconciliation exception register.
 
 The membership application integration is not connected. Use fictional demonstration records only.
 
@@ -74,10 +75,12 @@ The membership application integration is not connected. Use fictional demonstra
 - `GET/POST /api/organisations/{organisationId}/bank-statement-entries`
 - `GET /api/deposit-batches/{batchId}/allocations`, `POST /api/deposit-batches/{batchId}/allocations`, `DELETE /api/deposit-batches/{batchId}/allocations/{contributionId}`
 - `POST /api/deposit-batches/{batchId}/submit` and `POST /api/deposit-batches/{batchId}/reconcile`
+- `POST /api/organisations/{organisationId}/bank-statement-imports` (multipart CSV)
+- `POST/GET /api/organisations/{organisationId}/reconciliation-exceptions` and `PATCH /api/reconciliation-exceptions/{exceptionId}`
 
 ## Current limitations
 
-Financial configuration, scoped contribution posting, receipt issuance, target achievement calculations, pending-deposit follow-ups, cash deposit batching and manual bank-statement reconciliation are implemented. Bank file imports, automated matching, exception resolution, partial deposits, electronic settlement reconciliation, document scanning, reversals/refunds and independent financial reporting remain future work. Do not use this development build for live financial or member records until hosted verification and the remaining operational controls are completed.
+Financial configuration, scoped contribution posting, receipt issuance, target achievement calculations, pending-deposit follow-ups, cash deposit batching and manual bank-statement reconciliation are implemented. Bank-specific CSV normalisation, direct bank API integration, automated reconciliation, partial deposits, electronic settlement reconciliation, document scanning, reversals/refunds and independent financial reporting remain future work. The exception scan identifies unmatched credits, amount differences, missing deposits and bank debits for review; it does not automatically reconcile or resolve them. Do not use this development build for live financial or member records until hosted verification and the remaining operational controls are completed.
 
 ## Cloud deployment (Vercel + Render + Neon)
 
