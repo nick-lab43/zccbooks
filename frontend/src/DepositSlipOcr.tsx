@@ -3,6 +3,7 @@ import { createWorker } from "tesseract.js";
 
 type Evidence = { id: string; filename: string; contentType: string };
 type DepositContext = { depositDate: string; bankReference: string; expectedAmount: number };
+type SavedReview = { id: string; evidenceId: string; reviewedAmount: number; reviewedBankReference: string; reviewedDepositDate: string; amountMatches: boolean; referenceMatches: boolean; dateMatches: boolean; reviewedBy: string; reviewedAt: string };
 type ExtractedFields = { amount: string; reference: string; date: string };
 type Comparison = "match" | "mismatch" | "missing";
 
@@ -43,11 +44,15 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
   const [selectedId, setSelectedId] = useState("");
   const [context, setContext] = useState<DepositContext | null>(null);
   const [fields, setFields] = useState<ExtractedFields>({ amount: "", reference: "", date: "" });
+  const [candidates, setCandidates] = useState<ExtractedFields>({ amount: "", reference: "", date: "" });
   const [rawText, setRawText] = useState("");
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [confirmedOriginal, setConfirmedOriginal] = useState(false);
+  const [savingReview, setSavingReview] = useState(false);
+  const [reviews, setReviews] = useState<SavedReview[]>([]);
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
   const images = useMemo(() => evidence.filter(item => item.contentType.startsWith("image/")), [evidence]);
 
@@ -55,7 +60,10 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
     setSelectedId("");
     setContext(null);
     setNotice("");
+    setConfirmedOriginal(false);
+    setReviews([]);
     setFields({ amount: "", reference: "", date: "" });
+    setCandidates({ amount: "", reference: "", date: "" });
     setRawText("");
     setError("");
     fetch(`${apiBase}/api/deposit-batches/${batchId}/documents/ocr-context`, {
@@ -64,6 +72,10 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
       if (!response.ok) throw new Error("Could not load the deposit details for comparison.");
       return response.json() as Promise<DepositContext>;
     }).then(setContext).catch((e: Error) => setError(e.message));
+    fetch(`${apiBase}/api/deposit-batches/${batchId}/documents/ocr-reviews`, {
+      headers: { Authorization: authorizationHeader }
+    }).then(response => response.ok ? response.json() as Promise<SavedReview[]> : [])
+      .then(setReviews).catch(() => setReviews([]));
   }, [batchId, authorizationHeader]);
 
   async function runOcr() {
@@ -99,7 +111,9 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
         const result = await worker.recognize(canvas);
         const text = result.data.text.trim();
         setRawText(text);
-        setFields(extractFields(text));
+        const extracted = extractFields(text);
+        setCandidates(extracted);
+        setFields(extracted);
         setNotice("Text extracted. Check every field against the original slip before relying on it.");
       } finally {
         URL.revokeObjectURL(imageUrl);
@@ -109,6 +123,40 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
     } finally {
       if (worker) await worker.terminate();
       setBusy(false);
+    }
+  }
+
+  async function saveReview() {
+    const selected = images.find(item => item.id === selectedId);
+    if (!selected || !context || !confirmedOriginal) return;
+    setSavingReview(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/api/deposit-batches/${batchId}/documents/ocr-reviews`, {
+        method: "POST",
+        headers: { Authorization: authorizationHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          evidenceId: selected.id,
+          reviewedAmount: fields.amount,
+          reviewedBankReference: fields.reference,
+          reviewedDepositDate: normaliseDate(fields.date),
+          ocrAmountCandidate: candidates.amount,
+          ocrReferenceCandidate: candidates.reference,
+          ocrDateCandidate: candidates.date,
+          operatorConfirmedOriginal: true
+        })
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "The review could not be saved.");
+      }
+      const saved = await response.json() as SavedReview;
+      setReviews(current => [saved, ...current]);
+      setNotice("Review recorded in the audit history. The deposit itself was not changed.");
+      setConfirmedOriginal(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The review could not be saved.");
+    } finally {
+      setSavingReview(false);
     }
   }
 
@@ -159,6 +207,11 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
         </tr>)}
       </tbody></table></div>
       <small className="table-subtext">A match is a text comparison only. It does not verify that the bank received the money, that the slip is genuine, or that the amount is correct. OCR output never changes the deposit record or reconciles a payment.</small>
+      <label className="checkbox-row"><input type="checkbox" checked={confirmedOriginal} disabled={savingReview || !selectedId || !fields.amount || !fields.reference || !normaliseDate(fields.date)} onChange={event => setConfirmedOriginal(event.target.checked)} />I checked these values against the original deposit slip.</label>
+      <button type="button" className="primary-button" disabled={!confirmedOriginal || savingReview || !selectedId || !fields.amount || !fields.reference || !normaliseDate(fields.date)} onClick={saveReview}>{savingReview ? "Saving review…" : "Record reviewed values"}</button>
+      {reviews.length > 0 && <div className="form-stack"><strong>Previous review history</strong><div className="table-wrap"><table><thead><tr><th>REVIEWED</th><th>AMOUNT</th><th>REFERENCE</th><th>DATE</th><th>REVIEWER</th></tr></thead><tbody>
+        {reviews.map(review => <tr key={review.id}><td>{new Date(review.reviewedAt).toLocaleString()}</td><td><span className={review.amountMatches ? "ocr-status match" : "ocr-status mismatch"}>{review.reviewedAmount.toFixed(2)}</span></td><td><span className={review.referenceMatches ? "ocr-status match" : "ocr-status mismatch"}>{review.reviewedBankReference}</span></td><td><span className={review.dateMatches ? "ocr-status match" : "ocr-status mismatch"}>{review.reviewedDepositDate}</span></td><td>{review.reviewedBy}</td></tr>)}
+      </tbody></table></div><small className="table-subtext">Review entries are append-only. A later correction creates a new entry; previous reviews remain visible.</small></div>}
     </div>}
     {rawText && <details className="form-stack"><summary>Full OCR text</summary><pre className="ocr-raw-text">{rawText}</pre></details>}
   </section>;

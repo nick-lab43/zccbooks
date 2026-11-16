@@ -27,6 +27,14 @@ import java.awt.image.BufferedImage;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import java.util.Iterator;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 @RestController
 @RequestMapping("/api/deposit-batches/{batchId}/documents")
@@ -154,6 +162,72 @@ public class DepositDocumentController {
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Deposit batch not found."));
     }
 
+    @PostMapping("/ocr-reviews")
+    @Transactional
+    public OcrReviewDto createOcrReview(@PathVariable UUID batchId, @Valid @RequestBody CreateOcrReview request) {
+        BatchScope batch = requireBatch(batchId);
+        authorization.requireUnitPermission("FINANCE_DEPOSIT", batch.scopeUnitId());
+        if (!request.operatorConfirmedOriginal()) {
+            throw new IllegalArgumentException("Confirm that the reviewed values were checked against the original deposit slip.");
+        }
+        Integer evidenceCount = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM deposit_evidence WHERE id = ? AND deposit_batch_id = ?
+            """, Integer.class, request.evidenceId(), batchId);
+        if (evidenceCount == null || evidenceCount == 0) {
+            throw new ResourceNotFoundException("Source deposit evidence not found in this batch.");
+        }
+        OcrContext expected = jdbc.query("""
+            SELECT deposit_date, bank_reference, expected_amount
+            FROM deposit_batches WHERE id = ?
+            """, (rs, n) -> new OcrContext(rs.getDate("deposit_date").toLocalDate().toString(),
+                rs.getString("bank_reference"), rs.getBigDecimal("expected_amount")), batchId)
+            .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Deposit batch not found."));
+        boolean amountMatches = request.reviewedAmount().compareTo(expected.expectedAmount()) == 0;
+        boolean referenceMatches = request.reviewedBankReference().trim().equalsIgnoreCase(expected.bankReference().trim());
+        boolean dateMatches = request.reviewedDepositDate().toString().equals(expected.depositDate());
+        UUID actor = jdbc.queryForObject("SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?)",
+            UUID.class, authorization.currentUsername());
+        UUID reviewId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_ocr_reviews
+                (id, deposit_batch_id, evidence_id, reviewed_amount, reviewed_bank_reference,
+                 reviewed_deposit_date, ocr_amount_candidate, ocr_reference_candidate, ocr_date_candidate,
+                 amount_matches, reference_matches, date_matches, operator_confirmed_original, reviewed_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)
+            """, reviewId, batchId, request.evidenceId(), request.reviewedAmount(),
+            request.reviewedBankReference().trim(), request.reviewedDepositDate(),
+            blankToNull(request.ocrAmountCandidate()), blankToNull(request.ocrReferenceCandidate()),
+            blankToNull(request.ocrDateCandidate()), amountMatches, referenceMatches, dateMatches, actor);
+        audit.record("DEPOSIT_OCR_REVIEW_RECORDED", "DEPOSIT_OCR_REVIEW", reviewId,
+            Map.of("depositBatchId", batchId.toString(), "evidenceId", request.evidenceId().toString(),
+                "amountMatches", amountMatches, "referenceMatches", referenceMatches, "dateMatches", dateMatches));
+        return new OcrReviewDto(reviewId.toString(), request.evidenceId().toString(),
+            request.reviewedAmount(), request.reviewedBankReference().trim(), request.reviewedDepositDate().toString(),
+            amountMatches, referenceMatches, dateMatches, authorization.currentUsername(),
+            java.time.Instant.now().toString());
+    }
+
+    @GetMapping("/ocr-reviews")
+    public List<OcrReviewDto> ocrReviews(@PathVariable UUID batchId) {
+        BatchScope batch = requireBatch(batchId);
+        authorization.requireUnitPermission("FINANCE_VIEW", batch.scopeUnitId());
+        return jdbc.query("""
+            SELECT r.id, r.evidence_id, r.reviewed_amount, r.reviewed_bank_reference,
+                   r.reviewed_deposit_date, r.amount_matches, r.reference_matches, r.date_matches,
+                   u.username, r.reviewed_at
+            FROM deposit_ocr_reviews r JOIN admin_users u ON u.id = r.reviewed_by
+            WHERE r.deposit_batch_id = ? ORDER BY r.reviewed_at DESC, r.id
+            """, (rs, n) -> new OcrReviewDto(rs.getObject("id", UUID.class).toString(),
+                rs.getObject("evidence_id", UUID.class).toString(), rs.getBigDecimal("reviewed_amount"),
+                rs.getString("reviewed_bank_reference"), rs.getDate("reviewed_deposit_date").toLocalDate().toString(),
+                rs.getBoolean("amount_matches"), rs.getBoolean("reference_matches"), rs.getBoolean("date_matches"),
+                rs.getString("username"), rs.getTimestamp("reviewed_at").toInstant().toString()), batchId);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     private static BufferedImage readSafeImage(MultipartFile page) throws IOException {
         try (ImageInputStream input = ImageIO.createImageInputStream(page.getInputStream())) {
             if (input == null) throw new IllegalArgumentException("A scanned page is not a supported image.");
@@ -201,6 +275,14 @@ public class DepositDocumentController {
 
     public record DocumentDto(String id, String filename, long fileSize, String sha256, int pageCount, String createdAt) {}
     public record OcrContext(String depositDate, String bankReference, java.math.BigDecimal expectedAmount) {}
+    public record CreateOcrReview(@NotNull UUID evidenceId,
+        @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal reviewedAmount,
+        @NotBlank @Size(max = 120) String reviewedBankReference, @NotNull LocalDate reviewedDepositDate,
+        @Size(max = 80) String ocrAmountCandidate, @Size(max = 120) String ocrReferenceCandidate,
+        @Size(max = 40) String ocrDateCandidate, @NotNull Boolean operatorConfirmedOriginal) {}
+    public record OcrReviewDto(String id, String evidenceId, BigDecimal reviewedAmount,
+        String reviewedBankReference, String reviewedDepositDate, boolean amountMatches,
+        boolean referenceMatches, boolean dateMatches, String reviewedBy, String reviewedAt) {}
     private record BatchScope(UUID scopeUnitId, String status) {}
     private record StoredDocument(String filename, byte[] bytes) {}
 }
