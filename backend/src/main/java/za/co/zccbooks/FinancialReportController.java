@@ -90,10 +90,7 @@ public class FinancialReportController {
                 rs.getObject("stream_id", UUID.class).toString(), rs.getString("stream_name"),
                 rs.getString("currency"), rs.getLong("contribution_count"), rs.getBigDecimal("total_amount")),
             scopeUnitId, organisationId, organisationId, organisationId, from, to);
-        Map<String, BigDecimal> totalsByCurrency = new TreeMap<>();
-        groups.forEach(group -> totalsByCurrency.merge(group.currency(), group.totalAmount(), BigDecimal::add));
-        List<CurrencyTotal> currencyTotals = totalsByCurrency.entrySet().stream()
-            .map(entry -> new CurrencyTotal(entry.getKey(), entry.getValue())).toList();
+        List<CurrencyTotal> currencyTotals = totalsByCurrency(groups);
         long count = groups.stream().mapToLong(ContributionGroup::contributionCount).sum();
         return new ContributionSummary(context, count, currencyTotals, groups);
     }
@@ -276,6 +273,13 @@ public class FinancialReportController {
                 rs.getString("name"), rs.getString("level"), from, to),
             scopeUnitId, organisationId).stream().findFirst()
             .orElseThrow(() -> new ResourceNotFoundException("Reporting scope was not found in this organisation."));
+    }
+
+    static List<CurrencyTotal> totalsByCurrency(List<ContributionGroup> groups) {
+        Map<String, BigDecimal> totals = new TreeMap<>();
+        groups.forEach(group -> totals.merge(group.currency(), group.totalAmount(), BigDecimal::add));
+        return totals.entrySet().stream()
+            .map(entry -> new CurrencyTotal(entry.getKey(), entry.getValue())).toList();
     }
 
     private static String reportTitle(String type) {
