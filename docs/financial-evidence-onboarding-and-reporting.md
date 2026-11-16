@@ -175,3 +175,18 @@ Word and PDF versions must contain equivalent report data, scope, filters, total
 - The church-approved list of member positions and rules for concurrent appointments.
 - Which report fields are sensitive and which roles may view named contributor rankings.
 - The official source/format for the ZCC logo and any required report wording or confidentiality footer.
+
+
+## 13. Central deposit package review — implemented
+
+Submitted deposit batches enter a separate central review queue before bank reconciliation. The review status is independent of the banking status and follows this lifecycle:
+
+- `NOT_SUBMITTED`: the batch has not been submitted.
+- `PENDING_REVIEW`: the package is awaiting a central decision.
+- `QUERIED`: Central Financial Administration requested clarification.
+- `REJECTED`: Central Financial Administration rejected the package with a reason.
+- `ACCEPTED`: the package passed central review and is eligible for bank reconciliation.
+
+Central reviewers with `FINANCE_REVIEW` can inspect the organisation-wide queue and accept, query or reject a submitted package. Query and rejection require a reason. The submitting administrator can respond to a queried or rejected package within the batch's assigned geographical scope; the response returns it to the central queue. Bank reconciliation is blocked until the package is accepted.
+
+Every submission, decision and response is written to append-only review history. Review history is protected against update and deletion at database level. Existing submitted/reconciled batches receive a baseline review state during migration V26; previously reconciled batches are treated as accepted. Central review does not replace bank-statement reconciliation and does not alter posted contributions or receipt allocations.
