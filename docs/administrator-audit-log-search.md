@@ -14,8 +14,8 @@ Supported query parameters:
 
 | Parameter | Purpose |
 | --- | --- |
-| `from` | Include events on or after this date (`YYYY-MM-DD`) |
-| `to` | Include events through this date, inclusive |
+| `from` | Include events on or after this UTC date (`YYYY-MM-DD`) |
+| `to` | Include events through this UTC date, inclusive |
 | `action` | Case-insensitive partial match against the action code |
 | `actor` | Case-insensitive partial match against the administrator username |
 | `targetType` | Case-insensitive partial match against the target type |
@@ -30,7 +30,7 @@ Example:
 GET /api/admin/audit?from=2026-01-01&to=2026-01-31&action=CONTRIBUTION&limit=50&offset=0
 ```
 
-The date upper bound is inclusive. Results use a deterministic descending order by event timestamp and event UUID so that pagination does not reorder events sharing the same timestamp.
+Date filters use UTC calendar boundaries; the upper date is inclusive. Results use a deterministic descending order by event timestamp and event UUID so that pagination does not reorder events sharing the same timestamp.
 
 All filter values are bound as SQL parameters. The endpoint reads the existing append-only audit events; it does not alter, delete, or rewrite audit history. Invalid date ranges, oversized filters, invalid page sizes and invalid offsets are rejected.
 
