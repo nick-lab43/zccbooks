@@ -390,6 +390,71 @@ class FinancialReportPostgresIntegrationTest {
         assertFalse(exceptions.contains("Out of period exception"));
     }
 
+    @Test
+    void apiResponsesEnforceUnitScopeAndInclusiveDateRangeAcrossRegisters() {
+        Fixture fixture = fixture();
+        UUID memberId = memberForCell(fixture.organisationId(), fixture.cellA(), "API_RANGE");
+        UUID categoryId = jdbc.queryForObject(
+            "SELECT id FROM contribution_categories WHERE organisation_id = ?",
+            UUID.class, fixture.organisationId());
+        UUID streamId = jdbc.queryForObject(
+            "SELECT id FROM financial_streams WHERE organisation_id = ?",
+            UUID.class, fixture.organisationId());
+
+        contribution(fixture.organisationId(), memberId, categoryId, streamId, fixture.nyikaA(),
+            fixture.adminId(), "RCP-API-BEFORE", 101, new BigDecimal("700.00"), "ZAR",
+            LocalDate.parse("2025-12-31"));
+        contribution(fixture.organisationId(), memberId, categoryId, streamId, fixture.nyikaA(),
+            fixture.adminId(), "RCP-API-AFTER", 102, new BigDecimal("800.00"), "ZAR",
+            LocalDate.parse("2027-01-01"));
+
+        jdbc.update("""
+            INSERT INTO deposit_batches
+                (id, organisation_id, scope_unit_id, deposit_date, bank_name, bank_reference,
+                 expected_amount, status, created_by)
+            VALUES (?, ?, ?, DATE '2025-12-31', 'Test Bank', 'BANK-API-OLD', 700.00, 'SUBMITTED', ?)
+            """, UUID.randomUUID(), fixture.organisationId(), fixture.nyikaA(), fixture.adminId());
+
+        jdbc.update("""
+            INSERT INTO reconciliation_exceptions
+                (id, organisation_id, scope_unit_id, source_type, source_id, exception_type,
+                 summary, created_at)
+            VALUES (?, ?, ?, 'DEPOSIT_BATCH', ?, 'DEPOSIT_AMOUNT_MISMATCH',
+                    'API out of period exception', TIMESTAMPTZ '2027-01-01 12:00:00+00')
+            """, UUID.randomUUID(), fixture.organisationId(), fixture.nyikaA(), UUID.randomUUID());
+
+        authenticate(fixture);
+        LocalDate from = LocalDate.parse("2026-01-01");
+        LocalDate to = LocalDate.parse("2026-12-31");
+
+        FinancialReportController.ContributionSummary summary =
+            reports.summary(fixture.organisationId(), fixture.nyikaA(), from, to);
+        assertEquals(1, summary.contributionCount());
+        assertEquals(new BigDecimal("125.00"), summary.currencyTotals().get(0).totalAmount());
+
+        List<FinancialReportController.ContributionLine> contributions =
+            reports.contributions(fixture.organisationId(), fixture.nyikaA(), from, to);
+        assertEquals(1, contributions.size());
+        assertEquals("RCP-A-1", contributions.get(0).receiptNumber());
+
+        List<FinancialReportController.DepositLine> deposits =
+            reports.deposits(fixture.organisationId(), fixture.nyikaA(), from, to);
+        assertEquals(1, deposits.size());
+        assertEquals("BANK-A-1", deposits.get(0).bankReference());
+
+        List<FinancialReportController.ExceptionLine> exceptions =
+            reports.exceptions(fixture.organisationId(), fixture.nyikaA(), from, to);
+        assertEquals(1, exceptions.size());
+        assertEquals("Test exception", exceptions.get(0).summary());
+
+        assertFalse(contributions.stream().anyMatch(item ->
+            item.receiptNumber().equals("RCP-B-1")
+                || item.receiptNumber().equals("RCP-API-BEFORE")
+                || item.receiptNumber().equals("RCP-API-AFTER")));
+        assertFalse(deposits.stream().anyMatch(item -> item.bankReference().equals("BANK-API-OLD")));
+        assertFalse(exceptions.stream().anyMatch(item -> item.summary().equals("API out of period exception")));
+    }
+
     private String exportText(Fixture fixture, LocalDate from, LocalDate to, String type) throws Exception {
         var response = reports.export(fixture.organisationId(), fixture.nyikaA(), from, to, type);
         assertEquals(200, response.getStatusCode().value(), type);
