@@ -4,7 +4,7 @@ Posted contribution receipts are immutable. An authorised reversal creates a sep
 
 ## Authority
 
-The `FINANCE_REVERSE` permission is granted to the global Central Administrator role by default. It can be assigned to a custom role through the existing role configuration workflow. The backend also checks the administrator's geographical scope against the original contribution.
+The `FINANCE_REVERSE` permission is granted to the global Central Administrator role by default. It can be assigned to a custom role through the existing role configuration workflow. The backend also checks the administrator's geographical scope against the original contribution. Reversal authority is independent of `FINANCE_CAPTURE`: an administrator can be assigned reversal-only access without being allowed to post contributions.
 
 ## Contribution register
 
@@ -12,7 +12,7 @@ The financial administration workspace exposes a scoped register for administrat
 
 `GET /api/organisations/{organisationId}/contribution-register?scopeUnitId={scopeUnitId}`
 
-The register returns up to 200 most recent receipts in the selected scope, including whether each receipt has been reversed and the reversal reason, administrator and timestamp. Administrators with `FINANCE_REVERSE` can initiate a reversal from this register. The interface requires a reason and displays a permanent confirmation warning before submission.
+The register returns up to 200 most recent receipts in the selected scope, including whether each receipt has been reversed and the reversal reason, administrator and timestamp. The endpoint requires `FINANCE_REVERSE`. Reversal-only administrators receive a scope selector populated from their assigned reversal scopes and can access this register without `FINANCE_CAPTURE` or `FINANCE_VIEW`. The interface requires a reason and displays a permanent confirmation warning before submission. Capture-authorised administrators continue to use the same workspace; capture forms and deposit follow-ups are hidden when the administrator has reversal-only access.
 
 ## Reverse a contribution
 
