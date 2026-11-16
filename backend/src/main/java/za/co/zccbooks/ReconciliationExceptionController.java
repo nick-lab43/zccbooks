@@ -247,7 +247,7 @@ public class ReconciliationExceptionController {
             SELECT h.id, h.previous_status, h.new_status, h.action, h.note,
                    u.username, h.changed_at
             FROM reconciliation_exception_history h
-            JOIN admin_users u ON u.id = h.changed_by
+            LEFT JOIN admin_users u ON u.id = h.changed_by
             WHERE h.exception_id = ?
             ORDER BY h.changed_at ASC, h.id ASC
             """, (rs, n) -> new ReconciliationExceptionHistoryDto(
@@ -285,7 +285,7 @@ public class ReconciliationExceptionController {
             UPDATE reconciliation_exceptions
             SET status = ?, resolution_note = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
             WHERE id = ?
-            """, request.status(), blankToNull(request.resolutionNote()), actor, exceptionId);
+            """, request.status(), "RESOLVED".equals(request.status()) ? blankToNull(request.resolutionNote()) : null, actor, exceptionId);
         audit.record("RECONCILIATION_EXCEPTION_UPDATED", "RECONCILIATION_EXCEPTION", exceptionId,
             Map.of("previousStatus", scope.status(), "status", request.status(),
                 "scopeUnitId", scope.scopeUnitId().toString()));
