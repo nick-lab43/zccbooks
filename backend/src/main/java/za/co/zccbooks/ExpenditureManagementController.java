@@ -197,6 +197,7 @@ public class ExpenditureManagementController {
     public ExpenditureDto voidDraft(@PathVariable UUID expenseId, @Valid @RequestBody VoidDraftExpenditure request) {
         ExpenseContext expense = requireExpenseContext(expenseId, true);
         authorization.requireUnitPermission("FINANCE_EXPENSE_CAPTURE", expense.scopeUnitId());
+        if (request.reason() == null || request.reason().isBlank()) throw new IllegalArgumentException("A reason is required to withdraw a draft.");
         if (!actorId().equals(expense.capturedBy())) throw new org.springframework.security.access.AccessDeniedException("Only the original capturer can withdraw this draft.");
         if (!"DRAFT".equals(expense.status())) throw new ConflictException("Only draft expenditure records can be withdrawn. Submitted or approved records must follow the review or correction process.");
         int updated = jdbc.update("""
