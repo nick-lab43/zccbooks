@@ -538,6 +538,8 @@ class FinancialReportPostgresIntegrationTest {
             "SELECT id FROM contribution_deposit_followups WHERE contribution_id = ?", UUID.class, receiptId);
         assertEquals("IN_DRAFT", jdbc.queryForObject(
             "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
+        assertThrows(IllegalArgumentException.class, () -> contributionController.updateDepositFollowup(followupId,
+            new ContributionController.UpdateDepositFollowup("RESOLVED", null)));
         assertThrows(ConflictException.class, () -> contributionController.updateDepositFollowup(followupId,
             new ContributionController.UpdateDepositFollowup("RESOLVED", "Attempted early resolution")));
 
@@ -547,6 +549,11 @@ class FinancialReportPostgresIntegrationTest {
         assertThrows(ConflictException.class,
             () -> depositManagement.allocate(UUID.fromString(secondBatch.id()),
                 new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00"))));
+        depositManagement.removeAllocation(UUID.fromString(batch.id()), receiptId);
+        assertEquals("PENDING", jdbc.queryForObject(
+            "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
+        depositManagement.allocate(UUID.fromString(batch.id()),
+            new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00")));
 
         var submitted = depositManagement.submit(UUID.fromString(batch.id()));
         assertEquals("SUBMITTED", submitted.status());
