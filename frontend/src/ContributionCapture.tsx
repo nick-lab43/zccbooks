@@ -18,6 +18,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   const [members, setMembers] = useState<Member[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [followups, setFollowups] = useState<Followup[]>([]);
+  const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -91,10 +92,16 @@ export default function ContributionCapture({ organisationId, authorizationHeade
 
   async function updateFollowup(id: string, status: "ACKNOWLEDGED" | "RESOLVED") {
     setError("");
+    const note = resolutionNotes[id] ?? "";
+    if (status === "RESOLVED" && !note.trim()) {
+      setError("A reason is required to resolve a deposit follow-up.");
+      return;
+    }
     try {
       await request(`/api/deposit-followups/${id}`, {
-        method: "PATCH", body: JSON.stringify({ status, note: null })
+        method: "PATCH", body: JSON.stringify({ status, note: status === "RESOLVED" ? note.trim() : null })
       });
+      setResolutionNotes(rows => { const next = { ...rows }; delete next[id]; return next; });
       await reloadFollowups();
     } catch (e) { setError(e instanceof Error ? e.message : "Follow-up could not be updated."); }
   }
@@ -137,8 +144,8 @@ export default function ContributionCapture({ organisationId, authorizationHeade
     </form>
     <div className="panel-divider" />
     <div className="register-heading"><div><h3>Pending deposit follow-ups</h3><p>Contributions awaiting deposit confirmation or follow-up</p></div><span className="count-box">{followups.length} OPEN</span></div>
-    <div className="table-wrap"><table><thead><tr><th>RECEIPT</th><th>MEMBER / CATEGORY</th><th>AMOUNT</th><th>STATUS</th><th></th></tr></thead><tbody>
-      {followups.map(item => <tr key={item.id}><td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate}</small></td><td>{item.memberName}<small className="table-subtext">{item.categoryName}</small></td><td>{item.currency} {Number(item.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td>{item.status}</td><td><div className="field-actions">{item.status === "PENDING" && <button type="button" className="secondary-button" onClick={() => updateFollowup(item.id, "ACKNOWLEDGED")}>Acknowledge</button>}<button type="button" className="secondary-button" onClick={() => updateFollowup(item.id, "RESOLVED")}>Resolve</button></div></td></tr>)}
+    <div className="table-wrap"><table><thead><tr><th>RECEIPT</th><th>MEMBER / CATEGORY</th><th>AMOUNT</th><th>STATUS</th><th>FOLLOW-UP ACTION</th></tr></thead><tbody>
+      {followups.map(item => <tr key={item.id}><td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate}</small></td><td>{item.memberName}<small className="table-subtext">{item.categoryName}</small></td><td>{item.currency} {Number(item.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><strong>{item.status.replace(/_/g, " ")}</strong>{item.note && <small className="table-subtext">{item.note}</small>}</td><td><div className="field-actions">{item.status === "PENDING" && <button type="button" className="secondary-button" onClick={() => updateFollowup(item.id, "ACKNOWLEDGED")}>Acknowledge</button>}{["PENDING", "ACKNOWLEDGED"].includes(item.status) && <><input aria-label={`Resolution reason for ${item.receiptNumber}`} value={resolutionNotes[item.id] ?? ""} maxLength={500} placeholder="Reason for manual resolution" onChange={event => setResolutionNotes(rows => ({ ...rows, [item.id]: event.target.value }))} /><button type="button" className="secondary-button" disabled={!(resolutionNotes[item.id] ?? "").trim()} onClick={() => updateFollowup(item.id, "RESOLVED")}>Resolve</button></>}</div></td></tr>)}
       {!followups.length && <tr><td colSpan={5} className="empty-table">No open deposit follow-ups in this scope.</td></tr>}
     </tbody></table></div>
     {receipt && <div className="legacy-record-notice" role="status">
