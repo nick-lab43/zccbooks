@@ -200,6 +200,7 @@ public class DepositDocumentController {
     }
 
     public record DocumentDto(String id, String filename, long fileSize, String sha256, int pageCount, String createdAt) {}
+    public record OcrContext(String depositDate, String bankReference, java.math.BigDecimal expectedAmount) {}
     private record BatchScope(UUID scopeUnitId, String status) {}
     private record StoredDocument(String filename, byte[] bytes) {}
 }
