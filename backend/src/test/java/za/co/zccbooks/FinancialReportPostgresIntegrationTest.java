@@ -155,6 +155,9 @@ class FinancialReportPostgresIntegrationTest {
         assertThrows(org.springframework.security.access.AccessDeniedException.class,
             () -> reports.exceptions(otherOrganisation.organisationId(), otherOrganisation.nyikaA(),
                 LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.export(otherOrganisation.organisationId(), otherOrganisation.nyikaA(),
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31"), "CONTRIBUTION_SUMMARY"));
 
         assertThrows(ResourceNotFoundException.class,
             () -> reports.summary(otherOrganisation.organisationId(), assigned.nyikaA(),
