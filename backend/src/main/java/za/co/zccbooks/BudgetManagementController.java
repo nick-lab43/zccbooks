@@ -186,7 +186,7 @@ public class BudgetManagementController {
               AND period_start <= ? AND period_end >= ?
               AND id <> COALESCE(?::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
             """, (rs, n) -> rs.getObject(1, UUID.class), organisationId, categoryId, currency,
-            to, from, excludedBudgetId, excludedBudgetId);
+            to, from, excludedBudgetId);
         if (conflicts.stream().anyMatch(relatedUnits::contains)) {
             throw new ConflictException("This category already has an overlapping budget for the same unit or an ancestor/descendant unit.");
         }
