@@ -607,6 +607,19 @@ class FinancialReportPostgresIntegrationTest {
         var firstCredit = depositManagement.recordStatementEntry(fixture.organisationId(),
             new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), depositDate,
                 "PARTIAL-REF-1", new BigDecimal("75.00"), "First cash deposit"));
+        assertThrows(IllegalArgumentException.class,
+            () -> depositManagement.reconcile(UUID.fromString(batch.id()),
+                new DepositManagementController.ReconcileDeposit(UUID.fromString(firstCredit.id()), null)));
+
+        var debitEntry = depositManagement.recordStatementEntry(fixture.organisationId(),
+            new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), depositDate,
+                "PARTIAL-REF-1", new BigDecimal("10.00"), "Bank debit"));
+        jdbc.update("UPDATE bank_statement_entries SET entry_type = 'DEBIT' WHERE id = ?",
+            UUID.fromString(debitEntry.id()));
+        assertThrows(IllegalArgumentException.class,
+            () -> depositManagement.reconcile(UUID.fromString(batch.id()),
+                new DepositManagementController.ReconcileDeposit(UUID.fromString(debitEntry.id()), "Not a credit.")));
+
         var partiallyReconciled = depositManagement.reconcile(UUID.fromString(batch.id()),
             new DepositManagementController.ReconcileDeposit(UUID.fromString(firstCredit.id()),
                 "Bank branch deposit limit; remaining cash will be deposited tomorrow."));
