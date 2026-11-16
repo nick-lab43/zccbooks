@@ -48,6 +48,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired AdminAuditService audit;
     @Autowired DepositManagementController depositManagement;
     @Autowired ExpenditureManagementController expenditureManagement;
+    @Autowired BudgetManagementController budgetManagement;
 
     @AfterEach
     void clearAuthentication() {
@@ -733,6 +734,69 @@ class FinancialReportPostgresIntegrationTest {
             assertTrue(tableText.contains("45.00"));
             assertTrue(tableText.contains("80.00"));
         }
+    }
+
+
+    @Test
+    void budgetsTrackDescendantActualsAndKeepVersionedRevisionHistory() {
+        Fixture fixture = fixture();
+        UUID centralId = UUID.randomUUID();
+        String centralUsername = "budget.admin." + centralId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Budget Administrator', 'not-used-in-direct-controller-test', TRUE)
+            """, centralId, centralUsername);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
+            """, UUID.randomUUID(), centralId);
+
+        authenticateAs(centralUsername);
+        var category = expenditureManagement.createCategory(fixture.organisationId(),
+            new ExpenditureManagementController.CreateExpenseCategory("TRAVEL", "Travel", "Transport and travel costs"));
+        UUID categoryId = UUID.fromString(category.getBody().id());
+        var created = budgetManagement.create(fixture.organisationId(),
+            new BudgetManagementController.CreateBudget(fixture.nyikaA(), categoryId,
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31"),
+                new BigDecimal("1000.00"), "ZAR", "Annual travel allocation"));
+        assertEquals(new BigDecimal("1000.00"), created.getBody().budgetAmount());
+        assertEquals(new BigDecimal("0.00"), created.getBody().actualAmount());
+
+        jdbc.update("""
+            INSERT INTO expenditures
+                (id, organisation_id, scope_unit_id, category_id, expense_date, payee, description,
+                 amount, currency, status, captured_by)
+            VALUES (?, ?, ?, ?, DATE '2026-05-10', 'Transport provider', 'Approved travel costs',
+                    250.00, 'ZAR', 'APPROVED', ?)
+            """, UUID.randomUUID(), fixture.organisationId(), fixture.cellA(), categoryId, fixture.adminId());
+
+        authenticate(fixture);
+        var performance = budgetManagement.budgets(fixture.organisationId(), fixture.nyikaA());
+        assertEquals(1, performance.size());
+        assertEquals(new BigDecimal("250.00"), performance.get(0).actualAmount());
+        assertEquals(new BigDecimal("750.00"), performance.get(0).remainingAmount());
+        assertEquals(new BigDecimal("25.00"), performance.get(0).utilisationPercentage());
+
+        authenticateAs(centralUsername);
+        assertThrows(ConflictException.class, () -> budgetManagement.create(fixture.organisationId(),
+            new BudgetManagementController.CreateBudget(fixture.cellA(), categoryId,
+                LocalDate.parse("2026-06-01"), LocalDate.parse("2026-09-30"),
+                new BigDecimal("200.00"), "ZAR", "Overlapping child allocation")));
+
+        var revised = budgetManagement.revise(UUID.fromString(created.getBody().id()),
+            new BudgetManagementController.ReviseBudget(new BigDecimal("1200.00"), 1,
+                "Approved additional transport allocation."));
+        assertEquals(2, revised.version());
+        assertEquals(new BigDecimal("1200.00"), revised.budgetAmount());
+        assertThrows(ConflictException.class, () -> budgetManagement.revise(UUID.fromString(created.getBody().id()),
+            new BudgetManagementController.ReviseBudget(new BigDecimal("1300.00"), 1, "Stale revision attempt.")));
+
+        authenticate(fixture);
+        var history = budgetManagement.revisions(UUID.fromString(created.getBody().id()));
+        assertEquals(1, history.size());
+        assertEquals(new BigDecimal("1000.00"), history.get(0).previousAmount());
+        assertEquals(new BigDecimal("1200.00"), history.get(0).revisedAmount());
+        assertEquals("Approved additional transport allocation.", history.get(0).reason());
     }
 
     private Fixture fixture() {
