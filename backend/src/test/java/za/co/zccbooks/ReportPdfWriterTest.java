@@ -13,7 +13,7 @@ class ReportPdfWriterTest {
         byte[] pdf = ReportPdfWriter.create("MEMBERSHIP REGISTER", "CELL - TEST CELL",
             "2026-01-01", "2026-11-16", "finance.admin",
             List.of("Member", "Application number", "Status"),
-            List.of(new String[] { "Example Member", "ZCC-001", "ACTIVE" }));
+            java.util.Collections.singletonList(new String[] { "Example Member", "ZCC-001", "ACTIVE" }));
 
         try (var document = Loader.loadPDF(pdf)) {
             String text = new PDFTextStripper().getText(document);
