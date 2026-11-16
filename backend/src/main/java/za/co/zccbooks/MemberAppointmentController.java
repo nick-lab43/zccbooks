@@ -93,6 +93,48 @@ public class MemberAppointmentController {
         return appointmentsFor(memberId);
     }
 
+    @GetMapping("/organisations/{organisationId}/appointments")
+    public List<AppointmentRegisterDto> organisationAppointments(@PathVariable UUID organisationId,
+            @RequestParam UUID scopeUnitId) {
+        authorization.requireUnitPermission("MEMBERS_VIEW", scopeUnitId);
+        UnitRow scope = requireUnit(scopeUnitId);
+        if (!scope.organisationId().equals(organisationId) || !scope.active()
+                || !List.of("NYIKA", "TABHERA", "CELL").contains(scope.level())) {
+            throw new ResourceNotFoundException("Active appointment scope not found.");
+        }
+        return jdbc.query("""
+            WITH RECURSIVE visible_units AS (
+                SELECT id, parent_id, organisation_id, level, name
+                FROM organisational_units
+                WHERE id = ? AND organisation_id = ?
+                UNION ALL
+                SELECT child.id, child.parent_id, child.organisation_id, child.level, child.name
+                FROM organisational_units child
+                JOIN visible_units parent
+                  ON child.parent_id = parent.id
+                 AND child.organisation_id = parent.organisation_id
+            )
+            SELECT a.id, a.member_id, m.first_name, m.last_name, m.zcc_app_number, m.active AS member_active,
+                   p.code AS position_code, p.name AS position_name,
+                   a.scope_unit_id, u.level AS scope_level, u.name AS scope_name,
+                   a.valid_from, a.valid_to, a.note
+            FROM member_appointments a
+            JOIN members m ON m.id = a.member_id AND m.organisation_id = a.organisation_id
+            JOIN church_positions p ON p.id = a.position_id
+            JOIN visible_units u ON u.id = a.scope_unit_id
+            WHERE a.organisation_id = ?
+            ORDER BY a.valid_from DESC, p.name, m.last_name, m.first_name
+            """, (rs, n) -> new AppointmentRegisterDto(
+                rs.getObject("id", UUID.class).toString(),
+                rs.getObject("member_id", UUID.class).toString(),
+                rs.getString("first_name"), rs.getString("last_name"), rs.getString("zcc_app_number"),
+                rs.getBoolean("member_active"), rs.getString("position_code"), rs.getString("position_name"),
+                rs.getObject("scope_unit_id", UUID.class).toString(), rs.getString("scope_level"),
+                rs.getString("scope_name"), rs.getDate("valid_from").toLocalDate().toString(),
+                rs.getDate("valid_to") == null ? null : rs.getDate("valid_to").toLocalDate().toString(),
+                rs.getString("note")), scopeUnitId, organisationId, organisationId);
+    }
+
     @PostMapping("/members/{memberId}/appointments")
     @Transactional
     public ResponseEntity<AppointmentDto> createAppointment(@PathVariable UUID memberId,
@@ -271,6 +313,9 @@ public class MemberAppointmentController {
     public record PositionDto(String id, String code, String name, String description,
         boolean allowConcurrent, boolean active) {}
     public record AppointmentDto(String id, String positionId, String positionCode, String positionName,
+        String scopeUnitId, String scopeLevel, String scopeName, String validFrom, String validTo, String note) {}
+    public record AppointmentRegisterDto(String id, String memberId, String firstName, String lastName,
+        String zccAppNumber, boolean memberActive, String positionCode, String positionName,
         String scopeUnitId, String scopeLevel, String scopeName, String validFrom, String validTo, String note) {}
     private record MemberRow(UUID id, UUID organisationId, UUID cellId, boolean active) {}
     private record UnitRow(UUID id, UUID organisationId, String level, boolean active) {}
