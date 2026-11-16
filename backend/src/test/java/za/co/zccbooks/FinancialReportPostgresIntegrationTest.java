@@ -161,6 +161,43 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(1, auditCount);
     }
 
+    @Test
+    void everyWordRegisterExportContainsExpectedHeadersAndFixtureRecords() throws Exception {
+        Fixture fixture = fixture();
+        authenticate();
+        LocalDate from = LocalDate.parse("2026-01-01");
+        LocalDate to = LocalDate.parse("2026-12-31");
+
+        assertExportTable(fixture, from, to, "CONTRIBUTION_REGISTER",
+            List.of("Date", "Receipt", "Contributor", "Category", "Stream", "Payment", "Currency", "Amount"),
+            List.of("RCP-A-1", "TestA Member", "Tithing", "Main", "CASH", "ZAR", "125.00"));
+
+        assertExportTable(fixture, from, to, "DEPOSIT_REGISTER",
+            List.of("Date", "Unit", "Bank", "Reference", "Expected", "Allocated", "Status"),
+            List.of("Nyika A", "Test Bank", "BANK-A-1", "125.00", "SUBMITTED"));
+
+        assertExportTable(fixture, from, to, "EXCEPTION_REGISTER",
+            List.of("Date", "Unit", "Type", "Status", "Summary"),
+            List.of("Nyika A", "DEPOSIT_AMOUNT_MISMATCH", "Test exception"));
+    }
+
+    private void assertExportTable(Fixture fixture, LocalDate from, LocalDate to, String type,
+            List<String> expectedHeaders, List<String> expectedValues) throws Exception {
+        var response = reports.export(fixture.organisationId(), fixture.nyikaA(), from, to, type);
+        assertEquals(200, response.getStatusCode().value(), type);
+        assertNotNull(response.getBody(), type);
+
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(response.getBody()))) {
+            assertEquals(1, document.getTables().size(), type);
+            var table = document.getTables().get(0);
+            assertEquals(expectedHeaders.size(), table.getRow(0).getTableCells().size(), type);
+            String tableText = table.getText();
+            expectedHeaders.forEach(value -> assertTrue(tableText.contains(value), type + " missing header " + value));
+            expectedValues.forEach(value -> assertTrue(tableText.contains(value), type + " missing value " + value));
+            assertTrue(table.getNumberOfRows() >= 2, type + " should contain a header and at least one record");
+        }
+    }
+
     private Fixture fixture() {
         UUID organisationId = UUID.randomUUID();
         jdbc.update("INSERT INTO organisations (id, name) VALUES (?, ?)", organisationId, "Test Church");
