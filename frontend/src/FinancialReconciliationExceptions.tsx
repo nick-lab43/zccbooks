@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
 type Unit = { id: string; level: string; code: string; name: string; active: boolean };
@@ -150,7 +150,7 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
     <div className="panel-divider" />
     <div className="register-heading"><div><h3>Exception register</h3><p>Every resolution requires a note and is written to the administrator audit history.</p></div><label className="checkbox-label"><input type="checkbox" checked={includeResolved} onChange={e => setIncludeResolved(e.target.checked)} />Include resolved</label></div>
     <div className="table-wrap"><table><thead><tr><th>TYPE / SOURCE</th><th>ISSUE</th><th>STATUS</th><th>RESOLUTION NOTE</th><th>ACTION</th></tr></thead><tbody>
-      {rows.map(row => <tr key={row.id}>
+      {rows.map(row => <Fragment key={row.id}><tr>
         <td><strong>{row.exceptionType.replace(/_/g, " ")}</strong><small className="table-subtext">{row.sourceType.replace(/_/g, " ")} · {row.scopeName}</small></td>
         <td>{row.summary}<small className="table-subtext">{new Date(row.createdAt).toLocaleString()}</small></td>
         <td>{row.status}</td>
@@ -175,7 +175,7 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
           </li>)}
           {!historyRows[row.id]?.length && <li>No history recorded.</li>}
         </ol>}
-      </td></tr>})}
+      </td></tr></Fragment>)}
       {!rows.length && <tr><td colSpan={5} className="empty-table">No reconciliation exceptions in this scope.</td></tr>}
     </tbody></table></div>
   </section>;
