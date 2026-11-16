@@ -6,6 +6,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import javax.imageio.ImageIO;
@@ -63,10 +64,13 @@ public class DepositDocumentController {
         if (sourceEvidenceIds.stream().distinct().count() != sourceEvidenceIds.size()) {
             throw new IllegalArgumentException("A source photograph can only be used once in this document.");
         }
-        Integer validSources = jdbc.queryForObject("""
-            SELECT COUNT(*) FROM deposit_evidence
-            WHERE deposit_batch_id = ? AND id = ANY (?)
-            """, Integer.class, batchId, jdbc.getDataSource().getConnection().createArrayOf("uuid", sourceEvidenceIds.toArray()));
+        String sourcePlaceholders = String.join(",", java.util.Collections.nCopies(sourceEvidenceIds.size(), "?"));
+        List<Object> sourceParameters = new ArrayList<>();
+        sourceParameters.add(batchId);
+        sourceParameters.addAll(sourceEvidenceIds);
+        Integer validSources = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM deposit_evidence WHERE deposit_batch_id = ? AND id IN (" + sourcePlaceholders + ")",
+            Integer.class, sourceParameters.toArray());
         if (validSources == null || validSources != sourceEvidenceIds.size()) {
             throw new IllegalArgumentException("Every source photograph must belong to this deposit batch.");
         }
