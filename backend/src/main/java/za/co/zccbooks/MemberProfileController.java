@@ -28,7 +28,7 @@ public class MemberProfileController {
     @GetMapping("/{memberId}/profile")
     public MemberProfile profile(@PathVariable UUID memberId) {
         MemberRow member = requireMember(memberId);
-        authorization.requireUnitPermission("MEMBERS_VIEW", member.cellId());
+        authorization.requireUnitPermission("MEMBER_PII_VIEW", member.cellId());
         return jdbc.queryForObject("""
             SELECT first_name, last_name, zcc_app_number, phone_number, email, date_of_birth
             FROM members WHERE id = ?
