@@ -60,8 +60,9 @@ BEGIN
     END IF;
 
     IF NEW.status = 'POSTED' AND
-       (NEW.posted_by IS NULL OR NEW.posted_at IS NULL OR NEW.posted_by = NEW.approved_by) THEN
-        RAISE EXCEPTION 'Posting requires an administrator different from the approver'
+       (NEW.posted_by IS NULL OR NEW.posted_at IS NULL
+         OR NEW.posted_by = NEW.approved_by OR NEW.posted_by = NEW.created_by) THEN
+        RAISE EXCEPTION 'Posting requires an administrator different from the creator and approver'
             USING ERRCODE = '23514';
     END IF;
 
