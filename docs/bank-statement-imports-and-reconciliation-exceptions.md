@@ -68,3 +68,10 @@ Custom roles may be granted `FINANCE_EXCEPTION` by an authorised system administ
 Every newly detected exception receives an initial history entry. Moving an exception to review or resolving it appends a separate status-transition record containing the previous status, new status, operator, timestamp and any supplied note. The history table rejects updates and deletes at the database level. The exception's current status remains available in the register, while the history endpoint exposes the complete sequence to users with finance-view access.
 
 Existing exceptions are backfilled with a baseline snapshot of their status and last recorded update time. Where the older record did not retain an actor, the baseline explicitly reports that the actor was not recorded; it does not infer or fabricate one. This history records exception workflow decisions and does not itself establish that the underlying bank difference was financially corrected.
+
+
+## Structured exception dispositions
+
+When an authorised finance exception manager resolves an exception, the operator must select a classification and provide a narrative note. Supported classifications are bank fee, short deposit, over-deposit, wrong reference, duplicate statement entry, non-deposit transaction, refund/reversal and other. A positive ZAR amount is mandatory for bank fees, short deposits, over-deposits and refunds/reversals. The selected disposition and amount are stored on the exception and copied into the append-only status history. Existing resolved exceptions remain readable as legacy records without a structured disposition.
+
+These fields document the operator's classification; they do not post a journal, change contribution income, alter a deposit's declared amount, or reconcile a bank entry. A fee or variance must still be handled through an independently approved accounting process. The exception cannot be resolved by merely entering a number: the note must explain the supporting evidence and action taken.
