@@ -340,10 +340,26 @@ public class ContributionController {
     }
 
     @GetMapping("/organisations/{organisationId}/contribution-register")
-    public List<ContributionRegisterDto> contributionRegister(@PathVariable UUID organisationId,
-            @RequestParam UUID scopeUnitId) {
+    public ContributionRegisterPageDto contributionRegister(@PathVariable UUID organisationId,
+            @RequestParam UUID scopeUnitId, @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size, @RequestParam(required = false) String search) {
         authorization.requireUnitPermission("FINANCE_REVERSE", scopeUnitId);
-        return jdbc.query("""
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(10, Math.min(size, 100));
+        String term = search == null ? "" : search.trim();
+        if (term.length() > 100) term = term.substring(0, 100);
+        String pattern = "%" + term.toLowerCase(java.util.Locale.ROOT) + "%";
+        Long total = jdbc.queryForObject("""
+            SELECT COUNT(*)
+            FROM contributions c
+            JOIN members m ON m.id = c.member_id
+            JOIN contribution_categories cat ON cat.id = c.category_id
+            WHERE c.organisation_id = ? AND c.scope_unit_id = ?
+              AND (? = '' OR LOWER(c.receipt_number) LIKE ?
+                   OR LOWER(m.first_name || ' ' || m.last_name) LIKE ?
+                   OR LOWER(cat.name) LIKE ?)
+            """, Long.class, organisationId, scopeUnitId, term, pattern, pattern, pattern);
+        List<ContributionRegisterDto> rows = jdbc.query("""
             SELECT c.id, c.receipt_number, m.first_name, m.last_name, cat.name AS category_name,
                    c.amount, c.currency, c.contribution_date, c.payment_method, c.captured_at,
                    r.id AS reversal_id, r.reason AS reversal_reason, r.reversed_at,
@@ -354,8 +370,11 @@ public class ContributionController {
             LEFT JOIN contribution_reversals r ON r.contribution_id = c.id
             LEFT JOIN admin_users au ON au.id = r.reversed_by
             WHERE c.organisation_id = ? AND c.scope_unit_id = ?
-            ORDER BY c.contribution_date DESC, c.captured_at DESC
-            LIMIT 200
+              AND (? = '' OR LOWER(c.receipt_number) LIKE ?
+                   OR LOWER(m.first_name || ' ' || m.last_name) LIKE ?
+                   OR LOWER(cat.name) LIKE ?)
+            ORDER BY c.contribution_date DESC, c.captured_at DESC, c.id DESC
+            LIMIT ? OFFSET ?
             """, (rs, n) -> new ContributionRegisterDto(
                 rs.getObject("id", UUID.class).toString(), rs.getString("receipt_number"),
                 rs.getString("first_name") + " " + rs.getString("last_name"),
@@ -365,7 +384,10 @@ public class ContributionController {
                 rs.getObject("reversal_id", UUID.class) != null,
                 rs.getString("reversal_reason"), rs.getString("reversed_by"),
                 rs.getTimestamp("reversed_at") == null ? null : rs.getTimestamp("reversed_at").toInstant().toString()),
-            organisationId, scopeUnitId);
+            organisationId, scopeUnitId, term, pattern, pattern, pattern, safeSize, (long) safePage * safeSize);
+        long count = total == null ? 0 : total;
+        int pages = count == 0 ? 0 : (int) Math.ceil((double) count / safeSize);
+        return new ContributionRegisterPageDto(rows, safePage, safeSize, count, pages);
     }
 
     @GetMapping("/organisations/{organisationId}/unallocated-cash-contributions")
