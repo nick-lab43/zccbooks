@@ -6,6 +6,7 @@ import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.AfterEach;
@@ -44,6 +45,7 @@ class FinancialReportPostgresIntegrationTest {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired FinancialReportController reports;
+    @Autowired AdminAuditService audit;
 
     @AfterEach
     void clearAuthentication() {
@@ -453,6 +455,28 @@ class FinancialReportPostgresIntegrationTest {
                 || item.receiptNumber().equals("RCP-API-AFTER")));
         assertFalse(deposits.stream().anyMatch(item -> item.bankReference().equals("BANK-API-OLD")));
         assertFalse(exceptions.stream().anyMatch(item -> item.summary().equals("API out of period exception")));
+    }
+
+    @Test
+    void auditPayloadIncludesVersionedActorAndOrganisationScopeMetadata() throws Exception {
+        Fixture fixture = fixture();
+        authenticate(fixture);
+        UUID targetId = UUID.randomUUID();
+
+        audit.record("AUDIT_METADATA_TEST", "TEST_TARGET", targetId,
+            Map.of("organisationId", fixture.organisationId(), "cellId", fixture.cellA()));
+
+        String details = jdbc.queryForObject("""
+            SELECT details::text FROM admin_audit_events WHERE target_id = ?
+            """, String.class, targetId);
+        assertNotNull(details);
+        var payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree(details);
+        var metadata = payload.path("_metadata");
+        assertEquals(1, metadata.path("schemaVersion").asInt());
+        assertEquals(fixture.adminId().toString(), metadata.path("actorUserId").asText());
+        assertEquals(fixture.username(), metadata.path("actorUsername").asText());
+        assertEquals(fixture.organisationId().toString(), metadata.path("organisationId").asText());
+        assertEquals(fixture.cellA().toString(), metadata.path("scopeUnitId").asText());
     }
 
     private String exportText(Fixture fixture, LocalDate from, LocalDate to, String type) throws Exception {
