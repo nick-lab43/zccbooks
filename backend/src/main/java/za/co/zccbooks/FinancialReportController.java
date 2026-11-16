@@ -210,8 +210,9 @@ public class FinancialReportController {
             FROM contributions c JOIN visible_units vu ON vu.id = c.scope_unit_id
             WHERE c.organisation_id = ? AND c.contribution_date BETWEEN ? AND ?
             GROUP BY currency
-            """, rs -> income.put(rs.getString("currency"), rs.getBigDecimal("total")),
-            scopeUnitId, organisationId, organisationId, organisationId, from, to);
+            """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                income.put(rs.getString("currency"), rs.getBigDecimal("total"));
+            }, scopeUnitId, organisationId, organisationId, organisationId, from, to);
         Map<String, BigDecimal> expenditure = new TreeMap<>();
         jdbc.query("""
             WITH RECURSIVE visible_units AS (
@@ -226,8 +227,9 @@ public class FinancialReportController {
             WHERE e.organisation_id = ? AND e.expense_date BETWEEN ? AND ?
               AND e.status IN ('APPROVED', 'PAID')
             GROUP BY currency
-            """, rs -> expenditure.put(rs.getString("currency"), rs.getBigDecimal("total")),
-            scopeUnitId, organisationId, organisationId, organisationId, from, to);
+            """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                expenditure.put(rs.getString("currency"), rs.getBigDecimal("total"));
+            }, scopeUnitId, organisationId, organisationId, organisationId, from, to);
         List<CurrencyPosition> positions = java.util.stream.Stream.concat(income.keySet().stream(), expenditure.keySet().stream())
             .distinct().sorted().map(currency -> {
                 BigDecimal received = income.getOrDefault(currency, BigDecimal.ZERO);
