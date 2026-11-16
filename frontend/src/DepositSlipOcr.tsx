@@ -44,6 +44,7 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
   const [selectedId, setSelectedId] = useState("");
   const [context, setContext] = useState<DepositContext | null>(null);
   const [fields, setFields] = useState<ExtractedFields>({ amount: "", reference: "", date: "" });
+  const [candidates, setCandidates] = useState<ExtractedFields>({ amount: "", reference: "", date: "" });
   const [rawText, setRawText] = useState("");
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -62,6 +63,7 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
     setConfirmedOriginal(false);
     setReviews([]);
     setFields({ amount: "", reference: "", date: "" });
+    setCandidates({ amount: "", reference: "", date: "" });
     setRawText("");
     setError("");
     fetch(`${apiBase}/api/deposit-batches/${batchId}/documents/ocr-context`, {
@@ -109,7 +111,9 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
         const result = await worker.recognize(canvas);
         const text = result.data.text.trim();
         setRawText(text);
-        setFields(extractFields(text));
+        const extracted = extractFields(text);
+        setCandidates(extracted);
+        setFields(extracted);
         setNotice("Text extracted. Check every field against the original slip before relying on it.");
       } finally {
         URL.revokeObjectURL(imageUrl);
@@ -135,9 +139,9 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
           reviewedAmount: fields.amount,
           reviewedBankReference: fields.reference,
           reviewedDepositDate: normaliseDate(fields.date),
-          ocrAmountCandidate: fields.amount,
-          ocrReferenceCandidate: fields.reference,
-          ocrDateCandidate: fields.date,
+          ocrAmountCandidate: candidates.amount,
+          ocrReferenceCandidate: candidates.reference,
+          ocrDateCandidate: candidates.date,
           operatorConfirmedOriginal: true
         })
       });
