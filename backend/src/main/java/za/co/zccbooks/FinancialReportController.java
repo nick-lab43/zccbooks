@@ -140,7 +140,14 @@ public class FinancialReportController {
             )
             SELECT d.id, d.deposit_date, d.bank_name, d.bank_reference, d.expected_amount,
                    d.status, u.name AS unit_name, COALESCE(SUM(a.allocated_amount), 0) AS allocated_amount,
-                   COUNT(a.id) AS allocation_count
+                   COUNT(a.id) AS allocation_count,
+                   COALESCE((SELECT SUM(e.amount) FROM deposit_reconciliations r
+                       JOIN bank_statement_entries e ON e.id = r.statement_entry_id
+                       WHERE r.deposit_batch_id = d.id), 0) AS banked_amount,
+                   GREATEST(d.expected_amount - COALESCE((SELECT SUM(e.amount)
+                       FROM deposit_reconciliations r
+                       JOIN bank_statement_entries e ON e.id = r.statement_entry_id
+                       WHERE r.deposit_batch_id = d.id), 0), 0) AS outstanding_amount
             FROM deposit_batches d
             JOIN visible_units vu ON vu.id = d.scope_unit_id
             JOIN organisational_units u ON u.id = d.scope_unit_id
@@ -152,7 +159,8 @@ public class FinancialReportController {
             """, (rs,n) -> new DepositLine(rs.getObject("id", UUID.class).toString(),
                 rs.getDate("deposit_date").toLocalDate(), rs.getString("unit_name"),
                 rs.getString("bank_name"), rs.getString("bank_reference"), rs.getBigDecimal("expected_amount"),
-                rs.getString("status"), rs.getBigDecimal("allocated_amount"), rs.getLong("allocation_count")),
+                rs.getString("status"), rs.getBigDecimal("allocated_amount"), rs.getLong("allocation_count"),
+                rs.getBigDecimal("banked_amount"), rs.getBigDecimal("outstanding_amount")),
             scopeUnitId, organisationId, organisationId, organisationId, from, to);
     }
 
@@ -233,12 +241,14 @@ public class FinancialReportController {
                         item.paymentMethod(), item.currency(), item.amount().toPlainString());
                 }
             } else if (type.equals("DEPOSIT_REGISTER")) {
-                XWPFTable table = document.createTable(1, 7);
-                setRow(table.getRow(0), "Date", "Unit", "Bank", "Reference", "Expected", "Allocated", "Status");
+                XWPFTable table = document.createTable(1, 9);
+                setRow(table.getRow(0), "Date", "Unit", "Bank", "Reference", "Expected",
+                    "Allocated", "Banked", "Outstanding", "Status");
                 for (DepositLine item : deposits(organisationId, scopeUnitId, from, to)) {
                     setRow(table.createRow(), item.depositDate().toString(), item.unitName(), item.bankName(),
                         item.bankReference(), item.expectedAmount().toPlainString(),
-                        item.allocatedAmount().toPlainString(), item.status());
+                        item.allocatedAmount().toPlainString(), item.bankedAmount().toPlainString(),
+                        item.outstandingAmount().toPlainString(), item.status());
                 }
             } else {
                 XWPFTable table = document.createTable(1, 5);
@@ -310,7 +320,7 @@ public class FinancialReportController {
         BigDecimal amount, String currency) {}
     public record DepositLine(String id, LocalDate depositDate, String unitName, String bankName,
         String bankReference, BigDecimal expectedAmount, String status, BigDecimal allocatedAmount,
-        long allocationCount) {}
+        long allocationCount, BigDecimal bankedAmount, BigDecimal outstandingAmount) {}
     public record ExceptionLine(String id, String exceptionType, String status, String summary,
         String resolutionNote, String createdAt, String unitName) {}
 }
