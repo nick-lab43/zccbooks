@@ -2,12 +2,12 @@
 
 ## Scope
 
-V13 adds controlled cash-deposit batching and a bank statement matching workflow. It builds on contribution capture and receipt issuance in V12.
+The deposit workflow groups cash contribution receipts into controlled batches and reconciles those batches against bank statement credits. V16 extends the original one-credit reconciliation model to support partial banking and multiple credits against one batch.
 
 ## Permissions
 
 - FINANCE_DEPOSIT: create draft batches, allocate cash receipts, remove draft allocations and submit batches within assigned geographical scope.
-- FINANCE_RECONCILE: record bank statement entries and reconcile submitted batches. The V13 migration grants this to the seeded CENTRAL_ADMIN role only.
+- FINANCE_RECONCILE: record bank statement entries and reconcile submitted batches. The seeded CENTRAL_ADMIN role receives this permission.
 - FINANCE_VIEW: view batches and receipt allocations within the assigned scope.
 - All API actions re-check the caller's permission against the batch or selected geographical unit.
 
@@ -19,25 +19,30 @@ V13 adds controlled cash-deposit batching and a bank statement matching workflow
 4. Submit only when at least one receipt is allocated and the sum of allocations equals the declared deposit amount.
 5. Submitted batches are locked against allocation changes.
 
-Electronic/card/mobile-money receipts are not included in cash deposit batches. They remain in the contribution ledger and require separate settlement/reconciliation controls if the organisation later chooses to track those payment rails.
+Electronic/card/mobile-money receipts are not included in cash deposit batches. They remain in the contribution ledger and require separate settlement/reconciliation controls if the organisation chooses to track those payment rails.
 
-## Bank statement matching
+## Partial banking and reconciliation
 
-A user with FINANCE_RECONCILE records a bank statement entry for the same geographical unit. A submitted batch can be reconciled only when:
-- The statement entry belongs to the same organisation and geographical unit.
-- The bank reference matches exactly (case-insensitive).
-- The amount matches exactly to the cent.
-- The statement transaction date is within three calendar days of the deposit date.
-- Neither the statement entry nor the batch has already been reconciled.
+A submitted batch may be reconciled against one or more bank statement CREDIT entries. Each applied credit must:
 
-Successful reconciliation creates a one-to-one immutable reconciliation record, marks the batch RECONCILED, resolves follow-ups for receipts in that batch and writes an administrator audit event.
+- Belong to the same organisation and geographical unit as the batch.
+- Match the batch bank reference (case-insensitive).
+- Have a transaction date within three calendar days of the recorded deposit date.
+- Be an unused statement entry.
+- Not exceed the remaining outstanding balance.
+
+A partial credit changes the batch status to PARTIALLY_RECONCILED. The reconciliation request must include an explanation of why the full amount was not banked. The explanation is stored with the immutable reconciliation record and surfaced while a balance remains outstanding.
+
+Further eligible credits can be applied to the same batch. The system calculates the cumulative banked amount and outstanding balance from the linked statement entries. The batch becomes RECONCILED only when the cumulative credits equal the declared amount. Receipt follow-ups are resolved only at full reconciliation.
+
+Over-banking, debit entries, cross-scope entries, mismatched references, out-of-window dates and reuse of a statement entry are rejected. A statement entry can be applied to only one batch.
 
 ## Data model
 
 - deposit_batches: declared deposit, status, scope and creator.
 - deposit_allocations: one-to-one receipt allocation into a batch.
-- bank_statement_entries: manually recorded statement transaction rows.
-- deposit_reconciliations: immutable one-to-one match between a submitted batch and a statement entry.
+- bank_statement_entries: manually recorded or imported statement transaction rows, including CREDIT/DEBIT type.
+- deposit_reconciliations: immutable records linking each statement entry to a batch. A batch can have multiple reconciliation records; a statement entry can be used once.
 
 ## Endpoints
 
@@ -50,8 +55,8 @@ Successful reconciliation creates a one-to-one immutable reconciliation record, 
 - POST /api/deposit-batches/{batchId}/reconcile
 - GET /api/organisations/{organisationId}/unallocated-cash-contributions
 
-## Limits and next controls
+## Remaining limitations
 
-This phase records statement lines manually; it does not upload or parse bank files, connect to bank APIs, or perform automated matching. It does not yet handle partial deposits, split receipts, bank fees, cash shortages/overages, reversals, refunds, or electronic settlement batches. Differences are rejected rather than silently adjusted. A later exception workflow should preserve the original bank evidence and require a separately authorised resolution.
+This workflow does not yet upload or parse bank files in the UI, connect to bank APIs, allocate partial contribution receipts, or handle bank fees, shortages/overages, reversals, refunds or electronic settlement batches. Differences must be investigated; they are not silently adjusted.
 
-Hosted PostgreSQL verification is required for V13 migration, unique allocation constraints, simultaneous receipt allocation, duplicate statement entries, batch submission totals, scope enforcement and reconciliation locking. Do not use the system for live funds until those controls have been tested against the deployed database and operating procedures.
+Hosted PostgreSQL verification is required for the V16 migration, multi-credit reconciliation, over-banking prevention, concurrent reconciliation, scope enforcement and reconciliation locking. Do not use the system for live funds until those controls have been tested against the deployed database and operating procedures.
