@@ -218,7 +218,7 @@ public class ReconciliationExceptionController {
         authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
         return jdbc.query("""
             SELECT x.id, x.source_type, x.source_id, x.exception_type, x.status, x.summary,
-                   x.resolution_note, x.created_at, x.updated_at, u.name AS scope_name
+                   x.resolution_note, x.resolution_code, x.resolution_amount, x.created_at, x.updated_at, u.name AS scope_name
             FROM reconciliation_exceptions x
             JOIN organisational_units u ON u.id = x.scope_unit_id
             WHERE x.organisation_id = ? AND x.scope_unit_id = ?
@@ -229,6 +229,7 @@ public class ReconciliationExceptionController {
                 rs.getObject("id", UUID.class).toString(), rs.getString("source_type"),
                 rs.getObject("source_id", UUID.class).toString(), rs.getString("exception_type"),
                 rs.getString("status"), rs.getString("summary"), rs.getString("resolution_note"),
+                rs.getString("resolution_code"), rs.getBigDecimal("resolution_amount"),
                 rs.getTimestamp("created_at").toInstant().toString(),
                 rs.getTimestamp("updated_at").toInstant().toString(), rs.getString("scope_name")),
             organisationId, scopeUnitId, includeResolved);
@@ -245,7 +246,7 @@ public class ReconciliationExceptionController {
         authorization.requireUnitPermission("FINANCE_VIEW", scope.scopeUnitId());
         return jdbc.query("""
             SELECT h.id, h.previous_status, h.new_status, h.action, h.note,
-                   u.username, h.changed_at
+                   h.resolution_code, h.resolution_amount, u.username, h.changed_at
             FROM reconciliation_exception_history h
             LEFT JOIN admin_users u ON u.id = h.changed_by
             WHERE h.exception_id = ?
@@ -253,6 +254,7 @@ public class ReconciliationExceptionController {
             """, (rs, n) -> new ReconciliationExceptionHistoryDto(
                 rs.getObject("id", UUID.class).toString(), rs.getString("previous_status"),
                 rs.getString("new_status"), rs.getString("action"), rs.getString("note"),
+                rs.getString("resolution_code"), rs.getBigDecimal("resolution_amount"),
                 rs.getString("username"), rs.getTimestamp("changed_at").toInstant().toString()), exceptionId);
     }
 
@@ -268,8 +270,23 @@ public class ReconciliationExceptionController {
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Reconciliation exception not found."));
         authorization.requireUnitPermission("FINANCE_EXCEPTION", scope.scopeUnitId());
         if ("RESOLVED".equals(scope.status())) throw new ConflictException("A resolved exception cannot be changed.");
-        if ("RESOLVED".equals(request.status()) && (request.resolutionNote() == null || request.resolutionNote().isBlank())) {
-            throw new IllegalArgumentException("A resolution note is required before resolving an exception.");
+        if ("RESOLVED".equals(request.status())) {
+            if (request.resolutionNote() == null || request.resolutionNote().isBlank()) {
+                throw new IllegalArgumentException("A resolution note is required before resolving an exception.");
+            }
+            if (request.resolutionCode() == null || request.resolutionCode().isBlank()) {
+                throw new IllegalArgumentException("Select a resolution classification before resolving an exception.");
+            }
+            boolean amountRequired = List.of("BANK_FEE", "SHORT_DEPOSIT", "OVER_DEPOSIT", "REFUND_OR_REVERSAL")
+                .contains(request.resolutionCode());
+            if (amountRequired && request.resolutionAmount() == null) {
+                throw new IllegalArgumentException("Enter the amount associated with this resolution classification.");
+            }
+            if (!amountRequired && request.resolutionAmount() != null) {
+                throw new IllegalArgumentException("An amount is only accepted for fee, variance, refund or reversal classifications.");
+            }
+        } else if (request.resolutionCode() != null || request.resolutionAmount() != null) {
+            throw new IllegalArgumentException("Resolution classification and amount can only be supplied when resolving.");
         }
         if (scope.status().equals(request.status())) {
             throw new ConflictException("The exception is already in the requested status.");
@@ -277,27 +294,32 @@ public class ReconciliationExceptionController {
         UUID actor = actorId();
         jdbc.update("""
             INSERT INTO reconciliation_exception_history
-                (id, exception_id, previous_status, new_status, action, note, changed_by)
-            VALUES (?, ?, ?, ?, 'STATUS_CHANGED', ?, ?)
+                (id, exception_id, previous_status, new_status, action, note, resolution_code, resolution_amount, changed_by)
+            VALUES (?, ?, ?, ?, 'STATUS_CHANGED', ?, ?, ?, ?)
             """, UUID.randomUUID(), exceptionId, scope.status(), request.status(),
-            blankToNull(request.resolutionNote()), actor);
+            blankToNull(request.resolutionNote()), request.resolutionCode(), request.resolutionAmount(), actor);
         jdbc.update("""
             UPDATE reconciliation_exceptions
-            SET status = ?, resolution_note = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+            SET status = ?, resolution_note = ?, resolution_code = ?, resolution_amount = ?,
+                updated_at = CURRENT_TIMESTAMP, updated_by = ?
             WHERE id = ?
-            """, request.status(), "RESOLVED".equals(request.status()) ? blankToNull(request.resolutionNote()) : null, actor, exceptionId);
+            """, request.status(), "RESOLVED".equals(request.status()) ? blankToNull(request.resolutionNote()) : null,
+            request.resolutionCode(), request.resolutionAmount(), actor, exceptionId);
         audit.record("RECONCILIATION_EXCEPTION_UPDATED", "RECONCILIATION_EXCEPTION", exceptionId,
             Map.of("previousStatus", scope.status(), "status", request.status(),
-                "scopeUnitId", scope.scopeUnitId().toString()));
+                "scopeUnitId", scope.scopeUnitId().toString(),
+                "resolutionCode", request.resolutionCode() == null ? "" : request.resolutionCode(),
+                "resolutionAmount", request.resolutionAmount() == null ? "" : request.resolutionAmount().toPlainString()));
         return jdbc.query("""
             SELECT x.id, x.source_type, x.source_id, x.exception_type, x.status, x.summary,
-                   x.resolution_note, x.created_at, x.updated_at, u.name AS scope_name
+                   x.resolution_note, x.resolution_code, x.resolution_amount, x.created_at, x.updated_at, u.name AS scope_name
             FROM reconciliation_exceptions x JOIN organisational_units u ON u.id = x.scope_unit_id
             WHERE x.id = ?
             """, (rs, n) -> new ReconciliationExceptionDto(
                 rs.getObject("id", UUID.class).toString(), rs.getString("source_type"),
                 rs.getObject("source_id", UUID.class).toString(), rs.getString("exception_type"),
                 rs.getString("status"), rs.getString("summary"), rs.getString("resolution_note"),
+                rs.getString("resolution_code"), rs.getBigDecimal("resolution_amount"),
                 rs.getTimestamp("created_at").toInstant().toString(),
                 rs.getTimestamp("updated_at").toInstant().toString(), rs.getString("scope_name")), exceptionId).get(0);
     }
@@ -372,11 +394,14 @@ public class ReconciliationExceptionController {
     public record ScanResult(int newExceptions) {}
     public record ReconciliationExceptionDto(String id, String sourceType, String sourceId,
         String exceptionType, String status, String summary, String resolutionNote,
-        String createdAt, String updatedAt, String scopeName) {}
+        String resolutionCode, BigDecimal resolutionAmount, String createdAt, String updatedAt, String scopeName) {}
     public record ReconciliationExceptionHistoryDto(String id, String previousStatus, String newStatus,
-        String action, String note, String changedBy, String changedAt) {}
+        String action, String note, String resolutionCode, BigDecimal resolutionAmount,
+        String changedBy, String changedAt) {}
     public record UpdateException(@NotBlank @Pattern(regexp = "UNDER_REVIEW|RESOLVED") String status,
-        @Size(max = 1000) String resolutionNote) {}
+        @Size(max = 1000) String resolutionNote,
+        @Pattern(regexp = "BANK_FEE|SHORT_DEPOSIT|OVER_DEPOSIT|WRONG_REFERENCE|DUPLICATE_STATEMENT_ENTRY|NON_DEPOSIT_TRANSACTION|REFUND_OR_REVERSAL|OTHER") String resolutionCode,
+        @jakarta.validation.constraints.DecimalMin("0.01") @jakarta.validation.constraints.Digits(integer = 12, fraction = 2) BigDecimal resolutionAmount) {}
     private record ExceptionCandidate(UUID id, String reference, BigDecimal amount, String matchState) {}
     private record StatementCandidate(UUID id, String reference, BigDecimal amount, String entryType, boolean referenceExists) {}
     private record ExceptionScope(UUID organisationId, UUID scopeUnitId, String status) {}

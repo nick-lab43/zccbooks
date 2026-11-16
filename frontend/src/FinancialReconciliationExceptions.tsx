@@ -4,11 +4,13 @@ import type { FormEvent } from "react";
 type Unit = { id: string; level: string; code: string; name: string; active: boolean };
 type ExceptionRow = {
   id: string; sourceType: string; sourceId: string; exceptionType: string; status: string;
-  summary: string; resolutionNote: string | null; createdAt: string; updatedAt: string; scopeName: string;
+  summary: string; resolutionNote: string | null; resolutionCode: string | null; resolutionAmount: number | null;
+  createdAt: string; updatedAt: string; scopeName: string;
 };
 type ExceptionHistory = {
   id: string; previousStatus: string | null; newStatus: string; action: string;
-  note: string | null; changedBy: string | null; changedAt: string;
+  note: string | null; resolutionCode: string | null; resolutionAmount: number | null;
+  changedBy: string | null; changedAt: string;
 };
 
 export default function FinancialReconciliationExceptions({ organisationId, authorizationHeader, canImport, canManage }: {
@@ -20,6 +22,8 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
   const [includeResolved, setIncludeResolved] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
+  const [resolutionCodes, setResolutionCodes] = useState<Record<string, string>>({});
+  const [resolutionAmounts, setResolutionAmounts] = useState<Record<string, string>>({});
   const [historyOpen, setHistoryOpen] = useState<Record<string, boolean>>({});
   const [historyRows, setHistoryRows] = useState<Record<string, ExceptionHistory[]>>({});
   const [historyLoading, setHistoryLoading] = useState<Record<string, boolean>>({});
@@ -120,9 +124,17 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
     await perform(async () => {
       await request(`/api/reconciliation-exceptions/${row.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status, resolutionNote: resolutionNotes[row.id] ?? "" })
+        body: JSON.stringify({
+          status,
+          resolutionNote: resolutionNotes[row.id] ?? "",
+          resolutionCode: status === "RESOLVED" ? resolutionCodes[row.id] : null,
+          resolutionAmount: status === "RESOLVED" && resolutionAmounts[row.id]
+            ? Number(resolutionAmounts[row.id]) : null
+        })
       });
       setResolutionNotes(current => ({ ...current, [row.id]: "" }));
+      setResolutionCodes(current => ({ ...current, [row.id]: "" }));
+      setResolutionAmounts(current => ({ ...current, [row.id]: "" }));
     }, status === "RESOLVED" ? "Exception resolved and audit-recorded." : "Exception moved to review.");
   }
 
@@ -149,19 +161,37 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
     </>}
     <div className="panel-divider" />
     <div className="register-heading"><div><h3>Exception register</h3><p>Every resolution requires a note and is written to the administrator audit history.</p></div><label className="checkbox-label"><input type="checkbox" checked={includeResolved} onChange={e => setIncludeResolved(e.target.checked)} />Include resolved</label></div>
-    <div className="table-wrap"><table><thead><tr><th>TYPE / SOURCE</th><th>ISSUE</th><th>STATUS</th><th>RESOLUTION NOTE</th><th>ACTION</th></tr></thead><tbody>
+    <div className="table-wrap"><table><thead><tr><th>TYPE / SOURCE</th><th>ISSUE</th><th>STATUS</th><th>DISPOSITION / NOTE</th><th>ACTION</th></tr></thead><tbody>
       {rows.map(row => <Fragment key={row.id}><tr>
         <td><strong>{row.exceptionType.replace(/_/g, " ")}</strong><small className="table-subtext">{row.sourceType.replace(/_/g, " ")} · {row.scopeName}</small></td>
         <td>{row.summary}<small className="table-subtext">{new Date(row.createdAt).toLocaleString()}</small></td>
         <td>{row.status}</td>
-        <td>{row.status === "RESOLVED" ? row.resolutionNote : <input aria-label="Resolution note" value={resolutionNotes[row.id] ?? ""} onChange={e => setResolutionNotes(current => ({ ...current, [row.id]: e.target.value }))} maxLength={1000} placeholder="Required to resolve" />}</td>
+        <td>{row.status === "RESOLVED" ? <>
+          <strong>{(row.resolutionCode ?? "LEGACY").replace(/_/g, " ")}</strong>
+          {row.resolutionAmount != null && <small className="table-subtext">Recorded amount: ZAR {Number(row.resolutionAmount).toFixed(2)}</small>}
+          <p>{row.resolutionNote}</p>
+        </> : <div className="form-stack">
+          <select aria-label="Resolution classification" value={resolutionCodes[row.id] ?? ""} onChange={e => setResolutionCodes(current => ({ ...current, [row.id]: e.target.value }))}>
+            <option value="">Select classification</option>
+            <option value="BANK_FEE">Bank fee</option>
+            <option value="SHORT_DEPOSIT">Short deposit</option>
+            <option value="OVER_DEPOSIT">Over-deposit</option>
+            <option value="WRONG_REFERENCE">Wrong reference</option>
+            <option value="DUPLICATE_STATEMENT_ENTRY">Duplicate statement entry</option>
+            <option value="NON_DEPOSIT_TRANSACTION">Not a deposit transaction</option>
+            <option value="REFUND_OR_REVERSAL">Refund or reversal</option>
+            <option value="OTHER">Other</option>
+          </select>
+          {["BANK_FEE", "SHORT_DEPOSIT", "OVER_DEPOSIT", "REFUND_OR_REVERSAL"].includes(resolutionCodes[row.id] ?? "") && <input aria-label="Resolution amount in rand" type="number" min="0.01" step="0.01" value={resolutionAmounts[row.id] ?? ""} onChange={e => setResolutionAmounts(current => ({ ...current, [row.id]: e.target.value }))} placeholder="Amount (ZAR)" />}
+          <textarea aria-label="Resolution note" value={resolutionNotes[row.id] ?? ""} onChange={e => setResolutionNotes(current => ({ ...current, [row.id]: e.target.value }))} maxLength={1000} placeholder="Explain the evidence and action taken." rows={2} />
+        </div>}</td>
         <td><div className="action-stack">
           <button type="button" className="secondary-button" disabled={busy || historyLoading[row.id]} onClick={() => toggleHistory(row)}>
             {historyLoading[row.id] ? "Loading…" : historyOpen[row.id] ? "Hide history" : "History"}
           </button>
           {canManage && row.status !== "RESOLVED" && <>
             <button type="button" className="secondary-button" disabled={busy || row.status === "UNDER_REVIEW"} onClick={() => updateException(row, "UNDER_REVIEW")}>Review</button>
-            <button type="button" className="primary-button" disabled={busy || !(resolutionNotes[row.id] ?? "").trim()} onClick={() => updateException(row, "RESOLVED")}>Resolve</button>
+            <button type="button" className="primary-button" disabled={busy || !(resolutionNotes[row.id] ?? "").trim() || !(resolutionCodes[row.id] ?? "") || (["BANK_FEE", "SHORT_DEPOSIT", "OVER_DEPOSIT", "REFUND_OR_REVERSAL"].includes(resolutionCodes[row.id] ?? "") && !(Number(resolutionAmounts[row.id]) > 0))} onClick={() => updateException(row, "RESOLVED")}>Resolve</button>
           </>}
         </div></td>
       </tr>
@@ -171,6 +201,7 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
           {(historyRows[row.id] ?? []).map(item => <li key={item.id}>
             <strong>{item.action === "BASELINE" ? `History baseline · ${item.newStatus}` : item.action === "CREATED" ? "Exception created" : `${item.previousStatus} → ${item.newStatus}`}</strong>
             <small className="table-subtext">{item.changedBy ?? "Actor not recorded"} · {new Date(item.changedAt).toLocaleString()}</small>
+            {item.resolutionCode && <p><strong>Disposition:</strong> {item.resolutionCode.replace(/_/g, " ")}{item.resolutionAmount != null ? ` · ZAR ${Number(item.resolutionAmount).toFixed(2)}` : ""}</p>}
             {item.note && <p>{item.note}</p>}
           </li>)}
           {!historyRows[row.id]?.length && <li>No history recorded.</li>}
