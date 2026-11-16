@@ -36,7 +36,16 @@ public class DepositManagementController {
             SELECT b.id, b.scope_unit_id, u.name AS scope_name, b.deposit_date, b.bank_name,
                    b.bank_reference, b.expected_amount, b.status, b.note, b.created_at,
                    COALESCE(SUM(a.allocated_amount), 0) AS allocated_amount,
-                   COUNT(a.id) AS receipt_count
+                   COUNT(a.id) AS receipt_count,
+                   COALESCE((SELECT SUM(e.amount) FROM deposit_reconciliations r
+                       JOIN bank_statement_entries e ON e.id = r.statement_entry_id
+                       WHERE r.deposit_batch_id = b.id), 0) AS banked_amount,
+                   GREATEST(b.expected_amount - COALESCE((SELECT SUM(e.amount)
+                       FROM deposit_reconciliations r
+                       JOIN bank_statement_entries e ON e.id = r.statement_entry_id
+                       WHERE r.deposit_batch_id = b.id), 0), 0) AS outstanding_amount,
+                   (SELECT r.match_note FROM deposit_reconciliations r
+                       WHERE r.deposit_batch_id = b.id ORDER BY r.matched_at DESC LIMIT 1) AS outstanding_note
             FROM deposit_batches b
             JOIN organisational_units u ON u.id = b.scope_unit_id
             LEFT JOIN deposit_allocations a ON a.deposit_batch_id = b.id
@@ -48,7 +57,9 @@ public class DepositManagementController {
                 rs.getDate("deposit_date").toLocalDate().toString(), rs.getString("bank_name"),
                 rs.getString("bank_reference"), rs.getBigDecimal("expected_amount"),
                 rs.getString("status"), rs.getString("note"), rs.getBigDecimal("allocated_amount"),
-                rs.getLong("receipt_count"), rs.getTimestamp("created_at").toInstant().toString()),
+                rs.getLong("receipt_count"), rs.getBigDecimal("banked_amount"),
+                rs.getBigDecimal("outstanding_amount"), rs.getString("outstanding_note"),
+                rs.getTimestamp("created_at").toInstant().toString()),
             organisationId, scopeUnitId);
     }
 
@@ -194,7 +205,9 @@ public class DepositManagementController {
     public DepositBatchDto reconcile(@PathVariable UUID batchId, @Valid @RequestBody ReconcileDeposit request) {
         DepositBatchContext batch = requireBatchContext(batchId, true);
         authorization.requireUnitPermission("FINANCE_RECONCILE", batch.scopeUnitId());
-        if (!"SUBMITTED".equals(batch.status())) throw new ConflictException("Only submitted deposit batches can be reconciled.");
+        if (!"SUBMITTED".equals(batch.status()) && !"PARTIALLY_RECONCILED".equals(batch.status())) {
+            throw new ConflictException("Only submitted or partially reconciled deposit batches can be reconciled.");
+        }
         BankStatementEntryDto entry = jdbc.query("""
             SELECT e.id, e.scope_unit_id, u.name AS scope_name, e.transaction_date,
                    e.bank_reference, e.amount, e.description, e.recorded_at,
@@ -216,8 +229,19 @@ public class DepositManagementController {
         if (!batch.bankReference().equalsIgnoreCase(entry.bankReference())) {
             throw new IllegalArgumentException("Bank references do not match.");
         }
-        if (batch.expectedAmount().compareTo(entry.amount()) != 0) {
-            throw new IllegalArgumentException("The deposit and bank statement amounts do not match.");
+        BigDecimal bankedAmount = jdbc.queryForObject("""
+            SELECT COALESCE(SUM(e.amount), 0)
+            FROM deposit_reconciliations r
+            JOIN bank_statement_entries e ON e.id = r.statement_entry_id
+            WHERE r.deposit_batch_id = ?
+            """, BigDecimal.class, batchId);
+        BigDecimal outstandingAmount = batch.expectedAmount().subtract(bankedAmount);
+        if (entry.amount().compareTo(outstandingAmount) > 0) {
+            throw new IllegalArgumentException("The bank statement amount exceeds the outstanding deposit balance.");
+        }
+        boolean partial = entry.amount().compareTo(outstandingAmount) < 0;
+        if (partial && blankToNull(request.note()) == null) {
+            throw new IllegalArgumentException("An explanation is required when a deposit is only partially banked.");
         }
         LocalDate depositDate = LocalDate.parse(batch.depositDate());
         LocalDate bankDate = LocalDate.parse(entry.transactionDate());
@@ -228,18 +252,27 @@ public class DepositManagementController {
             INSERT INTO deposit_reconciliations (id, deposit_batch_id, statement_entry_id, matched_by, match_note)
             VALUES (?, ?, ?, ?, ?)
             """, UUID.randomUUID(), batchId, request.statementEntryId(), actorId(), blankToNull(request.note()));
-        jdbc.update("UPDATE deposit_batches SET status = 'RECONCILED' WHERE id = ?", batchId);
-        jdbc.update("""
-            UPDATE contribution_deposit_followups f
-            SET status = 'RESOLVED', assigned_to = ?, note = 'Resolved by verified bank deposit reconciliation',
-                updated_at = CURRENT_TIMESTAMP
-            FROM deposit_allocations a
-            WHERE a.deposit_batch_id = ? AND f.contribution_id = a.contribution_id
-              AND f.status <> 'RESOLVED'
-            """, actorId(), batchId);
-        audit.record("DEPOSIT_BATCH_RECONCILED", "DEPOSIT_BATCH", batchId,
+        BigDecimal newBankedAmount = bankedAmount.add(entry.amount());
+        BigDecimal newOutstandingAmount = batch.expectedAmount().subtract(newBankedAmount);
+        String newStatus = newOutstandingAmount.signum() == 0 ? "RECONCILED" : "PARTIALLY_RECONCILED";
+        jdbc.update("UPDATE deposit_batches SET status = ? WHERE id = ?", newStatus, batchId);
+        if ("RECONCILED".equals(newStatus)) {
+            jdbc.update("""
+                UPDATE contribution_deposit_followups f
+                SET status = 'RESOLVED', assigned_to = ?, note = 'Resolved by verified bank deposit reconciliation',
+                    updated_at = CURRENT_TIMESTAMP
+                FROM deposit_allocations a
+                WHERE a.deposit_batch_id = ? AND f.contribution_id = a.contribution_id
+                  AND f.status <> 'RESOLVED'
+                """, actorId(), batchId);
+        }
+        audit.record(partial ? "DEPOSIT_BATCH_PARTIALLY_RECONCILED" : "DEPOSIT_BATCH_RECONCILED",
+            "DEPOSIT_BATCH", batchId,
             Map.of("statementEntryId", request.statementEntryId().toString(),
-                "bankReference", entry.bankReference(), "amount", entry.amount().toPlainString()));
+                "bankReference", entry.bankReference(), "amount", entry.amount().toPlainString(),
+                "bankedAmount", newBankedAmount.toPlainString(),
+                "outstandingAmount", newOutstandingAmount.toPlainString(),
+                "note", blankToNull(request.note()) == null ? "" : blankToNull(request.note())));
         return requireBatch(batchId);
     }
 
@@ -248,7 +281,16 @@ public class DepositManagementController {
             SELECT b.id, b.scope_unit_id, u.name AS scope_name, b.deposit_date, b.bank_name,
                    b.bank_reference, b.expected_amount, b.status, b.note, b.created_at,
                    COALESCE(SUM(a.allocated_amount), 0) AS allocated_amount,
-                   COUNT(a.id) AS receipt_count
+                   COUNT(a.id) AS receipt_count,
+                   COALESCE((SELECT SUM(e.amount) FROM deposit_reconciliations r
+                       JOIN bank_statement_entries e ON e.id = r.statement_entry_id
+                       WHERE r.deposit_batch_id = b.id), 0) AS banked_amount,
+                   GREATEST(b.expected_amount - COALESCE((SELECT SUM(e.amount)
+                       FROM deposit_reconciliations r
+                       JOIN bank_statement_entries e ON e.id = r.statement_entry_id
+                       WHERE r.deposit_batch_id = b.id), 0), 0) AS outstanding_amount,
+                   (SELECT r.match_note FROM deposit_reconciliations r
+                       WHERE r.deposit_batch_id = b.id ORDER BY r.matched_at DESC LIMIT 1) AS outstanding_note
             FROM deposit_batches b JOIN organisational_units u ON u.id = b.scope_unit_id
             LEFT JOIN deposit_allocations a ON a.deposit_batch_id = b.id
             WHERE b.id = ?
@@ -258,7 +300,8 @@ public class DepositManagementController {
                 rs.getDate("deposit_date").toLocalDate().toString(), rs.getString("bank_name"),
                 rs.getString("bank_reference"), rs.getBigDecimal("expected_amount"), rs.getString("status"),
                 rs.getString("note"), rs.getBigDecimal("allocated_amount"), rs.getLong("receipt_count"),
-                rs.getTimestamp("created_at").toInstant().toString()), id).stream().findFirst()
+                rs.getBigDecimal("banked_amount"), rs.getBigDecimal("outstanding_amount"),
+                rs.getString("outstanding_note"), rs.getTimestamp("created_at").toInstant().toString()), id).stream().findFirst()
             .orElseThrow(() -> new ResourceNotFoundException("Deposit batch not found."));
     }
 
@@ -311,7 +354,8 @@ public class DepositManagementController {
     public record ReconcileDeposit(@NotNull UUID statementEntryId, @Size(max = 500) String note) {}
     public record DepositBatchDto(String id, String scopeUnitId, String scopeName, String depositDate,
         String bankName, String bankReference, BigDecimal expectedAmount, String status, String note,
-        BigDecimal allocatedAmount, long receiptCount, String createdAt) {}
+        BigDecimal allocatedAmount, long receiptCount, BigDecimal bankedAmount,
+        BigDecimal outstandingAmount, String outstandingNote, String createdAt) {}
     public record BankStatementEntryDto(String id, String scopeUnitId, String scopeName,
         String transactionDate, String bankReference, BigDecimal amount, String description, boolean reconciled) {}
     private record DepositTotals(long receiptCount, BigDecimal allocatedAmount) {}
