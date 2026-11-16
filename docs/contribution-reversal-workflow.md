@@ -6,6 +6,14 @@ Posted contribution receipts are immutable. An authorised reversal creates a sep
 
 The `FINANCE_REVERSE` permission is granted to the global Central Administrator role by default. It can be assigned to a custom role through the existing role configuration workflow. The backend also checks the administrator's geographical scope against the original contribution.
 
+## Contribution register
+
+The financial administration workspace exposes a scoped register for administrators with `FINANCE_VIEW`:
+
+`GET /api/organisations/{organisationId}/contribution-register?scopeUnitId={scopeUnitId}`
+
+The register returns up to 200 most recent receipts in the selected scope, including whether each receipt has been reversed and the reversal reason, administrator and timestamp. Administrators with `FINANCE_REVERSE` can initiate a reversal from this register. The interface requires a reason and displays a permanent confirmation warning before submission.
+
 ## Reverse a contribution
 
 `POST /api/contributions/{contributionId}/reverse`

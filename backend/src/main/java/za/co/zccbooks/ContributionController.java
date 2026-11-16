@@ -297,6 +297,35 @@ public class ContributionController {
             from, from, to, to);
     }
 
+    @GetMapping("/organisations/{organisationId}/contribution-register")
+    public List<ContributionRegisterDto> contributionRegister(@PathVariable UUID organisationId,
+            @RequestParam UUID scopeUnitId) {
+        authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
+        return jdbc.query("""
+            SELECT c.id, c.receipt_number, m.first_name, m.last_name, cat.name AS category_name,
+                   c.amount, c.currency, c.contribution_date, c.payment_method, c.captured_at,
+                   r.id AS reversal_id, r.reason AS reversal_reason, r.reversed_at,
+                   au.display_name AS reversed_by
+            FROM contributions c
+            JOIN members m ON m.id = c.member_id
+            JOIN contribution_categories cat ON cat.id = c.category_id
+            LEFT JOIN contribution_reversals r ON r.contribution_id = c.id
+            LEFT JOIN admin_users au ON au.id = r.reversed_by
+            WHERE c.organisation_id = ? AND c.scope_unit_id = ?
+            ORDER BY c.contribution_date DESC, c.captured_at DESC
+            LIMIT 200
+            """, (rs, n) -> new ContributionRegisterDto(
+                rs.getObject("id", UUID.class).toString(), rs.getString("receipt_number"),
+                rs.getString("first_name") + " " + rs.getString("last_name"),
+                rs.getString("category_name"), rs.getBigDecimal("amount"), rs.getString("currency"),
+                rs.getDate("contribution_date").toLocalDate().toString(), rs.getString("payment_method"),
+                rs.getTimestamp("captured_at").toInstant().toString(),
+                rs.getObject("reversal_id", UUID.class) != null,
+                rs.getString("reversal_reason"), rs.getString("reversed_by"),
+                rs.getTimestamp("reversed_at") == null ? null : rs.getTimestamp("reversed_at").toInstant().toString()),
+            organisationId, scopeUnitId);
+    }
+
     @GetMapping("/organisations/{organisationId}/unallocated-cash-contributions")
     public List<ContributionDto> unallocatedCashContributions(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId) {
@@ -518,6 +547,9 @@ public class ContributionController {
     public record DepositFollowupDto(String id, String status, String note, String receiptNumber,
         String memberName, String categoryName, BigDecimal amount, String currency, String contributionDate) {}
     private record DepositFollowupContext(UUID id, UUID scopeUnitId, UUID organisationId, String status) {}
+    public record ContributionRegisterDto(String id, String receiptNumber, String memberName, String categoryName,
+        BigDecimal amount, String currency, String contributionDate, String paymentMethod, String capturedAt,
+        boolean reversed, String reversalReason, String reversedBy, String reversedAt) {}
     public record ReverseContribution(@NotBlank @Size(max = 1000) String reason) {}
     public record ContributionReversalDto(String id, String contributionId, String receiptNumber,
         BigDecimal amount, String reason, String reversedBy, String reversedAt) {}

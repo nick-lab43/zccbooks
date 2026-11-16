@@ -5,10 +5,11 @@ type Unit = { id: string; parentId: string | null; level: string; code: string; 
 type Category = { id: string; name: string; streamName: string; active: boolean; scopeLevels: string[] };
 type Member = { id: string; zccAppNumber: string | null; firstName: string; lastName: string };
 type Followup = { id: string; status: string; note: string | null; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string };
+type RegisterItem = { id: string; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; capturedAt: string; reversed: boolean; reversalReason: string | null; reversedBy: string | null; reversedAt: string | null };
 type Receipt = { id: string; receiptNumber: string; memberName: string; categoryName: string; streamName: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; capturedAt: string };
 
-export default function ContributionCapture({ organisationId, authorizationHeader }: {
-  organisationId: string; authorizationHeader: string;
+export default function ContributionCapture({ organisationId, authorizationHeader, canReverse }: {
+  organisationId: string; authorizationHeader: string; canReverse: boolean;
 }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -18,6 +19,10 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   const [members, setMembers] = useState<Member[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [followups, setFollowups] = useState<Followup[]>([]);
+  const [register, setRegister] = useState<RegisterItem[]>([]);
+  const [reversalTarget, setReversalTarget] = useState<RegisterItem | null>(null);
+  const [reversalReason, setReversalReason] = useState("");
+  const [reversalNotice, setReversalNotice] = useState("");
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -79,6 +84,24 @@ export default function ContributionCapture({ organisationId, authorizationHeade
       .then(setMembers).catch((e: Error) => setError(e.message));
   }, [cellId, scopeUnitId, authorizationHeader]);
 
+  async function reloadRegister() {
+    if (!organisationId || !scopeUnitId) { setRegister([]); return; }
+    const rows = await request<RegisterItem[]>(`/api/organisations/${organisationId}/contribution-register?scopeUnitId=${scopeUnitId}`);
+    setRegister(rows);
+  }
+
+  async function reverseContribution() {
+    if (!reversalTarget || !reversalReason.trim()) return;
+    setBusy(true); setError(""); setReversalNotice("");
+    try {
+      await request(`/api/contributions/${reversalTarget.id}/reverse`, { method: "POST", body: JSON.stringify({ reason: reversalReason.trim() }) });
+      setReversalTarget(null); setReversalReason("");
+      await reloadRegister();
+      setReversalNotice(`Receipt ${reversalTarget.receiptNumber} was reversed. The original receipt remains in the audit register.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Contribution could not be reversed."); }
+    finally { setBusy(false); }
+  }
+
   async function reloadFollowups() {
     if (!organisationId || !scopeUnitId) { setFollowups([]); return; }
     const rows = await request<Followup[]>(`/api/organisations/${organisationId}/deposit-followups?scopeUnitId=${scopeUnitId}`);
@@ -86,8 +109,11 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   }
 
   useEffect(() => {
-    setFollowups([]);
-    if (organisationId && scopeUnitId) reloadFollowups().catch((e: Error) => setError(e.message));
+    setFollowups([]); setRegister([]); setReversalTarget(null); setReversalNotice("");
+    if (organisationId && scopeUnitId) {
+      reloadFollowups().catch((e: Error) => setError(e.message));
+      reloadRegister().catch((e: Error) => setError(e.message));
+    }
   }, [organisationId, scopeUnitId, authorizationHeader]);
 
   async function updateFollowup(id: string, status: "ACKNOWLEDGED" | "RESOLVED") {
@@ -120,7 +146,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
         })
       });
       setReceipt(result);
-      await reloadFollowups();
+      await Promise.all([reloadFollowups(), reloadRegister()]);
       form.reset();
       setMemberId("");
     } catch (e) { setError(e instanceof Error ? e.message : "Contribution could not be posted."); }
@@ -143,6 +169,27 @@ export default function ContributionCapture({ organisationId, authorizationHeade
       <button className="primary-button" disabled={busy || !memberId || !applicableCategories.length}>{busy ? "Posting contribution…" : "Post contribution and issue receipt"}</button>
     </form>
     <div className="panel-divider" />
+    {reversalNotice && <div className="message success" role="status">{reversalNotice}</div>}
+    {canReverse && <>
+      <div className="panel-divider" />
+      <div className="register-heading"><div><h3>Contribution register</h3><p>Posted receipts in the selected scope, including immutable reversal history</p></div><span className="count-box">{register.length} RECORDS</span></div>
+      <div className="table-wrap"><table><thead><tr><th>RECEIPT / DATE</th><th>MEMBER / CATEGORY</th><th>AMOUNT</th><th>STATUS / REVERSAL</th><th>ACTION</th></tr></thead><tbody>
+        {register.map(item => <tr key={item.id}>
+          <td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate} · {item.paymentMethod.replace(/_/g, " ")}</small></td>
+          <td>{item.memberName}<small className="table-subtext">{item.categoryName}</small></td>
+          <td>{item.currency} {Number(item.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          <td>{item.reversed ? <><strong className="inactive-label">REVERSED</strong><small className="table-subtext">{item.reversalReason}</small><small className="table-subtext">{item.reversedBy} · {item.reversedAt ? new Date(item.reversedAt).toLocaleString("en-ZA") : ""}</small></> : <strong>POSTED</strong>}</td>
+          <td>{!item.reversed && <button type="button" className="secondary-button" disabled={busy} onClick={() => { setReversalTarget(item); setReversalReason(""); }}>Reverse receipt</button>}</td>
+        </tr>)}
+        {!register.length && <tr><td colSpan={5} className="empty-table">No posted contributions in this scope.</td></tr>}
+      </tbody></table></div>
+      {reversalTarget && <div className="legacy-record-notice">
+        <strong>Reverse {reversalTarget.receiptNumber}</strong>
+        <span>This creates a permanent reversal record. It does not refund money or reverse a bank deposit.</span>
+        <label>Reason for reversal<textarea value={reversalReason} onChange={event => setReversalReason(event.target.value)} maxLength={1000} rows={3} placeholder="Explain why this receipt must be reversed." /></label>
+        <div className="field-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setReversalTarget(null)}>Cancel</button><button type="button" className="primary-button" disabled={busy || !reversalReason.trim()} onClick={reverseContribution}>{busy ? "Reversing…" : "Confirm permanent reversal"}</button></div>
+      </div>}
+    </>}
     <div className="register-heading"><div><h3>Pending deposit follow-ups</h3><p>Contributions awaiting deposit confirmation or follow-up</p></div><span className="count-box">{followups.length} OPEN</span></div>
     <div className="table-wrap"><table><thead><tr><th>RECEIPT</th><th>MEMBER / CATEGORY</th><th>AMOUNT</th><th>STATUS</th><th>FOLLOW-UP ACTION</th></tr></thead><tbody>
       {followups.map(item => <tr key={item.id}><td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate}</small></td><td>{item.memberName}<small className="table-subtext">{item.categoryName}</small></td><td>{item.currency} {Number(item.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><strong>{item.status.replace(/_/g, " ")}</strong>{item.note && <small className="table-subtext">{item.note}</small>}</td><td><div className="field-actions">{item.status === "PENDING" && <button type="button" className="secondary-button" onClick={() => updateFollowup(item.id, "ACKNOWLEDGED")}>Acknowledge</button>}{["PENDING", "ACKNOWLEDGED"].includes(item.status) && <><input aria-label={`Resolution reason for ${item.receiptNumber}`} value={resolutionNotes[item.id] ?? ""} maxLength={500} placeholder="Reason for manual resolution" onChange={event => setResolutionNotes(rows => ({ ...rows, [item.id]: event.target.value }))} /><button type="button" className="secondary-button" disabled={!(resolutionNotes[item.id] ?? "").trim()} onClick={() => updateFollowup(item.id, "RESOLVED")}>Resolve</button></>}</div></td></tr>)}
