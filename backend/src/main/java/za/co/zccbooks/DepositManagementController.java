@@ -34,7 +34,7 @@ public class DepositManagementController {
         authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
         return jdbc.query("""
             SELECT b.id, b.scope_unit_id, u.name AS scope_name, b.deposit_date, b.bank_name,
-                   b.bank_reference, b.expected_amount, b.status, b.note, b.created_at,
+                   b.bank_reference, b.expected_amount, b.status, b.review_status, b.review_response_note, b.note, b.created_at,
                    COALESCE(SUM(a.allocated_amount), 0) AS allocated_amount,
                    COUNT(a.id) AS receipt_count,
                    COALESCE((SELECT SUM(e.amount) FROM deposit_reconciliations r
@@ -61,7 +61,7 @@ public class DepositManagementController {
                 rs.getString("status"), rs.getString("note"), rs.getBigDecimal("allocated_amount"),
                 rs.getLong("receipt_count"), rs.getBigDecimal("banked_amount"),
                 rs.getBigDecimal("outstanding_amount"), rs.getString("outstanding_note"),
-                rs.getTimestamp("created_at").toInstant().toString()),
+                rs.getTimestamp("created_at").toInstant().toString(), rs.getString("review_status"), rs.getString("review_response_note")),
             organisationId, scopeUnitId);
     }
 
@@ -391,7 +391,7 @@ public class DepositManagementController {
     public record DepositBatchDto(String id, String scopeUnitId, String scopeName, String depositDate,
         String bankName, String bankReference, BigDecimal expectedAmount, String status, String note,
         BigDecimal allocatedAmount, long receiptCount, BigDecimal bankedAmount,
-        BigDecimal outstandingAmount, String outstandingNote, String createdAt) {}
+        BigDecimal outstandingAmount, String outstandingNote, String createdAt, String reviewStatus, String reviewResponseNote) {}
     public record BankStatementEntryDto(String id, String scopeUnitId, String scopeName,
         String transactionDate, String bankReference, BigDecimal amount, String entryType,
         String description, boolean reconciled) {}
