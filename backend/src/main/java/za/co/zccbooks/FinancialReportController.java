@@ -82,7 +82,8 @@ public class FinancialReportController {
             JOIN visible_units vu ON vu.id = c.scope_unit_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             JOIN financial_streams fs ON fs.id = c.stream_id
-            WHERE c.organisation_id = ? AND c.contribution_date BETWEEN ? AND ?\n              AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
+            WHERE c.organisation_id = ? AND c.contribution_date BETWEEN ? AND ?
+              AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
             GROUP BY c.category_id, cat.name, c.stream_id, fs.name, c.currency
             ORDER BY fs.name, cat.name, c.currency
             """, (rs,n) -> new ContributionGroup(
