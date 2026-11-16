@@ -47,6 +47,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired FinancialReportController reports;
     @Autowired AdminAuditService audit;
     @Autowired DepositManagementController depositManagement;
+    @Autowired ExpenditureManagementController expenditureManagement;
 
     @AfterEach
     void clearAuthentication() {
@@ -654,6 +655,62 @@ class FinancialReportPostgresIntegrationTest {
         assertTrue(depositManagement.statementEntries(fixture.organisationId(), fixture.nyikaA()).stream()
             .filter(entry -> entry.id().equals(firstCredit.id()) || entry.id().equals(finalCredit.id()))
             .allMatch(DepositManagementController.BankStatementEntryDto::reconciled));
+    }
+
+    @Test
+    void expenditureRequiresIndependentApprovalAndTracksPaymentInFinancialReports() {
+        Fixture fixture = fixture();
+        UUID capturerId = UUID.randomUUID();
+        UUID approverId = UUID.randomUUID();
+        String capturer = "expense.capturer." + capturerId.toString().replace("-", "").substring(0, 12);
+        String approver = "expense.approver." + approverId.toString().replace("-", "").substring(0, 12);
+        for (var user : List.of(Map.entry(capturerId, capturer), Map.entry(approverId, approver))) {
+            jdbc.update("""
+                INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+                VALUES (?, ?, 'Expense Administrator', 'not-used-in-direct-controller-test', TRUE)
+                """, user.getKey(), user.getValue());
+            jdbc.update("""
+                INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+                VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
+                """, UUID.randomUUID(), user.getKey());
+        }
+
+        authenticateAs(capturer);
+        var category = expenditureManagement.createCategory(fixture.organisationId(),
+            new ExpenditureManagementController.CreateExpenseCategory("UTILITIES", "Utilities", "Electricity and water"));
+        var created = expenditureManagement.create(fixture.organisationId(),
+            new ExpenditureManagementController.CreateExpenditure(fixture.nyikaA(), UUID.fromString(category.getBody().id()),
+                LocalDate.parse("2026-05-10"), "Municipal account", "Monthly electricity account",
+                "INV-UTIL-001", new BigDecimal("45.00"), "ZAR"));
+        assertEquals("DRAFT", created.getBody().status());
+
+        var submitted = expenditureManagement.submit(UUID.fromString(created.getBody().id()));
+        assertEquals("SUBMITTED", submitted.status());
+        assertThrows(IllegalArgumentException.class,
+            () -> expenditureManagement.review(UUID.fromString(created.getBody().id()),
+                new ExpenditureManagementController.ReviewExpenditure("APPROVE", "Self approval must be blocked.")));
+
+        authenticateAs(approver);
+        var approved = expenditureManagement.review(UUID.fromString(created.getBody().id()),
+            new ExpenditureManagementController.ReviewExpenditure("APPROVE", "Invoice checked against supporting document."));
+        assertEquals("APPROVED", approved.status());
+        var paid = expenditureManagement.pay(UUID.fromString(created.getBody().id()),
+            new ExpenditureManagementController.PayExpenditure("EFT-2026-0045"));
+        assertEquals("PAID", paid.status());
+        assertEquals("EFT-2026-0045", paid.paymentReference());
+
+        LocalDate date = LocalDate.parse("2026-05-10");
+        var register = reports.expenses(fixture.organisationId(), fixture.nyikaA(), date, date);
+        assertEquals(1, register.size());
+        assertEquals("PAID", register.get(0).status());
+        assertEquals(new BigDecimal("45.00"), register.get(0).amount());
+
+        var position = reports.incomeExpenditure(fixture.organisationId(), fixture.nyikaA(), date, date);
+        assertEquals(1, position.positions().size());
+        assertEquals("ZAR", position.positions().get(0).currency());
+        assertEquals(new BigDecimal("125.00"), position.positions().get(0).income());
+        assertEquals(new BigDecimal("45.00"), position.positions().get(0).expenditure());
+        assertEquals(new BigDecimal("80.00"), position.positions().get(0).netPosition());
     }
 
     private Fixture fixture() {
