@@ -4,8 +4,9 @@ import OrganisationalHierarchy from "./OrganisationalHierarchy";
 import CellMembership from "./CellMembership";
 import MemberAppointments from "./MemberAppointments";
 import FinancialAdministration from "./FinancialAdministration";
+import FinancialReports from "./FinancialReports";
 
-type Module = "overview" | "organisation" | "membership" | "appointments" | "financial" | "access";
+type Module = "overview" | "organisation" | "membership" | "appointments" | "financial" | "reports" | "access";
 type CurrentAdmin = { username: string; displayName: string; permissions: string[] };
 type AdminUser = { id: string; username: string; displayName: string; email?: string | null; enabled: boolean; createdAt: string | null; assignments: string };
 type AdminRole = { id: string; code: string; name: string; description?: string; systemRole: boolean; permissions: string[] };
@@ -268,6 +269,7 @@ function MainApp() {
           {(currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("FINANCE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_DEPOSIT") || currentAdmin?.permissions.includes("FINANCE_RECONCILE")) && <>
             <div className="sidebar-section-label">FINANCIAL ADMINISTRATION</div>
             <button className={activeModule === "financial" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("financial")} aria-current={activeModule === "financial" ? "page" : undefined}><span className="sidebar-icon">FA</span><span>Financial Administration</span></button>
+            {currentAdmin?.permissions.includes("FINANCE_VIEW") && <button className={activeModule === "reports" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("reports")} aria-current={activeModule === "reports" ? "page" : undefined}><span className="sidebar-icon">RP</span><span>Financial Reports</span></button>}
           </>}
           {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <>
             <div className="sidebar-section-label">SYSTEM ADMINISTRATION</div>
@@ -279,11 +281,11 @@ function MainApp() {
 
       <section className="workspace-heading">
         <div>
-          <div className="breadcrumb">{activeModule === "access" ? "SYSTEM ADMINISTRATION" : activeModule === "financial" ? "FINANCIAL ADMINISTRATION" : activeModule === "overview" ? "WORKSPACE" : "GENERAL ADMINISTRATION"}</div>
-          <h1>{activeModule === "overview" ? "Overview" : activeModule === "organisation" ? "Organisational structure" : activeModule === "membership" ? "Membership" : activeModule === "appointments" ? "Church appointments" : activeModule === "financial" ? "Financial Administration" : "Users & access"}</h1>
-          <p>{activeModule === "overview" ? "A summary of the organisation and administration areas available to your account." : activeModule === "organisation" ? "Create and maintain the organisation's geographical hierarchy." : activeModule === "membership" ? "Register and maintain members and their household records." : activeModule === "appointments" ? "Maintain church offices and date-effective member appointments." : activeModule === "financial" ? "Govern financial configuration, capture contributions and issue receipts within assigned scope." : "Manage administrator accounts, roles, permissions and audit history."}</p>
+          <div className="breadcrumb">{activeModule === "access" ? "SYSTEM ADMINISTRATION" : activeModule === "financial" ? "FINANCIAL ADMINISTRATION" : activeModule === "reports" ? "FINANCIAL REPORTING" : activeModule === "overview" ? "WORKSPACE" : "GENERAL ADMINISTRATION"}</div>
+          <h1>{activeModule === "overview" ? "Overview" : activeModule === "organisation" ? "Organisational structure" : activeModule === "membership" ? "Membership" : activeModule === "appointments" ? "Church appointments" : activeModule === "financial" ? "Financial Administration" : activeModule === "reports" ? "Financial Reports" : "Users & access"}</h1>
+          <p>{activeModule === "overview" ? "A summary of the organisation and administration areas available to your account." : activeModule === "organisation" ? "Create and maintain the organisation's geographical hierarchy." : activeModule === "membership" ? "Register and maintain members and their household records." : activeModule === "appointments" ? "Maintain church offices and date-effective member appointments." : activeModule === "financial" ? "Govern financial configuration, capture contributions and issue receipts within assigned scope." : activeModule === "reports" ? "Generate permission-scoped financial summaries, registers and downloadable Word reports." : "Manage administrator accounts, roles, permissions and audit history."}</p>
         </div>
-        <div className="record-stamp"><span>WORKSPACE</span><strong>{activeModule === "overview" ? "CEN-01" : activeModule === "organisation" ? "ORG-01" : activeModule === "membership" ? "MEM-01" : activeModule === "appointments" ? "APT-01" : activeModule === "financial" ? "FIN-01" : "ACL-01"}</strong><span>FOUNDATION RELEASE</span></div>
+        <div className="record-stamp"><span>WORKSPACE</span><strong>{activeModule === "overview" ? "CEN-01" : activeModule === "organisation" ? "ORG-01" : activeModule === "membership" ? "MEM-01" : activeModule === "appointments" ? "APT-01" : activeModule === "financial" ? "FIN-01" : activeModule === "reports" ? "RPT-01" : "ACL-01"}</strong><span>FOUNDATION RELEASE</span></div>
       </section>
 
       {(error || notice) && <div className={error ? "message error" : "message success"} role="status">{error || notice}<button onClick={() => { setError(""); setNotice(""); }} aria-label="Dismiss message">×</button></div>}
@@ -397,6 +399,8 @@ function MainApp() {
       {activeModule === "appointments" && <MemberAppointments organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
 
       {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_CAPTURE") ?? false} canDeposit={currentAdmin?.permissions.includes("FINANCE_DEPOSIT") ?? false} canReconcile={currentAdmin?.permissions.includes("FINANCE_RECONCILE") ?? false} canManageExceptions={currentAdmin?.permissions.includes("FINANCE_EXCEPTION") ?? false} />}
+
+      {activeModule === "reports" && <FinancialReports organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
 
       {activeModule === "access" && (
         <div className="access-layout">
