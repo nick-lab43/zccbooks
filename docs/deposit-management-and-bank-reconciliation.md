@@ -33,7 +33,9 @@ A submitted batch may be reconciled against one or more bank statement CREDIT en
 
 A partial credit changes the batch status to PARTIALLY_RECONCILED. The reconciliation request must include an explanation of why the full amount was not banked. The explanation is stored with the immutable reconciliation record and surfaced while a balance remains outstanding.
 
-Further eligible credits can be applied to the same batch. The system calculates the cumulative banked amount and outstanding balance from the linked statement entries. The batch becomes RECONCILED only when the cumulative credits equal the declared amount. Receipt follow-ups are resolved only at full reconciliation.
+Further eligible credits can be applied to the same batch. The system calculates the cumulative banked amount and outstanding balance from the linked statement entries. The batch becomes RECONCILED only when the cumulative credits equal the declared amount.
+
+Contribution follow-ups move automatically with the batch: IN_DRAFT after allocation, SUBMITTED after submission, PARTIALLY_BANKED after a partial credit, and RESOLVED only after full reconciliation. Removing an allocation from a draft batch returns its follow-up to PENDING. Manual resolution is restricted to unallocated receipts and requires a reason.
 
 Over-banking, debit entries, cross-scope entries, mismatched references, out-of-window dates and reuse of a statement entry are rejected. A statement entry can be applied to only one batch.
 
