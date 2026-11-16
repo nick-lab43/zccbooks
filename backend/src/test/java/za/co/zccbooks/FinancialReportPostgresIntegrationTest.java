@@ -1191,7 +1191,7 @@ class FinancialReportPostgresIntegrationTest {
                 LocalDate.parse("2026-05-10"), "ZAR", "Record bank fee", "MANUAL", null,
                 List.of(new FinancialJournalController.FinanceJournalLineRequest(
                     feeId, new BigDecimal("10.00"), BigDecimal.ZERO, "Bank fee"))));
-        UUID journalId = UUID.fromString(unbalanced.getBody().getId());
+        UUID journalId = UUID.fromString(unbalanced.getBody().id());
         assertThrows(ConflictException.class, () -> financialJournals.submit(journalId));
 
         financialJournals.replaceDraftLines(journalId,
