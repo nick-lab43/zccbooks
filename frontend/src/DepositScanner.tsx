@@ -245,6 +245,7 @@ export default function DepositScanner({ batchId, authorizationHeader, evidence 
       }
       setDocuments(await response.json() as Document[]);
       setNotice("Scanned PDF created. Original photographs remain unchanged.");
+      pages.forEach(page => URL.revokeObjectURL(page.sourceUrl));
       setPages([]);
       setActiveIndex(0);
     } catch (e) {
