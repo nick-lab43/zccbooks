@@ -75,7 +75,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `zcc-${type.toLowerCase().replaceAll("_", "-")}-${from}-to-${to}.docx`;
+      anchor.download = `zcc-${type.toLowerCase().replace(/_/g, "-")}-${from}-to-${to}.docx`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (e) { setError(e instanceof Error ? e.message : "Word export failed."); }
