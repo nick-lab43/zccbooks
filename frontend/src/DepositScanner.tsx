@@ -68,8 +68,9 @@ function solveHomography(matrix: number[][]): number[] {
 }
 
 function warpImage(image: HTMLImageElement, corners: Corner[], enhancement: Enhancement): HTMLCanvasElement {
-  const sourceWidth = image.naturalWidth;
-  const sourceHeight = image.naturalHeight;
+  const sourceScale = Math.min(1, 3000 / Math.max(image.naturalWidth, image.naturalHeight));
+  const sourceWidth = Math.max(1, Math.round(image.naturalWidth * sourceScale));
+  const sourceHeight = Math.max(1, Math.round(image.naturalHeight * sourceScale));
   const points = corners.map(p => ({ x: p.x * sourceWidth / 100, y: p.y * sourceHeight / 100 }));
   const [tl, tr, br, bl] = points;
   const width = Math.max(400, Math.min(2400, Math.round(Math.max(
@@ -91,7 +92,7 @@ function warpImage(image: HTMLImageElement, corners: Corner[], enhancement: Enha
   source.width = sourceWidth; source.height = sourceHeight;
   const sourceContext = source.getContext("2d", { willReadFrequently: true });
   if (!sourceContext) throw new Error("This browser cannot process the selected image.");
-  sourceContext.drawImage(image, 0, 0);
+  sourceContext.drawImage(image, 0, 0, sourceWidth, sourceHeight);
   const sourcePixels = sourceContext.getImageData(0, 0, sourceWidth, sourceHeight);
   const output = document.createElement("canvas");
   output.width = width; output.height = height;
@@ -149,6 +150,8 @@ export default function DepositScanner({ batchId, authorizationHeader, evidence 
   const activePage = pages[activeIndex];
 
   useEffect(() => {
+    pagesRef.current.forEach(page => URL.revokeObjectURL(page.sourceUrl));
+    pagesRef.current = [];
     setPages([]);
     setActiveIndex(0);
     setDocuments([]);
@@ -269,7 +272,7 @@ export default function DepositScanner({ batchId, authorizationHeader, evidence 
 
   return <section className="panel-divider">
     <div className="register-heading">
-      <div><h3>Document scanner</h3><p>Arrange original deposit photographs, straighten the page and create a searchable-workflow-ready PDF package.</p></div>
+      <div><h3>Document scanner</h3><p>Arrange original deposit photographs, straighten the page and create a clean multi-page PDF package.</p></div>
       <span className="count-box">{pages.length}/10 PAGES</span>
     </div>
     {error && <div className="message error" role="alert">{error}</div>}
