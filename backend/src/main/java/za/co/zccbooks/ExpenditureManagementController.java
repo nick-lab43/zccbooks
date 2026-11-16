@@ -31,6 +31,43 @@ public class ExpenditureManagementController {
         this.audit = audit;
     }
 
+    @GetMapping("/organisations/{organisationId}/expenditure-units")
+    public List<ExpenseUnitDto> units(@PathVariable UUID organisationId) {
+        authorization.requireOrganisationOrUnitPermission("FINANCE_EXPENSE_CAPTURE", organisationId);
+        String sql = """
+            SELECT id, level, code, name FROM organisational_units
+            WHERE organisation_id = ? AND active = TRUE
+            ORDER BY level, name
+            """;
+        if (!authorization.hasOrganisationWidePermission("FINANCE_EXPENSE_CAPTURE", organisationId)) {
+            sql = """
+                WITH RECURSIVE visible_units AS (
+                    SELECT a.scope_unit_id AS id
+                    FROM admin_role_assignments a
+                    JOIN admin_users au ON au.id = a.user_id
+                    JOIN admin_roles ar ON ar.id = a.role_id
+                    JOIN admin_role_permissions rp ON rp.role_id = ar.id
+                    WHERE a.scope_type = 'UNIT' AND a.organisation_id = ?
+                      AND a.revoked_at IS NULL AND LOWER(au.username) = LOWER(?)
+                      AND rp.permission_code = 'FINANCE_EXPENSE_CAPTURE'
+                    UNION
+                    SELECT child.id FROM organisational_units child
+                    JOIN visible_units parent ON child.parent_id = parent.id
+                    WHERE child.organisation_id = ?
+                )
+                SELECT u.id, u.level, u.code, u.name
+                FROM organisational_units u JOIN visible_units v ON v.id = u.id
+                WHERE u.organisation_id = ? AND u.active = TRUE
+                ORDER BY u.level, u.name
+                """;
+            return jdbc.query(sql, (rs, n) -> new ExpenseUnitDto(rs.getObject("id", UUID.class).toString(),
+                rs.getString("level"), rs.getString("code"), rs.getString("name")),
+                organisationId, authorization.currentUsername(), organisationId, organisationId);
+        }
+        return jdbc.query(sql, (rs, n) -> new ExpenseUnitDto(rs.getObject("id", UUID.class).toString(),
+            rs.getString("level"), rs.getString("code"), rs.getString("name")), organisationId);
+    }
+
     @GetMapping("/organisations/{organisationId}/expenditure-categories")
     public List<ExpenseCategoryDto> categories(@PathVariable UUID organisationId) {
         authorization.requireOrganisationOrUnitPermission("FINANCE_EXPENSE_CAPTURE", organisationId);
@@ -250,6 +287,7 @@ public class ExpenditureManagementController {
         @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency) {}
     public record ReviewExpenditure(@NotBlank String decision, @Size(max = 500) String note) {}
     public record PayExpenditure(@NotBlank @Size(max = 120) String paymentReference) {}
+    public record ExpenseUnitDto(String id, String level, String code, String name) {}
     public record ExpenseCategoryDto(String id, String code, String name, String description, boolean active) {}
     public record ExpenditureDto(String id, String scopeUnitId, String scopeName, String categoryId,
         String categoryName, String expenseDate, String payee, String description, String reference,
