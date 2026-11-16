@@ -164,6 +164,79 @@ public class FinancialReportController {
             scopeUnitId, organisationId, organisationId, organisationId, from, to);
     }
 
+    @GetMapping("/expenses")
+    public List<ExpenseLine> expenses(@PathVariable UUID organisationId,
+            @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to) {
+        context(organisationId, scopeUnitId, from, to);
+        return jdbc.query("""
+            WITH RECURSIVE visible_units AS (
+              SELECT id FROM organisational_units WHERE id = ? AND organisation_id = ?
+              UNION ALL
+              SELECT child.id FROM organisational_units child
+              JOIN visible_units parent ON child.parent_id = parent.id
+              WHERE child.organisation_id = ?
+            )
+            SELECT e.id, e.expense_date, u.name AS unit_name, c.name AS category_name,
+                   e.payee, e.description, e.reference, e.amount, e.currency, e.status,
+                   e.payment_reference, e.review_note
+            FROM expenditures e
+            JOIN visible_units vu ON vu.id = e.scope_unit_id
+            JOIN organisational_units u ON u.id = e.scope_unit_id
+            JOIN expenditure_categories c ON c.id = e.category_id
+            WHERE e.organisation_id = ? AND e.expense_date BETWEEN ? AND ?
+            ORDER BY e.expense_date, e.created_at
+            """, (rs, n) -> new ExpenseLine(rs.getObject("id", UUID.class).toString(),
+                rs.getDate("expense_date").toLocalDate(), rs.getString("unit_name"),
+                rs.getString("category_name"), rs.getString("payee"), rs.getString("description"),
+                rs.getString("reference"), rs.getBigDecimal("amount"), rs.getString("currency"),
+                rs.getString("status"), rs.getString("payment_reference"), rs.getString("review_note")),
+            scopeUnitId, organisationId, organisationId, organisationId, from, to);
+    }
+
+    @GetMapping("/income-expenditure")
+    public IncomeExpenditureSummary incomeExpenditure(@PathVariable UUID organisationId,
+            @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to) {
+        ReportContext reportContext = context(organisationId, scopeUnitId, from, to);
+        Map<String, BigDecimal> income = new TreeMap<>();
+        jdbc.query("""
+            WITH RECURSIVE visible_units AS (
+              SELECT id FROM organisational_units WHERE id = ? AND organisation_id = ?
+              UNION ALL
+              SELECT child.id FROM organisational_units child
+              JOIN visible_units parent ON child.parent_id = parent.id
+              WHERE child.organisation_id = ?
+            )
+            SELECT currency, SUM(amount) AS total
+            FROM contributions c JOIN visible_units vu ON vu.id = c.scope_unit_id
+            WHERE c.organisation_id = ? AND c.contribution_date BETWEEN ? AND ?
+            GROUP BY currency
+            """, rs -> income.put(rs.getString("currency"), rs.getBigDecimal("total")),
+            scopeUnitId, organisationId, organisationId, organisationId, from, to);
+        Map<String, BigDecimal> expenditure = new TreeMap<>();
+        jdbc.query("""
+            WITH RECURSIVE visible_units AS (
+              SELECT id FROM organisational_units WHERE id = ? AND organisation_id = ?
+              UNION ALL
+              SELECT child.id FROM organisational_units child
+              JOIN visible_units parent ON child.parent_id = parent.id
+              WHERE child.organisation_id = ?
+            )
+            SELECT currency, SUM(amount) AS total
+            FROM expenditures e JOIN visible_units vu ON vu.id = e.scope_unit_id
+            WHERE e.organisation_id = ? AND e.expense_date BETWEEN ? AND ?
+              AND e.status IN ('APPROVED', 'PAID')
+            GROUP BY currency
+            """, rs -> expenditure.put(rs.getString("currency"), rs.getBigDecimal("total")),
+            scopeUnitId, organisationId, organisationId, organisationId, from, to);
+        List<CurrencyPosition> positions = java.util.stream.Stream.concat(income.keySet().stream(), expenditure.keySet().stream())
+            .distinct().sorted().map(currency -> {
+                BigDecimal received = income.getOrDefault(currency, BigDecimal.ZERO);
+                BigDecimal spent = expenditure.getOrDefault(currency, BigDecimal.ZERO);
+                return new CurrencyPosition(currency, received, spent, received.subtract(spent));
+            }).toList();
+        return new IncomeExpenditureSummary(reportContext, positions);
+    }
+
     @GetMapping("/exceptions")
     public List<ExceptionLine> exceptions(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to) {
@@ -196,7 +269,7 @@ public class FinancialReportController {
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to,
             @RequestParam(defaultValue = "CONTRIBUTION_SUMMARY") String type) throws IOException {
         ReportContext context = context(organisationId, scopeUnitId, from, to);
-        if (!List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER", "DEPOSIT_REGISTER", "EXCEPTION_REGISTER").contains(type)) {
+        if (!List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER", "DEPOSIT_REGISTER", "EXPENDITURE_REGISTER", "INCOME_EXPENDITURE", "EXCEPTION_REGISTER").contains(type)) {
             throw new IllegalArgumentException("Unsupported report type.");
         }
         try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
@@ -250,6 +323,23 @@ public class FinancialReportController {
                         item.allocatedAmount().toPlainString(), item.bankedAmount().toPlainString(),
                         item.outstandingAmount().toPlainString(), item.status());
                 }
+            } else if (type.equals("EXPENDITURE_REGISTER")) {
+                XWPFTable table = document.createTable(1, 9);
+                setRow(table.getRow(0), "Date", "Unit", "Category", "Payee", "Description",
+                    "Reference", "Amount", "Currency", "Status");
+                for (ExpenseLine item : expenses(organisationId, scopeUnitId, from, to)) {
+                    setRow(table.createRow(), item.expenseDate().toString(), item.unitName(), item.categoryName(),
+                        item.payee(), item.description(), item.reference(), item.amount().toPlainString(),
+                        item.currency(), item.status());
+                }
+            } else if (type.equals("INCOME_EXPENDITURE")) {
+                IncomeExpenditureSummary report = incomeExpenditure(organisationId, scopeUnitId, from, to);
+                XWPFTable table = document.createTable(1, 4);
+                setRow(table.getRow(0), "Currency", "Income", "Approved expenditure", "Net position");
+                for (CurrencyPosition item : report.positions()) {
+                    setRow(table.createRow(), item.currency(), item.income().toPlainString(),
+                        item.expenditure().toPlainString(), item.netPosition().toPlainString());
+                }
             } else {
                 XWPFTable table = document.createTable(1, 5);
                 setRow(table.getRow(0), "Date", "Unit", "Type", "Status", "Summary");
@@ -296,6 +386,8 @@ public class FinancialReportController {
         return switch (type) {
             case "CONTRIBUTION_REGISTER" -> "CONTRIBUTION REGISTER";
             case "DEPOSIT_REGISTER" -> "DEPOSIT REGISTER";
+            case "EXPENDITURE_REGISTER" -> "EXPENDITURE REGISTER";
+            case "INCOME_EXPENDITURE" -> "INCOME AND EXPENDITURE SUMMARY";
             case "EXCEPTION_REGISTER" -> "RECONCILIATION EXCEPTION REGISTER";
             default -> "CONTRIBUTION SUMMARY";
         };
@@ -321,6 +413,11 @@ public class FinancialReportController {
     public record DepositLine(String id, LocalDate depositDate, String unitName, String bankName,
         String bankReference, BigDecimal expectedAmount, String status, BigDecimal allocatedAmount,
         long allocationCount, BigDecimal bankedAmount, BigDecimal outstandingAmount) {}
+    public record ExpenseLine(String id, LocalDate expenseDate, String unitName, String categoryName,
+        String payee, String description, String reference, BigDecimal amount, String currency,
+        String status, String paymentReference, String reviewNote) {}
+    public record CurrencyPosition(String currency, BigDecimal income, BigDecimal expenditure, BigDecimal netPosition) {}
+    public record IncomeExpenditureSummary(ReportContext context, List<CurrencyPosition> positions) {}
     public record ExceptionLine(String id, String exceptionType, String status, String summary,
         String resolutionNote, String createdAt, String unitName) {}
 }
