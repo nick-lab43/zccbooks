@@ -168,6 +168,80 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void userWithoutFinanceViewIsDeniedAcrossEveryReportEndpoint() {
+        Fixture fixture = fixture();
+        UUID userId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, 'tabhera.membership', 'Tabhera Membership Admin', 'not-used', TRUE)
+            """, userId);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000004', 'UNIT', ?, ?)
+            """, UUID.randomUUID(), userId, fixture.organisationId(), fixture.nyikaA());
+
+        Integer financeViewAssignments = jdbc.queryForObject("""
+            SELECT COUNT(*)
+            FROM admin_role_assignments a
+            JOIN admin_role_permissions rp ON rp.role_id = a.role_id
+            WHERE a.user_id = ? AND a.revoked_at IS NULL
+              AND rp.permission_code = 'FINANCE_VIEW'
+            """, Integer.class, userId);
+        assertEquals(0, financeViewAssignments);
+
+        authenticateAs("tabhera.membership");
+        LocalDate from = LocalDate.parse("2026-01-01");
+        LocalDate to = LocalDate.parse("2026-12-31");
+
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.units(fixture.organisationId()));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.summary(fixture.organisationId(), fixture.nyikaA(), from, to));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.contributions(fixture.organisationId(), fixture.nyikaA(), from, to));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.deposits(fixture.organisationId(), fixture.nyikaA(), from, to));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.exceptions(fixture.organisationId(), fixture.nyikaA(), from, to));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.export(fixture.organisationId(), fixture.nyikaA(), from, to, "CONTRIBUTION_SUMMARY"));
+    }
+
+    @Test
+    void assignedNyikaCanReadDescendantButNotSiblingNyikaReports() {
+        Fixture fixture = fixture();
+        authenticate();
+        LocalDate from = LocalDate.parse("2026-01-01");
+        LocalDate to = LocalDate.parse("2026-12-31");
+
+        assertDoesNotThrow(() -> reports.summary(fixture.organisationId(), fixture.cellA(), from, to));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.summary(fixture.organisationId(), fixture.cellB(), from, to));
+    }
+
+    @Test
+    void everyWordExportTypeWritesAnAuditEvent() throws Exception {
+        Fixture fixture = fixture();
+        authenticate();
+        LocalDate from = LocalDate.parse("2026-01-01");
+        LocalDate to = LocalDate.parse("2026-12-31");
+
+        for (String type : List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER",
+                "DEPOSIT_REGISTER", "EXCEPTION_REGISTER")) {
+            var response = reports.export(fixture.organisationId(), fixture.nyikaA(), from, to, type);
+            assertEquals(200, response.getStatusCode().value(), type);
+            assertNotNull(response.getBody(), type);
+            assertTrue(response.getBody().length > 0, type);
+        }
+
+        Integer auditCount = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM admin_audit_events
+            WHERE actor_user_id = ? AND action_code = 'FINANCIAL_REPORT_GENERATED'
+            """, Integer.class, fixture.adminId());
+        assertEquals(4, auditCount);
+    }
+
+    @Test
     void revokedFinancialAssignmentCannotAccessReports() {
         Fixture fixture = fixture();
         jdbc.update("""
