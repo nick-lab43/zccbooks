@@ -6,6 +6,7 @@ import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.AfterEach;
@@ -453,6 +454,27 @@ class FinancialReportPostgresIntegrationTest {
                 || item.receiptNumber().equals("RCP-API-AFTER")));
         assertFalse(deposits.stream().anyMatch(item -> item.bankReference().equals("BANK-API-OLD")));
         assertFalse(exceptions.stream().anyMatch(item -> item.summary().equals("API out of period exception")));
+    }
+
+    @Test
+    void auditPayloadIncludesVersionedActorAndOrganisationScopeMetadata() {
+        Fixture fixture = fixture();
+        authenticate(fixture);
+        UUID targetId = UUID.randomUUID();
+
+        audit.record("AUDIT_METADATA_TEST", "TEST_TARGET", targetId,
+            Map.of("organisationId", fixture.organisationId(), "cellId", fixture.cellA()));
+
+        String details = jdbc.queryForObject("""
+            SELECT details::text FROM admin_audit_events WHERE target_id = ?
+            """, String.class, targetId);
+        assertNotNull(details);
+        assertTrue(details.contains("\"_metadata\""));
+        assertTrue(details.contains("\"schemaVersion\":1"));
+        assertTrue(details.contains("\"actorUserId\":\"" + fixture.adminId() + "\""));
+        assertTrue(details.contains("\"actorUsername\":\"" + fixture.username() + "\""));
+        assertTrue(details.contains("\"organisationId\":\"" + fixture.organisationId() + "\""));
+        assertTrue(details.contains("\"scopeUnitId\":\"" + fixture.cellA() + "\""));
     }
 
     private String exportText(Fixture fixture, LocalDate from, LocalDate to, String type) throws Exception {
