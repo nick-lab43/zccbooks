@@ -35,7 +35,7 @@ Account codes are unique case-insensitively within an organisation. Account type
 
 Journal creation includes its initial lines. A line must contain exactly one positive debit or credit, and must reference an active account belonging to the same organisation and currency. Draft lines can be replaced as a set. Submission requires at least two lines and equal positive debit and credit totals.
 
-A journal can only be approved by an administrator other than its creator. Posting requires a different administrator from the approver. The API locks the journal row while applying lifecycle transitions to prevent concurrent transitions.
+A journal must have three distinct administrators: the creator, the approver and the poster. The API locks the journal row while applying lifecycle transitions to prevent concurrent transitions.
 
 Journal listing is restricted to the caller's visible unit hierarchy unless they have organisation-wide or global permission. Journal detail and all lifecycle operations enforce access against the journal's actual scope unit.
 
@@ -47,7 +47,7 @@ Manual journals use source type MANUAL and no source ID. A journal linked to a r
 
 Account creation and updates, journal creation, line replacement, submission, approval, rejection and posting create administrator audit events.
 
-V31 prevents business-header edits after submission and restricts submission, approval and posting metadata to their corresponding lifecycle transition. Database triggers prevent journal-line edits after draft, prevent deletion of non-draft journals, enforce legal status transitions, require separate creator/approver/poster identities and recheck balanced lines at posting. Posted journals cannot be updated or deleted.
+V31 prevents business-header edits after submission and restricts submission, approval and posting metadata to their corresponding lifecycle transition. Database triggers prevent journal-line edits after draft, prevent deletion of non-draft journals, enforce legal status transitions, require three distinct creator/approver/poster identities and recheck balanced lines at posting. Posted journals cannot be updated or deleted.
 
 ## Accounting boundaries
 
