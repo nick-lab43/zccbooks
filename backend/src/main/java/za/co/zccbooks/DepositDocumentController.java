@@ -24,6 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import java.awt.image.BufferedImage;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
+import java.util.Iterator;
 
 @RestController
 @RequestMapping("/api/deposit-batches/{batchId}/documents")
@@ -83,11 +86,7 @@ public class DepositDocumentController {
                 if (page.isEmpty() || page.getSize() > MAX_PAGE_BYTES) {
                     throw new IllegalArgumentException("Each scanned page must be between 1 byte and 10 MB.");
                 }
-                BufferedImage image = ImageIO.read(page.getInputStream());
-                if (image == null || image.getWidth() < 100 || image.getHeight() < 100
-                        || image.getWidth() > 10000 || image.getHeight() > 10000) {
-                    throw new IllegalArgumentException("A scanned page is not a supported or valid image.");
-                }
+                BufferedImage image = readSafeImage(page);
                 PDPage pdfPage = new PDPage(PDRectangle.A4);
                 pdf.addPage(pdfPage);
                 var embedded = LosslessFactory.createFromImage(pdf, image);
@@ -141,6 +140,27 @@ public class DepositDocumentController {
             .contentLength(document.bytes().length).cacheControl(CacheControl.noStore())
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + document.filename() + "\"")
             .body(document.bytes());
+    }
+
+    private static BufferedImage readSafeImage(MultipartFile page) throws IOException {
+        try (ImageInputStream input = ImageIO.createImageInputStream(page.getInputStream())) {
+            if (input == null) throw new IllegalArgumentException("A scanned page is not a supported image.");
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new IllegalArgumentException("A scanned page is not a supported image.");
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (width < 100 || height < 100 || width > 6000 || height > 6000
+                        || (long) width * height > 20_000_000L) {
+                    throw new IllegalArgumentException("Scanned page dimensions exceed the supported 20-megapixel limit.");
+                }
+                return reader.read(0);
+            } finally {
+                reader.dispose();
+            }
+        }
     }
 
     private List<DocumentDto> documentRows(UUID batchId) {
