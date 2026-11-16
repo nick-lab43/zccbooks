@@ -72,7 +72,8 @@ export default function ExpenditureManagement({ organisationId, authorizationHea
 
   async function createExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     await perform(async () => {
       await request(`/api/organisations/${organisationId}/expenditures`, {
         method: "POST",
@@ -83,7 +84,7 @@ export default function ExpenditureManagement({ organisationId, authorizationHea
           currency: String(form.get("currency") || "ZAR")
         })
       });
-      event.currentTarget.reset();
+      formElement.reset();
     }, "Draft expenditure recorded.");
   }
 
@@ -117,7 +118,8 @@ export default function ExpenditureManagement({ organisationId, authorizationHea
 
   async function createCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     await perform(async () => {
       const created = await request<Category>(`/api/organisations/${organisationId}/expenditure-categories`, {
         method: "POST", body: JSON.stringify({
@@ -125,7 +127,7 @@ export default function ExpenditureManagement({ organisationId, authorizationHea
         })
       });
       setCategories(rows => [...rows, created].sort((a, b) => a.name.localeCompare(b.name)));
-      event.currentTarget.reset();
+      formElement.reset();
     }, "Expenditure category created.");
   }
 
