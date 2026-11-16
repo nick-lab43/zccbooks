@@ -46,6 +46,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired FinancialReportController reports;
     @Autowired AdminAuditService audit;
+    @Autowired DepositManagementController depositManagement;
 
     @AfterEach
     void clearAuthentication() {
@@ -506,6 +507,78 @@ class FinancialReportPostgresIntegrationTest {
             expectedValues.forEach(value -> assertTrue(tableText.contains(value), type + " missing value " + value));
             assertTrue(table.getNumberOfRows() >= 2, type + " should contain a header and at least one record");
         }
+    }
+
+    @Test
+    void depositLifecycleAllocatesEachReceiptOnceAndReconcilesAgainstBankEvidence() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_assignments
+                (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
+            """, UUID.randomUUID(), fixture.adminId());
+        authenticate(fixture);
+
+        UUID receiptId = jdbc.queryForObject(
+            "SELECT id FROM contributions WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'",
+            UUID.class, fixture.organisationId());
+        LocalDate depositDate = LocalDate.parse("2026-05-10");
+        var batch = depositManagement.createBatch(fixture.organisationId(),
+            new DepositManagementController.CreateDepositBatch(fixture.nyikaA(), depositDate,
+                "Test Bank", "LIFECYCLE-REF-1", new BigDecimal("125.00"), null));
+
+        var allocated = depositManagement.allocate(UUID.fromString(batch.id()),
+            new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00")));
+        assertEquals(1, allocated.receiptCount());
+        assertEquals(new BigDecimal("125.00"), allocated.allocatedAmount());
+
+        var secondBatch = depositManagement.createBatch(fixture.organisationId(),
+            new DepositManagementController.CreateDepositBatch(fixture.nyikaA(), depositDate,
+                "Test Bank", "LIFECYCLE-REF-2", new BigDecimal("125.00"), null));
+        assertThrows(ConflictException.class,
+            () -> depositManagement.allocate(UUID.fromString(secondBatch.id()),
+                new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00"))));
+
+        var submitted = depositManagement.submit(UUID.fromString(batch.id()));
+        assertEquals("SUBMITTED", submitted.status());
+
+        var statement = depositManagement.recordStatementEntry(fixture.organisationId(),
+            new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), depositDate,
+                "LIFECYCLE-REF-1", new BigDecimal("125.00"), "Verified deposit"));
+        var reconciled = depositManagement.reconcile(UUID.fromString(batch.id()),
+            new DepositManagementController.ReconcileDeposit(UUID.fromString(statement.id()), "Matched to statement"));
+        assertEquals("RECONCILED", reconciled.status());
+        assertTrue(depositManagement.statementEntries(fixture.organisationId(), fixture.nyikaA())
+            .stream().filter(entry -> entry.id().equals(statement.id())).findFirst().orElseThrow().reconciled());
+
+        assertThrows(ConflictException.class,
+            () -> depositManagement.reconcile(UUID.fromString(batch.id()),
+                new DepositManagementController.ReconcileDeposit(UUID.fromString(statement.id()), "Duplicate attempt")));
+    }
+
+    @Test
+    void depositAllocationRejectsPartialAmountsAndReceiptsFromAnotherScope() {
+        Fixture fixture = fixture();
+        authenticate(fixture);
+        UUID receiptA = jdbc.queryForObject(
+            "SELECT id FROM contributions WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'",
+            UUID.class, fixture.organisationId());
+        UUID receiptB = jdbc.queryForObject(
+            "SELECT id FROM contributions WHERE organisation_id = ? AND receipt_number = 'RCP-B-1'",
+            UUID.class, fixture.organisationId());
+        var batch = depositManagement.createBatch(fixture.organisationId(),
+            new DepositManagementController.CreateDepositBatch(fixture.nyikaA(),
+                LocalDate.parse("2026-05-10"), "Test Bank", "SCOPE-REF-1",
+                new BigDecimal("125.00"), null));
+
+        assertThrows(IllegalArgumentException.class,
+            () -> depositManagement.allocate(UUID.fromString(batch.id()),
+                new DepositManagementController.AllocateReceipt(receiptA, new BigDecimal("100.00"))));
+        assertThrows(IllegalArgumentException.class,
+            () -> depositManagement.allocate(UUID.fromString(batch.id()),
+                new DepositManagementController.AllocateReceipt(receiptB, new BigDecimal("900.00"))));
+        assertEquals(0, depositManagement.batches(fixture.organisationId(), fixture.nyikaA())
+            .stream().filter(item -> item.id().equals(batch.id())).findFirst().orElseThrow().receiptCount());
     }
 
     private Fixture fixture() {
