@@ -174,17 +174,52 @@ public class AdminController {
     }
 
     @GetMapping("/audit")
-    public List<AuditEventDto> auditEvents() {
+    public List<AuditEventDto> auditEvents(
+            @RequestParam(required = false) java.time.LocalDate from,
+            @RequestParam(required = false) java.time.LocalDate to,
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) String actor,
+            @RequestParam(required = false) String targetType,
+            @RequestParam(required = false) UUID targetId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(defaultValue = "0") int offset) {
         authorization.requireGlobalPermission("AUDIT_VIEW");
-        return jdbc.query("""
+        if (limit < 1 || limit > 500) throw new IllegalArgumentException("Audit page size must be between 1 and 500.");
+        if (offset < 0 || offset > 100000) throw new IllegalArgumentException("Audit offset must be between 0 and 100000.");
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new IllegalArgumentException("The audit end date cannot be before the start date.");
+        }
+        if (action != null && action.length() > 80) throw new IllegalArgumentException("Action filter is too long.");
+        if (actor != null && actor.length() > 80) throw new IllegalArgumentException("Actor filter is too long.");
+        if (targetType != null && targetType.length() > 80) throw new IllegalArgumentException("Target type filter is too long.");
+        if (search != null && search.length() > 120) throw new IllegalArgumentException("Audit search text cannot exceed 120 characters.");
+
+        StringBuilder sql = new StringBuilder("""
             SELECT e.id, u.username, e.action_code, e.target_type, e.target_id,
                    e.details::text AS details, e.occurred_at::text AS occurred_at
             FROM admin_audit_events e JOIN admin_users u ON u.id = e.actor_user_id
-            ORDER BY e.occurred_at DESC LIMIT 250
-            """, (rs, n) -> new AuditEventDto(rs.getObject("id", UUID.class).toString(),
-                rs.getString("username"), rs.getString("action_code"), rs.getString("target_type"),
-                rs.getObject("target_id") == null ? null : rs.getObject("target_id", UUID.class).toString(),
-                rs.getString("details"), rs.getString("occurred_at")));
+            WHERE 1 = 1
+            """);
+        java.util.List<Object> parameters = new java.util.ArrayList<>();
+        if (from != null) { sql.append(" AND e.occurred_at >= ?::date"); parameters.add(from); }
+        if (to != null) { sql.append(" AND e.occurred_at < (?::date + INTERVAL '1 day')"); parameters.add(to); }
+        if (action != null && !action.isBlank()) { sql.append(" AND e.action_code ILIKE ?"); parameters.add("%" + action.trim() + "%"); }
+        if (actor != null && !actor.isBlank()) { sql.append(" AND u.username ILIKE ?"); parameters.add("%" + actor.trim() + "%"); }
+        if (targetType != null && !targetType.isBlank()) { sql.append(" AND e.target_type ILIKE ?"); parameters.add("%" + targetType.trim() + "%"); }
+        if (targetId != null) { sql.append(" AND e.target_id = ?"); parameters.add(targetId); }
+        if (search != null && !search.isBlank()) {
+            sql.append(" AND (e.action_code ILIKE ? OR e.target_type ILIKE ? OR COALESCE(e.target_id::text, '') ILIKE ? OR e.details::text ILIKE ? OR u.username ILIKE ?)");
+            String pattern = "%" + search.trim() + "%";
+            for (int i = 0; i < 5; i++) parameters.add(pattern);
+        }
+        sql.append(" ORDER BY e.occurred_at DESC, e.id DESC LIMIT ? OFFSET ?");
+        parameters.add(limit);
+        parameters.add(offset);
+        return jdbc.query(sql.toString(), (rs, n) -> new AuditEventDto(rs.getObject("id", UUID.class).toString(),
+            rs.getString("username"), rs.getString("action_code"), rs.getString("target_type"),
+            rs.getObject("target_id") == null ? null : rs.getObject("target_id", UUID.class).toString(),
+            rs.getString("details"), rs.getString("occurred_at")), parameters.toArray());
     }
 
     @Transactional
