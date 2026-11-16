@@ -5,7 +5,7 @@ type Unit = { id: string; parentId: string | null; level: string; code: string; 
 type Receipt = { id: string; receiptNumber: string; memberName: string; amount: number; contributionDate: string; paymentMethod: string; paymentReference: string | null; categoryName: string; scopeUnitId: string };
 type Batch = { id: string; scopeUnitId: string; scopeName: string; depositDate: string; bankName: string; bankReference: string; expectedAmount: number; status: string; note: string | null; allocatedAmount: number; receiptCount: number; bankedAmount: number; outstandingAmount: number; outstandingNote: string | null; createdAt: string };
 type Allocated = { contributionId: string; receiptNumber: string; memberName: string; amount: number; contributionDate: string; paymentReference: string | null };
-type StatementEntry = { id: string; scopeUnitId: string; scopeName: string; transactionDate: string; bankReference: string; amount: number; description: string | null; reconciled: boolean };
+type StatementEntry = { id: string; scopeUnitId: string; scopeName: string; transactionDate: string; bankReference: string; amount: number; entryType: string; description: string | null; reconciled: boolean };
 
 export default function DepositManagement({ organisationId, authorizationHeader, canDeposit, canReconcile }: {
   organisationId: string; authorizationHeader: string; canDeposit: boolean; canReconcile: boolean;
@@ -192,14 +192,14 @@ export default function DepositManagement({ organisationId, authorizationHeader,
         <button className="secondary-button" disabled={busy || !scopeUnitId}>Record statement entry</button>
       </form>
       <div className="table-wrap"><table><thead><tr><th>DATE / REFERENCE</th><th>AMOUNT</th><th>DESCRIPTION</th><th>STATUS</th></tr></thead><tbody>
-        {entries.map(entry => <tr key={entry.id}><td><strong>{entry.bankReference}</strong><small className="table-subtext">{entry.transactionDate}</small></td><td>ZAR {Number(entry.amount).toFixed(2)}</td><td>{entry.description || "—"}</td><td>{entry.reconciled ? "RECONCILED" : "UNMATCHED"}</td></tr>)}
+        {entries.map(entry => <tr key={entry.id}><td><strong>{entry.bankReference}</strong><small className="table-subtext">{entry.transactionDate}</small></td><td>ZAR {Number(entry.amount).toFixed(2)}</td><td>{entry.description || "—"}</td><td>{entry.entryType} · {entry.reconciled ? "RECONCILED" : "UNMATCHED"}</td></tr>)}
         {!entries.length && <tr><td colSpan={4} className="empty-table">No bank statement entries recorded for this scope.</td></tr>}
       </tbody></table></div>
       <div className="panel-divider" />
       <div className="register-heading"><div><h3>Submitted deposits awaiting reconciliation</h3></div></div>
       <div className="table-wrap"><table><thead><tr><th>DEPOSIT</th><th>ALLOCATED</th><th>BANKED</th><th>OUTSTANDING</th><th>DATE</th><th>MATCHING CREDIT</th><th>EXPLANATION / ACTION</th></tr></thead><tbody>
         {batches.filter(batch => ["SUBMITTED", "PARTIALLY_RECONCILED"].includes(batch.status)).map(batch => {
-          const candidate = entries.find(entry => !entry.reconciled && entry.bankReference.toLowerCase() === batch.bankReference.toLowerCase() && Number(entry.amount) > 0 && Number(entry.amount) <= Number(batch.outstandingAmount) && Math.abs(new Date(entry.transactionDate).getTime() - new Date(batch.depositDate).getTime()) <= 3 * 86400000);
+          const candidate = entries.find(entry => !entry.reconciled && entry.entryType === "CREDIT" && entry.bankReference.toLowerCase() === batch.bankReference.toLowerCase() && Number(entry.amount) > 0 && Number(entry.amount) <= Number(batch.outstandingAmount) && Math.abs(new Date(entry.transactionDate).getTime() - new Date(batch.depositDate).getTime()) <= 3 * 86400000);
           const note = partialNotes[batch.id] ?? "";
           const needsExplanation = !!candidate && Number(candidate.amount) < Number(batch.outstandingAmount);
           return <tr key={batch.id}>
