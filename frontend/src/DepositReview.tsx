@@ -7,6 +7,11 @@ type ReviewItem = {
   receiptCount: number; allocatedAmount: number; submittedBy: string;
 };
 type History = { action: string; previousStatus: string | null; newStatus: string; note: string | null; changedAt: string; changedBy: string };
+type ReviewDetails = {
+  allocations: { contributionId: string; receiptNumber: string; zccAppNumber: string; memberName: string; categoryCode: string; categoryName: string; streamCode: string; streamName: string; contributionAmount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; contributionUnit: string; allocatedAmount: number; capturedAt: string; capturedBy: string }[];
+  evidence: { id: string; filename: string; contentType: string; fileSize: number; sha256: string; uploadedAt: string; uploadedBy: string }[];
+  documents: { id: string; filename: string; fileSize: number; sha256: string; pageCount: number; createdAt: string; createdBy: string }[];
+};
 
 export default function DepositReview({ organisationId, authorizationHeader }: {
   organisationId: string; authorizationHeader: string;
@@ -14,6 +19,8 @@ export default function DepositReview({ organisationId, authorizationHeader }: {
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [history, setHistory] = useState<History[]>([]);
+  const [details, setDetails] = useState<ReviewDetails | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -43,17 +50,36 @@ export default function DepositReview({ organisationId, authorizationHeader }: {
   }
 
   useEffect(() => {
-    setItems([]); setSelectedId(""); setHistory([]);
+    setItems([]); setSelectedId(""); setHistory([]); setDetails(null);
     if (organisationId) reload().catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
 
   useEffect(() => {
-    if (!selectedId) { setHistory([]); return; }
-    request<History[]>(`/api/deposit-batches/${selectedId}/review-history`)
-      .then(setHistory).catch((e: Error) => setError(e.message));
+    if (!selectedId) { setHistory([]); setDetails(null); return; }
+    setLoadingDetails(true); setError("");
+    Promise.all([
+      request<History[]>(`/api/deposit-batches/${selectedId}/review-history`),
+      request<ReviewDetails>(`/api/deposit-batches/${selectedId}/review-details`)
+    ]).then(([events, detail]) => { setHistory(events); setDetails(detail); })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoadingDetails(false));
   }, [selectedId, authorizationHeader]);
 
   const selected = items.find(item => item.id === selectedId);
+
+  async function downloadFile(path: string, filename: string) {
+    setError("");
+    try {
+      const response = await fetch(`${apiBase}${path}`, { headers });
+      if (!response.ok) throw new Error(`Could not retrieve ${filename} (${response.status}).`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = filename; link.rel = "noopener";
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { setError(e instanceof Error ? e.message : "File download failed."); }
+  }
 
   async function decide(decision: "ACCEPT" | "QUERY" | "REJECT") {
     if (!selected) return;
@@ -85,6 +111,43 @@ export default function DepositReview({ organisationId, authorizationHeader }: {
     </tbody></table></div>
     {selected && <div className="panel-divider">
       <div className="register-heading"><div><h3>Package {selected.bankReference}</h3><p>{selected.scopeName} · submitted by {selected.submittedBy}</p></div><strong>ZAR {Number(selected.expectedAmount).toFixed(2)}<small className="table-subtext">{selected.receiptCount} receipts · {selected.reviewStatus}</small></strong></div>
+      {loadingDetails && <p role="status">Loading evidence and allocation details…</p>}
+      {details && <>
+        <div className="panel-divider">
+          <div className="register-heading"><div><h3>Receipt allocation breakdown</h3><p>Every receipt linked to this deposit, with the member, contribution category and financial stream.</p></div><span className="count-box">{details.allocations.length} RECEIPTS</span></div>
+          <div className="table-wrap"><table><thead><tr><th>RECEIPT / MEMBER</th><th>CATEGORY</th><th>STREAM</th><th>DATE / UNIT</th><th>CONTRIBUTION</th><th>ALLOCATED</th></tr></thead><tbody>
+            {details.allocations.map(line => <tr key={line.contributionId}>
+              <td><strong>{line.receiptNumber}</strong><small className="table-subtext">{line.memberName} · {line.zccAppNumber}</small></td>
+              <td>{line.categoryName}<small className="table-subtext">{line.categoryCode}</small></td>
+              <td>{line.streamName}<small className="table-subtext">{line.streamCode}</small></td>
+              <td>{line.contributionDate}<small className="table-subtext">{line.contributionUnit}</small></td>
+              <td>{line.currency} {Number(line.contributionAmount).toFixed(2)}</td>
+              <td>{line.currency} {Number(line.allocatedAmount).toFixed(2)}</td>
+            </tr>)}
+            {!details.allocations.length && <tr><td colSpan={6} className="empty-table">No receipt allocations found.</td></tr>}
+          </tbody></table></div>
+          <div className="register-heading"><div><h3>Original deposit evidence</h3><p>Original uploaded photographs and documents, with uploader and recorded digest.</p></div><span className="count-box">{details.evidence.length} FILES</span></div>
+          <div className="table-wrap"><table><thead><tr><th>FILE</th><th>FORMAT / SIZE</th><th>UPLOADED BY</th><th>UPLOADED</th><th></th></tr></thead><tbody>
+            {details.evidence.map(file => <tr key={file.id}>
+              <td><strong>{file.filename}</strong><small className="table-subtext">SHA-256 {file.sha256}</small></td>
+              <td>{file.contentType}<small className="table-subtext">{(file.fileSize / 1048576).toFixed(2)} MB</small></td>
+              <td>{file.uploadedBy}</td><td>{new Date(file.uploadedAt).toLocaleString()}</td>
+              <td><button className="secondary-button" onClick={() => downloadFile(`/api/deposit-batches/${selected.id}/evidence/${file.id}/content`, file.filename)}>Download original</button></td>
+            </tr>)}
+            {!details.evidence.length && <tr><td colSpan={5} className="empty-table">No original evidence attached.</td></tr>}
+          </tbody></table></div>
+          <div className="register-heading"><div><h3>Processed scan documents</h3><p>PDF derivatives created from the original pages. Originals remain unchanged.</p></div><span className="count-box">{details.documents.length} PDFS</span></div>
+          <div className="table-wrap"><table><thead><tr><th>DOCUMENT</th><th>PAGES / SIZE</th><th>CREATED BY</th><th>CREATED</th><th></th></tr></thead><tbody>
+            {details.documents.map(file => <tr key={file.id}>
+              <td><strong>{file.filename}</strong><small className="table-subtext">SHA-256 {file.sha256}</small></td>
+              <td>{file.pageCount} pages<small className="table-subtext">{(file.fileSize / 1048576).toFixed(2)} MB</small></td>
+              <td>{file.createdBy}</td><td>{new Date(file.createdAt).toLocaleString()}</td>
+              <td><button className="secondary-button" onClick={() => downloadFile(`/api/deposit-batches/${selected.id}/documents/${file.id}/content`, file.filename)}>Download PDF</button></td>
+            </tr>)}
+            {!details.documents.length && <tr><td colSpan={5} className="empty-table">No processed scan documents created.</td></tr>}
+          </tbody></table></div>
+        </div>
+      </>}
       {selected.note && <p className="panel-description">Submitter note: {selected.note}</p>}
       {selected.responseNote && <p className="panel-description">Submitter response: {selected.responseNote}</p>}
       <label className="form-stack">Review note<textarea value={note} onChange={e => setNote(e.target.value)} maxLength={1000} rows={3} placeholder="Required for query or rejection; optional for acceptance." /></label>

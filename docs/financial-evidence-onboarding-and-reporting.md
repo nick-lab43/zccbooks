@@ -190,3 +190,8 @@ Submitted deposit batches enter a separate central review queue before bank reco
 Central reviewers with `FINANCE_REVIEW` can inspect the organisation-wide queue and accept, query or reject a submitted package. Query and rejection require a reason. The submitting administrator can respond to a queried or rejected package within the batch's assigned geographical scope; the response returns it to the central queue. Bank reconciliation is blocked until the package is accepted.
 
 Every submission, decision and response is written to append-only review history. Review history is protected against update and deletion at database level. Existing submitted/reconciled batches receive a baseline review state during migration V26; previously reconciled batches are treated as accepted. Central review does not replace bank-statement reconciliation and does not alter posted contributions or receipt allocations.
+
+
+### Central reviewer evidence inspection — implemented
+
+The central review detail endpoint returns each allocated receipt with its receipt number, member identity, ZCC application number, contribution category, financial stream, amount, currency, contribution date, payment method, geographical unit and capture administrator. It also returns original evidence metadata and processed PDF metadata. The central review workspace exposes the allocation breakdown and provides authenticated downloads of original evidence and processed PDFs. Original files remain unchanged; reviewers must assess the source evidence rather than treating a processed scan or OCR result as proof of settlement.

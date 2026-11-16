@@ -53,6 +53,73 @@ public class DepositReviewController {
             organisationId);
     }
 
+
+    @GetMapping("/deposit-batches/{batchId}/review-details")
+    public DepositReviewDetails details(@PathVariable UUID batchId) {
+        DepositContext batch = requireBatch(batchId);
+        authorization.requireOrganisationPermission("FINANCE_REVIEW", batch.organisationId());
+        List<DepositAllocationDetail> allocations = jdbc.query("""
+            SELECT c.id AS contribution_id, c.receipt_number, m.zcc_app_number,
+                   m.first_name, m.last_name, cat.code AS category_code, cat.name AS category_name,
+                   fs.code AS stream_code, fs.name AS stream_name, c.amount, c.currency,
+                   c.contribution_date, c.payment_method, c.payment_reference,
+                   u.name AS contribution_unit, a.allocated_amount, c.captured_at,
+                   capturer.display_name AS captured_by
+            FROM deposit_allocations a
+            JOIN contributions c ON c.id = a.contribution_id
+            JOIN members m ON m.id = c.member_id
+            JOIN contribution_categories cat ON cat.id = c.category_id
+            JOIN financial_streams fs ON fs.id = c.stream_id
+            JOIN organisational_units u ON u.id = c.scope_unit_id
+            JOIN admin_users capturer ON capturer.id = c.captured_by
+            WHERE a.deposit_batch_id = ?
+            ORDER BY c.contribution_date, c.receipt_number
+            """, (rs, n) -> new DepositAllocationDetail(
+                rs.getObject("contribution_id", UUID.class).toString(), rs.getString("receipt_number"),
+                rs.getString("zcc_app_number"), rs.getString("first_name") + " " + rs.getString("last_name"),
+                rs.getString("category_code"), rs.getString("category_name"), rs.getString("stream_code"),
+                rs.getString("stream_name"), rs.getBigDecimal("amount"), rs.getString("currency"),
+                rs.getDate("contribution_date").toLocalDate().toString(), rs.getString("payment_method"),
+                rs.getString("payment_reference"), rs.getString("contribution_unit"),
+                rs.getBigDecimal("allocated_amount"), rs.getTimestamp("captured_at").toInstant().toString(),
+                rs.getString("captured_by")), batchId);
+        List<DepositEvidenceDetail> evidence = jdbc.query("""
+            SELECT e.id, e.original_filename, e.content_type, e.file_size, e.sha256, e.uploaded_at,
+                   uploader.display_name AS uploaded_by
+            FROM deposit_evidence e
+            JOIN admin_users uploader ON uploader.id = e.uploaded_by
+            WHERE e.deposit_batch_id = ?
+            ORDER BY e.uploaded_at, e.id
+            """, (rs, n) -> new DepositEvidenceDetail(rs.getObject("id", UUID.class).toString(),
+                rs.getString("original_filename"), rs.getString("content_type"), rs.getLong("file_size"),
+                rs.getString("sha256"), rs.getTimestamp("uploaded_at").toInstant().toString(),
+                rs.getString("uploaded_by")), batchId);
+        List<ProcessedDocumentDetail> documents = jdbc.query("""
+            SELECT d.id, d.original_filename, d.file_size, d.sha256, d.page_count, d.created_at,
+                   creator.display_name AS created_by
+            FROM deposit_documents d
+            JOIN admin_users creator ON creator.id = d.created_by
+            WHERE d.deposit_batch_id = ?
+            ORDER BY d.created_at, d.id
+            """, (rs, n) -> new ProcessedDocumentDetail(rs.getObject("id", UUID.class).toString(),
+                rs.getString("original_filename"), rs.getLong("file_size"), rs.getString("sha256"),
+                rs.getInt("page_count"), rs.getTimestamp("created_at").toInstant().toString(),
+                rs.getString("created_by")), batchId);
+        return new DepositReviewDetails(allocations, evidence, documents);
+    }
+
+    public record DepositReviewDetails(List<DepositAllocationDetail> allocations,
+        List<DepositEvidenceDetail> evidence, List<ProcessedDocumentDetail> documents) {}
+    public record DepositAllocationDetail(String contributionId, String receiptNumber, String zccAppNumber,
+        String memberName, String categoryCode, String categoryName, String streamCode, String streamName,
+        BigDecimal contributionAmount, String currency, String contributionDate, String paymentMethod,
+        String paymentReference, String contributionUnit, BigDecimal allocatedAmount, String capturedAt,
+        String capturedBy) {}
+    public record DepositEvidenceDetail(String id, String filename, String contentType, long fileSize,
+        String sha256, String uploadedAt, String uploadedBy) {}
+    public record ProcessedDocumentDetail(String id, String filename, long fileSize, String sha256,
+        int pageCount, String createdAt, String createdBy) {}
+
     @GetMapping("/deposit-batches/{batchId}/review-history")
     public List<DepositReviewHistory> history(@PathVariable UUID batchId) {
         DepositContext batch = requireBatch(batchId);
