@@ -234,6 +234,28 @@ public class ReconciliationExceptionController {
             organisationId, scopeUnitId, includeResolved);
     }
 
+    @GetMapping("/reconciliation-exceptions/{exceptionId}/history")
+    public List<ReconciliationExceptionHistoryDto> history(@PathVariable UUID exceptionId) {
+        ExceptionScope scope = jdbc.query("""
+            SELECT organisation_id, scope_unit_id, status
+            FROM reconciliation_exceptions WHERE id = ?
+            """, (rs, n) -> new ExceptionScope(rs.getObject("organisation_id", UUID.class),
+                rs.getObject("scope_unit_id", UUID.class), rs.getString("status")), exceptionId)
+            .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Reconciliation exception not found."));
+        authorization.requireUnitPermission("FINANCE_VIEW", scope.scopeUnitId());
+        return jdbc.query("""
+            SELECT h.id, h.previous_status, h.new_status, h.action, h.note,
+                   u.username, h.changed_at
+            FROM reconciliation_exception_history h
+            JOIN admin_users u ON u.id = h.changed_by
+            WHERE h.exception_id = ?
+            ORDER BY h.changed_at ASC, h.id ASC
+            """, (rs, n) -> new ReconciliationExceptionHistoryDto(
+                rs.getObject("id", UUID.class).toString(), rs.getString("previous_status"),
+                rs.getString("new_status"), rs.getString("action"), rs.getString("note"),
+                rs.getString("username"), rs.getTimestamp("changed_at").toInstant().toString()), exceptionId);
+    }
+
     @PatchMapping("/reconciliation-exceptions/{exceptionId}")
     @Transactional
     public ReconciliationExceptionDto updateException(@PathVariable UUID exceptionId,
@@ -249,7 +271,16 @@ public class ReconciliationExceptionController {
         if ("RESOLVED".equals(request.status()) && (request.resolutionNote() == null || request.resolutionNote().isBlank())) {
             throw new IllegalArgumentException("A resolution note is required before resolving an exception.");
         }
+        if (scope.status().equals(request.status())) {
+            throw new ConflictException("The exception is already in the requested status.");
+        }
         UUID actor = actorId();
+        jdbc.update("""
+            INSERT INTO reconciliation_exception_history
+                (id, exception_id, previous_status, new_status, action, note, changed_by)
+            VALUES (?, ?, ?, ?, 'STATUS_CHANGED', ?, ?)
+            """, UUID.randomUUID(), exceptionId, scope.status(), request.status(),
+            blankToNull(request.resolutionNote()), actor);
         jdbc.update("""
             UPDATE reconciliation_exceptions
             SET status = ?, resolution_note = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
@@ -273,12 +304,21 @@ public class ReconciliationExceptionController {
 
     private int insertException(UUID organisationId, UUID scopeUnitId, String sourceType, UUID sourceId,
             String exceptionType, String summary) {
-        return jdbc.update("""
+        UUID exceptionId = UUID.randomUUID();
+        int inserted = jdbc.update("""
             INSERT INTO reconciliation_exceptions
                 (id, organisation_id, scope_unit_id, source_type, source_id, exception_type, summary)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (source_type, source_id, exception_type) DO NOTHING
-            """, UUID.randomUUID(), organisationId, scopeUnitId, sourceType, sourceId, exceptionType, summary);
+            """, exceptionId, organisationId, scopeUnitId, sourceType, sourceId, exceptionType, summary);
+        if (inserted == 1) {
+            jdbc.update("""
+                INSERT INTO reconciliation_exception_history
+                    (id, exception_id, previous_status, new_status, action, changed_by)
+                VALUES (?, ?, NULL, 'OPEN', 'CREATED', ?)
+                """, UUID.randomUUID(), exceptionId, actorId());
+        }
+        return inserted;
     }
 
     private UUID actorId() {
@@ -333,6 +373,8 @@ public class ReconciliationExceptionController {
     public record ReconciliationExceptionDto(String id, String sourceType, String sourceId,
         String exceptionType, String status, String summary, String resolutionNote,
         String createdAt, String updatedAt, String scopeName) {}
+    public record ReconciliationExceptionHistoryDto(String id, String previousStatus, String newStatus,
+        String action, String note, String changedBy, String changedAt) {}
     public record UpdateException(@NotBlank @Pattern(regexp = "UNDER_REVIEW|RESOLVED") String status,
         @Size(max = 1000) String resolutionNote) {}
     private record ExceptionCandidate(UUID id, String reference, BigDecimal amount, String matchState) {}
