@@ -37,8 +37,13 @@ A position may optionally permit concurrent appointments at different scopes. Wh
 - `POST /api/appointments/positions` — create a position; Central Administration only.
 - `PATCH /api/appointments/positions/{positionId}` — update or deactivate a position; Central Administration only.
 - `GET /api/members/{memberId}/appointments` — read current and historical appointments within the member's permitted Cell scope.
+- `GET /api/organisations/{organisationId}/appointments?scopeUnitId={scopeUnitId}` — read the appointment register for the selected permitted Nyika, Tabhera or Cell, including appointments assigned to subordinate units. The endpoint validates organisation ownership and membership-view access to the selected scope.
 - `POST /api/members/{memberId}/appointments` — record a date-effective appointment.
 - `PATCH /api/appointments/{appointmentId}/end` — end an appointment without deleting its history.
+
+## Organisation-wide register
+
+The appointments workspace includes a register scoped to a selected geographical unit. Selecting a Nyika or Tabhera includes appointments assigned directly to that unit and to its descendant units; selecting a Cell limits the register to that Cell. The register can be filtered by current, scheduled or ended status, position, and member name or application number. It displays inactive-member appointments for historical accountability but does not allow new appointments to be assigned to inactive members.
 
 ## Data integrity
 
