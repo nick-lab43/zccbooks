@@ -658,7 +658,7 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
-    void expenditureRequiresIndependentApprovalAndTracksPaymentInFinancialReports() {
+    void expenditureRequiresIndependentApprovalAndTracksPaymentInFinancialReports() throws Exception {
         Fixture fixture = fixture();
         UUID capturerId = UUID.randomUUID();
         UUID approverId = UUID.randomUUID();
