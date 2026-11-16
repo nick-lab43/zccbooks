@@ -17,10 +17,12 @@ Migration V17 grants capture to CENTRAL_ADMIN, NYIKA_ADMIN and FINANCIAL_OFFICER
 
 1. A permitted administrator records a draft with date, category, payee, description, optional invoice/reference, amount and currency.
 2. The creator submits the draft. Submitted records are locked against editing.
-3. An administrator with approval permission reviews the submission.
-4. The creator cannot approve or reject their own expense. Rejection requires a reason.
-5. An approved expense can be marked paid by an authorised approver. A payment reference is mandatory.
-6. Rejected expenses remain in the register for audit purposes. A corrected expense is entered as a new record rather than overwriting the rejected history.
+3. A draft can be amended only by its original capturer. Each amendment increments a version; stale edits are rejected.
+4. The original capturer can withdraw a draft with a mandatory reason. The record remains visible as VOIDED and is retained for audit.
+5. An administrator with approval permission reviews the submission.
+6. The creator cannot approve or reject their own expense. Rejection requires a reason.
+7. An approved expense can be marked paid by an authorised approver. A payment reference is mandatory.
+8. Rejected and withdrawn expenses remain in the register for audit purposes. Submitted or reviewed expenses cannot be withdrawn; they must follow the review process.
 
 The workflow records approval and payment references. It does not yet verify payment against a bank statement or payment provider.
 
@@ -36,7 +38,9 @@ The workflow records approval and payment references. It does not yet verify pay
 
 - Organisation and geographical unit ownership are enforced by database foreign keys and API validation.
 - Unit permissions are checked on every read and state-changing request.
-- Review and payment transitions lock the expense row before checking its current status.
+- Draft amendments, withdrawal, review and payment transitions lock the expense row before checking its current status.
+- Draft amendments use optimistic version checks and are limited to the original capturer.
+- Withdrawal is permitted only before submission, requires a reason, and preserves the original record with VOIDED status.
 - Approval requires a different administrator from the original capturer.
 - Category codes are unique within an organisation.
 - Every category and expense lifecycle action is written to the append-only administrator audit log.

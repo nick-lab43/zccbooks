@@ -9,6 +9,7 @@ type Expense = {
   amount: number; currency: string; status: string; capturedBy: string; createdAt: string;
   submittedAt: string | null; reviewedBy: string | null; reviewedAt: string | null;
   reviewNote: string | null; paidAt: string | null; paymentReference: string | null;
+  version: number; voidedBy: string | null; voidedAt: string | null; voidReason: string | null;
 };
 
 export default function ExpenditureManagement({ organisationId, authorizationHeader, canCapture, canApprove }: {
@@ -23,6 +24,9 @@ export default function ExpenditureManagement({ organisationId, authorizationHea
   const [notice, setNotice] = useState("");
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [paymentReferences, setPaymentReferences] = useState<Record<string, string>>({});
+  const [voidReasons, setVoidReasons] = useState<Record<string, string>>({});
+  const [editingDraft, setEditingDraft] = useState<Expense | null>(null);
+  const [draftForm, setDraftForm] = useState({ categoryId: "", expenseDate: "", payee: "", description: "", reference: "", amount: "", currency: "ZAR" });
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
   const headers = useMemo(() => ({ Authorization: authorizationHeader }), [authorizationHeader]);
 
@@ -86,6 +90,34 @@ export default function ExpenditureManagement({ organisationId, authorizationHea
       });
       formElement.reset();
     }, "Draft expenditure recorded.");
+  }
+
+  function beginDraftEdit(expense: Expense) {
+    setEditingDraft(expense);
+    setDraftForm({ categoryId: expense.categoryId, expenseDate: expense.expenseDate, payee: expense.payee,
+      description: expense.description, reference: expense.reference ?? "", amount: String(expense.amount), currency: expense.currency });
+  }
+
+  async function saveDraftEdit() {
+    if (!editingDraft) return;
+    await perform(async () => {
+      await request(`/api/expenditures/${editingDraft.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ ...draftForm, amount: Number(draftForm.amount), version: editingDraft.version })
+      });
+      setEditingDraft(null);
+    }, "Draft expenditure amended. The new version is recorded.");
+  }
+
+  async function voidDraft(expense: Expense) {
+    const reason = voidReasons[expense.id] ?? "";
+    if (!reason.trim()) { setError("A reason is required to withdraw a draft."); return; }
+    await perform(async () => {
+      await request(`/api/expenditures/${expense.id}/void`, {
+        method: "POST", body: JSON.stringify({ reason })
+      });
+      setVoidReasons(rows => { const next = { ...rows }; delete next[expense.id]; return next; });
+    }, "Draft expenditure withdrawn and retained in the audit register.");
   }
 
   async function submitExpense(expense: Expense) {
@@ -192,7 +224,21 @@ export default function ExpenditureManagement({ organisationId, authorizationHea
           <td>{expense.currency} {Number(expense.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
           <td><strong>{expense.status}</strong>{expense.reviewNote && <small className="table-subtext">{expense.reviewNote}</small>}</td>
           <td>
-            {canCapture && expense.status === "DRAFT" && <button className="secondary-button" disabled={busy} onClick={() => submitExpense(expense)}>Submit for approval</button>}
+            {canCapture && expense.status === "DRAFT" && <div className="form-stack">
+              {editingDraft?.id === expense.id ? <div className="form-stack">
+                <label>Expense date<input type="date" value={draftForm.expenseDate} onChange={e => setDraftForm(row => ({ ...row, expenseDate: e.target.value }))} /></label>
+                <label>Category<select value={draftForm.categoryId} onChange={e => setDraftForm(row => ({ ...row, categoryId: e.target.value }))}>{categories.filter(item => item.active).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+                <label>Payee<input value={draftForm.payee} maxLength={160} onChange={e => setDraftForm(row => ({ ...row, payee: e.target.value }))} /></label>
+                <label>Description<textarea rows={2} maxLength={1000} value={draftForm.description} onChange={e => setDraftForm(row => ({ ...row, description: e.target.value }))} /></label>
+                <label>Reference<input value={draftForm.reference} maxLength={120} onChange={e => setDraftForm(row => ({ ...row, reference: e.target.value }))} /></label>
+                <div className="field-pair"><label>Amount<input type="number" min="0.01" step="0.01" value={draftForm.amount} onChange={e => setDraftForm(row => ({ ...row, amount: e.target.value }))} /></label>
+                  <label>Currency<select value={draftForm.currency} onChange={e => setDraftForm(row => ({ ...row, currency: e.target.value }))}><option>ZAR</option><option>USD</option><option>EUR</option><option>GBP</option></select></label></div>
+                <div className="field-pair"><button className="secondary-button" disabled={busy} onClick={saveDraftEdit}>Save amendment</button><button className="secondary-button" disabled={busy} onClick={() => setEditingDraft(null)}>Cancel</button></div>
+              </div> : <button className="secondary-button" disabled={busy} onClick={() => beginDraftEdit(expense)}>Edit draft</button>}
+              <button className="secondary-button" disabled={busy} onClick={() => submitExpense(expense)}>Submit for approval</button>
+              <input aria-label="Draft withdrawal reason" value={voidReasons[expense.id] ?? ""} maxLength={500} placeholder="Reason for withdrawing draft" onChange={e => setVoidReasons(rows => ({ ...rows, [expense.id]: e.target.value }))} />
+              <button className="secondary-button" disabled={busy || !(voidReasons[expense.id] ?? "").trim()} onClick={() => voidDraft(expense)}>Withdraw draft</button>
+            </div>}
             {canApprove && expense.status === "SUBMITTED" && <div className="form-stack"><input aria-label="Review note" value={reviewNotes[expense.id] ?? ""} maxLength={500} placeholder="Reason required for rejection" onChange={e => setReviewNotes(rows => ({ ...rows, [expense.id]: e.target.value }))} /><div className="field-pair"><button className="secondary-button" disabled={busy} onClick={() => reviewExpense(expense, "APPROVE")}>Approve</button><button className="secondary-button" disabled={busy || !(reviewNotes[expense.id] ?? "").trim()} onClick={() => reviewExpense(expense, "REJECT")}>Reject</button></div></div>}
             {canApprove && expense.status === "APPROVED" && <div className="form-stack"><input aria-label="Payment reference" value={paymentReferences[expense.id] ?? ""} maxLength={120} placeholder="Payment reference" onChange={e => setPaymentReferences(rows => ({ ...rows, [expense.id]: e.target.value }))} /><button className="secondary-button" disabled={busy || !(paymentReferences[expense.id] ?? "").trim()} onClick={() => markPaid(expense)}>Mark paid</button></div>}
           </td>
