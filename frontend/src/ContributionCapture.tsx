@@ -5,7 +5,7 @@ type Unit = { id: string; parentId: string | null; level: string; code: string; 
 type Category = { id: string; name: string; streamName: string; active: boolean; scopeLevels: string[] };
 type Member = { id: string; zccAppNumber: string | null; firstName: string; lastName: string };
 type Followup = { id: string; status: string; note: string | null; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string };
-type RegisterItem = { id: string; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; capturedAt: string; reversed: boolean; reversalReason: string | null; reversedBy: string | null; reversedAt: string | null };
+type RegisterItem = { id: string; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; capturedAt: string; reversed: boolean; reversalReason: string | null; reversedBy: string | null; reversedAt: string | null };\ntype RegisterPage = { items: RegisterItem[]; page: number; size: number; totalElements: number; totalPages: number };
 type Receipt = { id: string; receiptNumber: string; memberName: string; categoryName: string; streamName: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; capturedAt: string };
 
 export default function ContributionCapture({ organisationId, authorizationHeader, canCapture, canReverse }: {
@@ -19,7 +19,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   const [members, setMembers] = useState<Member[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [followups, setFollowups] = useState<Followup[]>([]);
-  const [register, setRegister] = useState<RegisterItem[]>([]);
+  const [register, setRegister] = useState<RegisterItem[]>([]);\n  const [registerPage, setRegisterPage] = useState(0);\n  const [registerSearch, setRegisterSearch] = useState("");\n  const [appliedRegisterSearch, setAppliedRegisterSearch] = useState("");\n  const [registerTotal, setRegisterTotal] = useState(0);\n  const [registerTotalPages, setRegisterTotalPages] = useState(0);
   const [reversalTarget, setReversalTarget] = useState<RegisterItem | null>(null);
   const [reversalReason, setReversalReason] = useState("");
   const [reversalNotice, setReversalNotice] = useState("");
@@ -173,7 +173,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
     {reversalNotice && <div className="message success" role="status">{reversalNotice}</div>}
     {canReverse && <>
       <div className="panel-divider" />
-      <div className="register-heading"><div><h3>Contribution register</h3><p>Posted receipts in the selected scope, including immutable reversal history</p></div><span className="count-box">{register.length} RECORDS</span></div>
+      <div className="register-heading"><div><h3>Contribution register</h3><p>Search receipts, members and categories. Results are paginated and include reversal history.</p></div><span className="count-box">{registerTotal} RECORDS</span></div>\n      <form className="field-actions" onSubmit={event => { event.preventDefault(); setRegisterPage(0); setAppliedRegisterSearch(registerSearch.trim()); }}>\n        <input aria-label="Search contribution register" value={registerSearch} maxLength={100} placeholder="Receipt number, member or category" onChange={event => setRegisterSearch(event.target.value)} />\n        <button type="submit" className="secondary-button">Search register</button>\n      </form>
       <div className="table-wrap"><table><thead><tr><th>RECEIPT / DATE</th><th>MEMBER / CATEGORY</th><th>AMOUNT</th><th>STATUS / REVERSAL</th><th>ACTION</th></tr></thead><tbody>
         {register.map(item => <tr key={item.id}>
           <td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate} · {item.paymentMethod.replace(/_/g, " ")}</small></td>
@@ -182,7 +182,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
           <td>{item.reversed ? <><strong className="inactive-label">REVERSED</strong><small className="table-subtext">{item.reversalReason}</small><small className="table-subtext">{item.reversedBy} · {item.reversedAt ? new Date(item.reversedAt).toLocaleString("en-ZA") : ""}</small></> : <strong>POSTED</strong>}</td>
           <td>{!item.reversed && <button type="button" className="secondary-button" disabled={busy} onClick={() => { setReversalTarget(item); setReversalReason(""); }}>Reverse receipt</button>}</td>
         </tr>)}
-        {!register.length && <tr><td colSpan={5} className="empty-table">No posted contributions in this scope.</td></tr>}
+        {!register.length && <tr><td colSpan={5} className="empty-table">{appliedRegisterSearch ? "No matching contributions found." : "No posted contributions in this scope."}</td></tr>}
       </tbody></table></div>
       {reversalTarget && <div className="legacy-record-notice">
         <strong>Reverse {reversalTarget.receiptNumber}</strong>
