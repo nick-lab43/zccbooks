@@ -78,6 +78,53 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void currencyTotalsRemainSeparateAndDateRangeIncludesBothEndpoints() throws Exception {
+        Fixture fixture = fixture();
+        UUID memberId = memberForCell(fixture.organisationId(), fixture.cellA(), "RANGE");
+        UUID categoryId = jdbc.queryForObject(
+            "SELECT id FROM contribution_categories WHERE organisation_id = ?",
+            UUID.class, fixture.organisationId());
+        UUID streamId = jdbc.queryForObject(
+            "SELECT id FROM financial_streams WHERE organisation_id = ?",
+            UUID.class, fixture.organisationId());
+
+        contribution(fixture.organisationId(), memberId, categoryId, streamId, fixture.nyikaA(),
+            fixture.adminId(), "RCP-USD-1", 3, new BigDecimal("25.00"), "USD", LocalDate.parse("2026-01-01"));
+        contribution(fixture.organisationId(), memberId, categoryId, streamId, fixture.nyikaA(),
+            fixture.adminId(), "RCP-ZAR-2", 4, new BigDecimal("50.00"), "ZAR", LocalDate.parse("2026-12-31"));
+        contribution(fixture.organisationId(), memberId, categoryId, streamId, fixture.nyikaA(),
+            fixture.adminId(), "RCP-OUT-1", 5, new BigDecimal("700.00"), "ZAR", LocalDate.parse("2025-12-31"));
+        contribution(fixture.organisationId(), memberId, categoryId, streamId, fixture.nyikaA(),
+            fixture.adminId(), "RCP-OUT-2", 6, new BigDecimal("800.00"), "USD", LocalDate.parse("2027-01-01"));
+
+        authenticate();
+        LocalDate from = LocalDate.parse("2026-01-01");
+        LocalDate to = LocalDate.parse("2026-12-31");
+        FinancialReportController.ContributionSummary summary =
+            reports.summary(fixture.organisationId(), fixture.nyikaA(), from, to);
+
+        assertEquals(3, summary.contributionCount());
+        assertEquals(2, summary.currencyTotals().size());
+        assertEquals("USD", summary.currencyTotals().get(0).currency());
+        assertEquals(new BigDecimal("25.00"), summary.currencyTotals().get(0).totalAmount());
+        assertEquals("ZAR", summary.currencyTotals().get(1).currency());
+        assertEquals(new BigDecimal("175.00"), summary.currencyTotals().get(1).totalAmount());
+        assertEquals(3, reports.contributions(fixture.organisationId(), fixture.nyikaA(), from, to).size());
+
+        assertThrows(IllegalArgumentException.class,
+            () -> reports.summary(fixture.organisationId(), fixture.nyikaA(), to, from));
+
+        var response = reports.export(fixture.organisationId(), fixture.nyikaA(), from, to, "CONTRIBUTION_SUMMARY");
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(response.getBody()))) {
+            String paragraphs = document.getParagraphs().stream()
+                .map(paragraph -> paragraph.getText()).reduce("", (left, right) -> left + " " + right);
+            assertTrue(paragraphs.contains("Total contributions (USD): 25.00"));
+            assertTrue(paragraphs.contains("Total contributions (ZAR): 175.00"));
+            assertFalse(paragraphs.contains("Total contributions: 200.00"));
+        }
+    }
+
+    @Test
     void userCannotRequestAnotherNyikasReports() {
         Fixture fixture = fixture();
         authenticate();
@@ -192,17 +239,27 @@ class FinancialReportPostgresIntegrationTest {
         return id;
     }
 
+    private UUID memberForCell(UUID organisationId, UUID cellId, String suffix) {
+        return member(organisationId, cellId, suffix);
+    }
+
     private void contribution(UUID organisationId, UUID memberId, UUID categoryId, UUID streamId,
             UUID scopeUnitId, UUID adminId, String receipt, long sequence, BigDecimal amount) {
+        contribution(organisationId, memberId, categoryId, streamId, scopeUnitId, adminId,
+            receipt, sequence, amount, "ZAR", LocalDate.parse("2026-05-10"));
+    }
+
+    private void contribution(UUID organisationId, UUID memberId, UUID categoryId, UUID streamId,
+            UUID scopeUnitId, UUID adminId, String receipt, long sequence, BigDecimal amount,
+            String currency, LocalDate contributionDate) {
         jdbc.update("""
             INSERT INTO contributions
                 (id, organisation_id, member_id, category_id, stream_id, scope_unit_id,
                  receipt_number, receipt_sequence, amount, currency, contribution_date,
                  payment_method, idempotency_key, captured_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ZAR', DATE '2026-05-10',
-                    'CASH', ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CASH', ?, ?)
             """, UUID.randomUUID(), organisationId, memberId, categoryId, streamId, scopeUnitId,
-            receipt, sequence, amount, "IDEMP-" + receipt, adminId);
+            receipt, sequence, amount, currency, contributionDate, "IDEMP-" + receipt, adminId);
     }
 
     private void authenticate() {
