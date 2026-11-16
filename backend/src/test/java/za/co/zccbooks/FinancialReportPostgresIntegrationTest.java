@@ -66,6 +66,63 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void contributionReversalIsImmutableAndExcludedFromFinancialReports() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT id, 'FINANCE_REVERSE' FROM admin_roles WHERE role_code = 'NYIKA_ADMIN'
+            ON CONFLICT DO NOTHING
+            """);
+        UUID contributionId = jdbc.queryForObject(
+            "SELECT id FROM contributions WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'",
+            UUID.class, fixture.organisationId());
+        authenticate(fixture);
+
+        var reversal = contributionController.reverseContribution(contributionId,
+            new ContributionController.ReverseContribution("Receipt captured against the wrong record."));
+        assertEquals(201, reversal.getStatusCode().value());
+        assertEquals("RCP-A-1", reversal.getBody().receiptNumber());
+        assertEquals(new BigDecimal("125.00"), reversal.getBody().amount());
+
+        assertEquals(0, reports.summary(fixture.organisationId(), fixture.nyikaA(),
+            LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")).contributionCount());
+        assertEquals(0, reports.contributions(fixture.organisationId(), fixture.nyikaA(),
+            LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")).size());
+
+        assertThrows(ConflictException.class, () -> contributionController.reverseContribution(
+            contributionId, new ContributionController.ReverseContribution("Duplicate reversal.")));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () ->
+            jdbc.update("UPDATE contribution_reversals SET reason = 'changed' WHERE contribution_id = ?", contributionId));
+    }
+
+    @Test
+    void contributionWithDepositAllocationCannotBeReversed() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT id, 'FINANCE_REVERSE' FROM admin_roles WHERE role_code = 'NYIKA_ADMIN'
+            ON CONFLICT DO NOTHING
+            """);
+        UUID contributionId = jdbc.queryForObject(
+            "SELECT id FROM contributions WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'",
+            UUID.class, fixture.organisationId());
+        UUID batchId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_batches (id, organisation_id, scope_unit_id, deposit_date,
+                bank_name, bank_reference, expected_amount, created_by)
+            VALUES (?, ?, ?, DATE '2026-05-10', 'Test Bank', ?, 125.00, ?)
+            """, batchId, fixture.organisationId(), fixture.nyikaA(), "REVERSAL-TEST-" + batchId, fixture.adminId());
+        jdbc.update("""
+            INSERT INTO deposit_allocations (id, deposit_batch_id, contribution_id, allocated_amount)
+            VALUES (?, ?, ?, 125.00)
+            """, UUID.randomUUID(), batchId, contributionId);
+        authenticate(fixture);
+
+        assertThrows(ConflictException.class, () -> contributionController.reverseContribution(
+            contributionId, new ContributionController.ReverseContribution("Incorrect contribution.")));
+    }
+
+    @Test
     void unitListAndAllRegistersStayInsideAssignedNyika() {
         Fixture fixture = fixture();
         authenticate(fixture);
