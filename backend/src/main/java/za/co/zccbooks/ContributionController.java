@@ -243,6 +243,48 @@ public class ContributionController {
             organisationId);
     }
 
+    @GetMapping("/organisations/{organisationId}/financial-reversal-units")
+    public List<FinancialUnitDto> financialReversalUnits(@PathVariable UUID organisationId) {
+        authorization.requireOrganisationOrUnitPermission("FINANCE_REVERSE", organisationId);
+        String sql = """
+            SELECT id, parent_id, level, code, name, active
+            FROM organisational_units
+            WHERE organisation_id = ?
+            """;
+        if (!authorization.hasOrganisationWidePermission("FINANCE_REVERSE", organisationId)) {
+            sql += """
+                AND id IN (
+                    WITH RECURSIVE visible_units AS (
+                        SELECT a.scope_unit_id AS id
+                        FROM admin_role_assignments a
+                        JOIN admin_users au ON au.id = a.user_id
+                        JOIN admin_roles ar ON ar.id = a.role_id
+                        JOIN admin_role_permissions rp ON rp.role_id = ar.id
+                        WHERE a.scope_type = 'UNIT' AND a.organisation_id = ?
+                          AND a.revoked_at IS NULL AND LOWER(au.username) = LOWER(?)
+                          AND rp.permission_code = 'FINANCE_REVERSE'
+                        UNION
+                        SELECT child.id
+                        FROM organisational_units child
+                        JOIN visible_units parent ON child.parent_id = parent.id
+                        WHERE child.organisation_id = ?
+                    )
+                    SELECT id FROM visible_units
+                )
+                """;
+            return jdbc.query(sql + " ORDER BY level, name", (rs, n) -> new FinancialUnitDto(
+                rs.getObject("id", UUID.class).toString(),
+                rs.getObject("parent_id") == null ? null : rs.getObject("parent_id", UUID.class).toString(),
+                rs.getString("level"), rs.getString("code"), rs.getString("name"), rs.getBoolean("active")),
+                organisationId, organisationId, authorization.currentUsername(), organisationId);
+        }
+        return jdbc.query(sql + " ORDER BY level, name", (rs, n) -> new FinancialUnitDto(
+            rs.getObject("id", UUID.class).toString(),
+            rs.getObject("parent_id") == null ? null : rs.getObject("parent_id", UUID.class).toString(),
+            rs.getString("level"), rs.getString("code"), rs.getString("name"), rs.getBoolean("active")),
+            organisationId);
+    }
+
     @GetMapping("/units/{cellId}/financial-members")
     public List<FinancialMemberDto> financialMembers(@PathVariable UUID cellId,
             @RequestParam UUID scopeUnitId) {
