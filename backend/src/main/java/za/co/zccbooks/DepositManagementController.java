@@ -165,8 +165,15 @@ public class DepositManagementController {
             throw new IllegalArgumentException("The allocated receipt total must equal the declared deposit amount.");
         }
         jdbc.update("""
-            UPDATE deposit_batches SET status = 'SUBMITTED', submitted_at = CURRENT_TIMESTAMP WHERE id = ?
+            UPDATE deposit_batches
+            SET status = 'SUBMITTED', submitted_at = CURRENT_TIMESTAMP, review_status = 'PENDING_REVIEW'
+            WHERE id = ?
             """, batchId);
+        jdbc.update("""
+            INSERT INTO deposit_review_history
+                (id, deposit_batch_id, action, previous_status, new_status, note, changed_by)
+            VALUES (?, ?, 'SUBMITTED', 'NOT_SUBMITTED', 'PENDING_REVIEW', NULL, ?)
+            """, UUID.randomUUID(), batchId, actorId());
         jdbc.update("""
             UPDATE contribution_deposit_followups f
             SET status = 'SUBMITTED', assigned_to = ?, updated_at = CURRENT_TIMESTAMP
