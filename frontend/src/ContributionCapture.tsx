@@ -49,7 +49,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
       request<Unit[]>(`/api/organisations/${organisationId}/${canCapture ? "financial-units" : "financial-reversal-units"}`),
       canCapture ? request<Category[]>(`/api/organisations/${organisationId}/contribution-categories`) : Promise.resolve([] as Category[])
     ]).then(([unitRows, categoryRows]) => {
-      setUnits(unitRows.filter(unit => unit.active && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)));
+      setUnits(unitRows.filter(unit => (!canCapture || unit.active) && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)));
       setCategories(categoryRows.filter(category => category.active));
     }).catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader, canCapture]);
