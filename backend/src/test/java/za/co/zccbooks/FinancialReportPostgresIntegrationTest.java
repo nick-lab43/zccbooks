@@ -786,7 +786,7 @@ class FinancialReportPostgresIntegrationTest {
 
         Integer auditCount = jdbc.queryForObject("""
             SELECT COUNT(*) FROM admin_audit_events
-            WHERE entity_id = ? AND action_code IN ('EXPENDITURE_DRAFT_AMENDED', 'EXPENDITURE_DRAFT_VOIDED')
+            WHERE target_id = ? AND action_code IN ('EXPENDITURE_DRAFT_AMENDED', 'EXPENDITURE_DRAFT_VOIDED')
             """, Integer.class, expenseId);
         assertEquals(2, auditCount);
     }
