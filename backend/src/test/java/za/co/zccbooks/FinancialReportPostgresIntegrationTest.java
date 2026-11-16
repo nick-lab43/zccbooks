@@ -458,7 +458,7 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
-    void auditPayloadIncludesVersionedActorAndOrganisationScopeMetadata() {
+    void auditPayloadIncludesVersionedActorAndOrganisationScopeMetadata() throws Exception {
         Fixture fixture = fixture();
         authenticate(fixture);
         UUID targetId = UUID.randomUUID();
@@ -470,12 +470,13 @@ class FinancialReportPostgresIntegrationTest {
             SELECT details::text FROM admin_audit_events WHERE target_id = ?
             """, String.class, targetId);
         assertNotNull(details);
-        assertTrue(details.contains("\"_metadata\""));
-        assertTrue(details.contains("\"schemaVersion\":1"));
-        assertTrue(details.contains("\"actorUserId\":\"" + fixture.adminId() + "\""));
-        assertTrue(details.contains("\"actorUsername\":\"" + fixture.username() + "\""));
-        assertTrue(details.contains("\"organisationId\":\"" + fixture.organisationId() + "\""));
-        assertTrue(details.contains("\"scopeUnitId\":\"" + fixture.cellA() + "\""));
+        var payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree(details);
+        var metadata = payload.path("_metadata");
+        assertEquals(1, metadata.path("schemaVersion").asInt());
+        assertEquals(fixture.adminId().toString(), metadata.path("actorUserId").asText());
+        assertEquals(fixture.username(), metadata.path("actorUsername").asText());
+        assertEquals(fixture.organisationId().toString(), metadata.path("organisationId").asText());
+        assertEquals(fixture.cellA().toString(), metadata.path("scopeUnitId").asText());
     }
 
     private String exportText(Fixture fixture, LocalDate from, LocalDate to, String type) throws Exception {
