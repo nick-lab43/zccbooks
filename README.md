@@ -52,6 +52,8 @@ Open `http://localhost:5173`. Vite proxies `/api` requests to the backend.
 - Scoped Financial Officer and Auditor access to financial configuration and target registers.
 - Scoped contribution capture for authorised finance roles, sequential receipts, idempotent posting, target achievement calculations and pending-deposit follow-ups.
 - Cash deposit batches with full-receipt allocation, submission controls and exact bank-statement reconciliation.
+- Expenditure capture, independent approval, payment-reference recording and currency-separated income-versus-expenditure reporting.
+- Versioned expenditure budgets, descendant-aware budget-versus-actual tracking and audited budget amendments.
 - Scoped bank statement CSV imports, duplicate detection and an audited reconciliation exception register.
 
 The membership application integration is not connected. Use fictional demonstration records only.
@@ -80,7 +82,7 @@ The membership application integration is not connected. Use fictional demonstra
 
 ## Current limitations
 
-Financial configuration, scoped contribution posting, receipt issuance, target achievement calculations, pending-deposit follow-ups, cash deposit batching and manual bank-statement reconciliation are implemented. Bank-specific CSV normalisation, direct bank API integration, automated reconciliation, partial deposits, electronic settlement reconciliation, document scanning, reversals/refunds and independent financial reporting remain future work. The exception scan identifies unmatched credits, amount differences, missing deposits and bank debits for review; it does not automatically reconcile or resolve them. Do not use this development build for live financial or member records until hosted verification and the remaining operational controls are completed.
+Financial configuration, scoped contribution posting, receipt issuance, target achievement calculations, pending-deposit follow-ups, cash deposit batching, partial bank-statement reconciliation, expenditure approvals, budget allocation and budget-versus-actual reporting are implemented. Bank-specific CSV normalisation, direct bank API integration, automated reconciliation, electronic settlement reconciliation, document scanning, reversals/refunds, supplier purchasing, budget transfers and forecasting remain future work. The exception scan identifies unmatched credits, amount differences, missing deposits and bank debits for review; it does not automatically reconcile or resolve them. Do not use this development build for live financial or member records until hosted verification and the remaining operational controls are completed.
 
 ## Cloud deployment (Vercel + Render + Neon)
 
