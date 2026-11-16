@@ -50,6 +50,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired ContributionController contributionController;
     @Autowired ExpenditureManagementController expenditureManagement;
     @Autowired BudgetManagementController budgetManagement;
+    @Autowired DepositEvidenceController depositEvidence;
 
     @AfterEach
     void clearAuthentication() {
@@ -900,6 +901,40 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(new BigDecimal("1000.00"), history.get(0).previousAmount());
         assertEquals(new BigDecimal("1200.00"), history.get(0).revisedAmount());
         assertEquals("Approved additional transport allocation.", history.get(0).reason());
+    }
+
+    @Test
+    void depositEvidenceIsPrivateImmutableAndDuplicateProtected() throws Exception {
+        Fixture fixture = fixture();
+        authenticate(fixture);
+        UUID batchId = jdbc.queryForObject(
+            "SELECT id FROM deposit_batches WHERE organisation_id = ? AND bank_reference = 'BANK-A-1'",
+            UUID.class, fixture.organisationId());
+        byte[] original = new byte[] {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x01, 0x02};
+        var upload = new org.springframework.mock.web.MockMultipartFile(
+            "files", "deposit-slip.jpg", "image/jpeg", original);
+
+        var stored = depositEvidence.upload(batchId, List.of(upload));
+        assertEquals(1, stored.size());
+        assertEquals("image/jpeg", stored.get(0).contentType());
+        assertEquals(original.length, stored.get(0).fileSize());
+        assertEquals(64, stored.get(0).sha256().length());
+
+        UUID evidenceId = UUID.fromString(stored.get(0).id());
+        var downloaded = depositEvidence.content(batchId, evidenceId);
+        assertArrayEquals(original, downloaded.getBody());
+        assertEquals("image/jpeg", downloaded.getHeaders().getContentType().toString());
+        assertThrows(ConflictException.class, () -> depositEvidence.upload(batchId, List.of(upload)));
+
+        UUID otherBatch = jdbc.queryForObject(
+            "SELECT id FROM deposit_batches WHERE organisation_id = ? AND bank_reference = 'BANK-B-1'",
+            UUID.class, fixture.organisationId());
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> depositEvidence.list(otherBatch));
+
+        Integer retained = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM deposit_evidence WHERE id = ?", Integer.class, evidenceId);
+        assertEquals(1, retained);
     }
 
     private Fixture fixture() {
