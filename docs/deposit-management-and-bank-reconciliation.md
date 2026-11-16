@@ -62,3 +62,12 @@ Over-banking, debit entries, cross-scope entries, mismatched references, out-of-
 This workflow does not yet upload or parse bank files in the UI, connect to bank APIs, allocate partial contribution receipts, or handle bank fees, shortages/overages, reversals, refunds or electronic settlement batches. Differences must be investigated; they are not silently adjusted.
 
 Hosted PostgreSQL verification is required for the V16 migration, multi-credit reconciliation, over-banking prevention, concurrent reconciliation, scope enforcement and reconciliation locking. Do not use the system for live funds until those controls have been tested against the deployed database and operating procedures.
+
+
+## Deposit evidence capture
+
+Each deposit batch can retain up to 10 uploaded evidence files per request. Supported formats are JPEG, PNG, WebP and PDF, with a maximum size of 10 MB per file. Mobile browsers can open the rear camera from the capture control; existing photographs and scans can also be selected. Multiple images can represent a multi-page deposit package.
+
+Original file bytes are stored in the private PostgreSQL database. The API derives the content type from the file signature rather than trusting the browser-provided MIME type, computes a SHA-256 digest, rejects an identical file already attached to the same batch and records the uploader and timestamp. Evidence is immutable through the application: there is no overwrite or delete operation. Access to metadata and content is checked against the deposit's geographical scope on every request. Content responses are marked no-store.
+
+Evidence may be added while a batch is DRAFT, SUBMITTED or PARTIALLY_RECONCILED. Fully reconciled batches are read-only. The evidence file is supporting documentation only; upload does not verify bank settlement or authenticity. Image cropping, perspective correction, enhancement and generated PDF derivatives remain a later scanner-experience increment. The original upload must remain preserved when those processing features are introduced.
