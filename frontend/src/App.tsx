@@ -273,7 +273,7 @@ function MainApp() {
             <div className="sidebar-section-label">SYSTEM ADMINISTRATION</div>
             <button className={activeModule === "access" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("access")} aria-current={activeModule === "access" ? "page" : undefined}><span className="sidebar-icon">AC</span><span>Users &amp; access</span></button>
           </>}
-          <div className="sidebar-note"><strong>Current release</strong><span>Organisation, membership, contribution capture, deposits and financial reconciliation.</span></div>
+          <div className="sidebar-note"><strong>Current release</strong><span>Organisation, membership, contribution capture, deposits, bank imports and financial exception controls.</span></div>
         </aside>
         <main className="app-main">
 
@@ -396,7 +396,7 @@ function MainApp() {
 
       {activeModule === "appointments" && <MemberAppointments organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
 
-      {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_CAPTURE") ?? false} canDeposit={currentAdmin?.permissions.includes("FINANCE_DEPOSIT") ?? false} canReconcile={currentAdmin?.permissions.includes("FINANCE_RECONCILE") ?? false} />}
+      {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_CAPTURE") ?? false} canDeposit={currentAdmin?.permissions.includes("FINANCE_DEPOSIT") ?? false} canReconcile={currentAdmin?.permissions.includes("FINANCE_RECONCILE") ?? false} canManageExceptions={currentAdmin?.permissions.includes("FINANCE_EXCEPTION") ?? false} />}
 
       {activeModule === "access" && (
         <div className="access-layout">
