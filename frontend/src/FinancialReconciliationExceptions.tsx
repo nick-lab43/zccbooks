@@ -175,7 +175,7 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
           </li>)}
           {!historyRows[row.id]?.length && <li>No history recorded.</li>}
         </ol>}
-      </td></tr></Fragment>)}
+      </td></tr>}</Fragment>)}
       {!rows.length && <tr><td colSpan={5} className="empty-table">No reconciliation exceptions in this scope.</td></tr>}
     </tbody></table></div>
   </section>;
