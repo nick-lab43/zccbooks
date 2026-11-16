@@ -18,7 +18,6 @@ type AdminRole = { id: string; code: string; name: string; description?: string;
 type Permission = { code: string; name: string; description: string };
 type UnitOption = { id: string; level: string; code: string; name: string };
 type Invitation = { id: string; username: string; displayName: string; email: string; nyikaCode: string; nyikaName: string; expiresAt: string; status: string };
-type AuditEvent = { id: string; actor: string; action: string; targetType: string; targetId: string | null; details: string; occurredAt: string };
 type Organisation = { id: string; name: string; createdAt: string };
 type Branch = { id: string; organisationId: string; code: string; name: string; districtName?: string; countryCode?: string };
 type Classification = { id: string; code: string; name: string; active: boolean };
@@ -46,7 +45,6 @@ function MainApp() {
   const [adminRoles, setAdminRoles] = useState<AdminRole[]>([]);
   const [permissionOptions, setPermissionOptions] = useState<Permission[]>([]);
   const [accessUnits, setAccessUnits] = useState<UnitOption[]>([]);
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [accessOrganisationId, setAccessOrganisationId] = useState("");
   const [organisations, setOrganisations] = useState<Organisation[]>([]);
   const [organisationId, setOrganisationId] = useState("");
@@ -74,9 +72,8 @@ function MainApp() {
       api<AdminUser[]>("/api/admin/users"),
       api<AdminRole[]>("/api/admin/roles"),
       api<Permission[]>("/api/admin/permissions"),
-      api<AuditEvent[]>("/api/admin/audit"),
       api<Invitation[]>("/api/admin/nyika-invitations"),
-    ]).then(([users, roles, permissions, events, inviteRows]) => { setAdminUsers(users); setAdminRoles(roles); setPermissionOptions(permissions); setAuditEvents(events); setInvitations(inviteRows); })
+    ]).then(([users, roles, permissions, inviteRows]) => { setAdminUsers(users); setAdminRoles(roles); setPermissionOptions(permissions); setInvitations(inviteRows); })
       .catch((e: Error) => setError(e.message));
   }, [authenticated, activeModule]);
 
@@ -134,7 +131,7 @@ function MainApp() {
 
   function logout() {
     currentAuthHeader = null; setAuthenticated(false); setCurrentAdmin(null);
-    setAdminUsers([]); setAdminRoles([]); setOrganisations([]); setBranches([]); setMembers([]); setAccessOrganisationId(""); setAccessUnits([]); setAuditEvents([]); setActiveModule("overview");
+    setAdminUsers([]); setAdminRoles([]); setOrganisations([]); setBranches([]); setMembers([]); setAccessOrganisationId(""); setAccessUnits([]); setActiveModule("overview");
     setOrganisationId(""); setBranchId(""); setError(""); setNotice("");
   }
 
