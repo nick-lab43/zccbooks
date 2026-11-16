@@ -326,8 +326,8 @@ class FinancialReportPostgresIntegrationTest {
             List.of("RCP-A-1", "TestA Member", "Tithing", "Main", "CASH", "ZAR", "125.00"));
 
         assertExportTable(fixture, from, to, "DEPOSIT_REGISTER",
-            List.of("Date", "Unit", "Bank", "Reference", "Expected", "Allocated", "Status"),
-            List.of("Nyika A", "Test Bank", "BANK-A-1", "125.00", "SUBMITTED"));
+            List.of("Date", "Unit", "Bank", "Reference", "Expected", "Allocated", "Banked", "Outstanding", "Status"),
+            List.of("Nyika A", "Test Bank", "BANK-A-1", "125.00", "0.00", "SUBMITTED"));
 
         assertExportTable(fixture, from, to, "EXCEPTION_REGISTER",
             List.of("Date", "Unit", "Type", "Status", "Summary"),
@@ -628,6 +628,11 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(new BigDecimal("50.00"), partiallyReconciled.outstandingAmount());
         assertEquals("Bank branch deposit limit; remaining cash will be deposited tomorrow.",
             partiallyReconciled.outstandingNote());
+        var partialReport = reports.deposits(fixture.organisationId(), fixture.nyikaA(), depositDate, depositDate)
+            .stream().filter(item -> item.id().equals(batch.id())).findFirst().orElseThrow();
+        assertEquals("PARTIALLY_RECONCILED", partialReport.status());
+        assertEquals(new BigDecimal("75.00"), partialReport.bankedAmount());
+        assertEquals(new BigDecimal("50.00"), partialReport.outstandingAmount());
 
         var excessiveCredit = depositManagement.recordStatementEntry(fixture.organisationId(),
             new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), depositDate.plusDays(1),
