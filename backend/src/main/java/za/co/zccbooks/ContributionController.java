@@ -614,6 +614,8 @@ public class ContributionController {
     public record ContributionRegisterDto(String id, String receiptNumber, String memberName, String categoryName,
         BigDecimal amount, String currency, String contributionDate, String paymentMethod, String capturedAt,
         boolean reversed, String reversalReason, String reversedBy, String reversedAt) {}
+    public record ContributionRegisterPageDto(List<ContributionRegisterDto> items, int page, int size,
+        long totalElements, int totalPages) {}
     public record ReverseContribution(@NotBlank @Size(max = 1000) String reason) {}
     public record ContributionReversalDto(String id, String contributionId, String receiptNumber,
         BigDecimal amount, String reason, String reversedBy, String reversedAt) {}
