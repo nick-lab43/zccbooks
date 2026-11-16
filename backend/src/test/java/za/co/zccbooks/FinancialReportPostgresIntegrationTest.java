@@ -50,6 +50,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired FinancialReportController reports;
     @Autowired AdminAuditService audit;
     @Autowired DepositManagementController depositManagement;
+    @Autowired DepositReviewController depositReview;
     @Autowired ContributionController contributionController;
     @Autowired ExpenditureManagementController expenditureManagement;
     @Autowired BudgetManagementController budgetManagement;
@@ -562,6 +563,7 @@ class FinancialReportPostgresIntegrationTest {
 
         var submitted = depositManagement.submit(UUID.fromString(batch.id()));
         assertEquals("SUBMITTED", submitted.status());
+        depositReview.review(UUID.fromString(batch.id()), new DepositReviewController.ReviewDecision("ACCEPT", null));
         assertEquals("SUBMITTED", jdbc.queryForObject(
             "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
 
@@ -628,6 +630,7 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(new BigDecimal("125.00"), allocated.allocatedAmount());
         var submitted = depositManagement.submit(UUID.fromString(batch.id()));
         assertEquals("SUBMITTED", submitted.status());
+        depositReview.review(UUID.fromString(batch.id()), new DepositReviewController.ReviewDecision("ACCEPT", null));
 
         var firstCredit = depositManagement.recordStatementEntry(fixture.organisationId(),
             new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), depositDate,

@@ -34,7 +34,7 @@ public class DepositManagementController {
         authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
         return jdbc.query("""
             SELECT b.id, b.scope_unit_id, u.name AS scope_name, b.deposit_date, b.bank_name,
-                   b.bank_reference, b.expected_amount, b.status, b.note, b.created_at,
+                   b.bank_reference, b.expected_amount, b.status, b.review_status, b.review_response_note, b.note, b.created_at,
                    COALESCE(SUM(a.allocated_amount), 0) AS allocated_amount,
                    COUNT(a.id) AS receipt_count,
                    COALESCE((SELECT SUM(e.amount) FROM deposit_reconciliations r
@@ -61,7 +61,7 @@ public class DepositManagementController {
                 rs.getString("status"), rs.getString("note"), rs.getBigDecimal("allocated_amount"),
                 rs.getLong("receipt_count"), rs.getBigDecimal("banked_amount"),
                 rs.getBigDecimal("outstanding_amount"), rs.getString("outstanding_note"),
-                rs.getTimestamp("created_at").toInstant().toString()),
+                rs.getTimestamp("created_at").toInstant().toString(), rs.getString("review_status"), rs.getString("review_response_note")),
             organisationId, scopeUnitId);
     }
 
@@ -165,8 +165,15 @@ public class DepositManagementController {
             throw new IllegalArgumentException("The allocated receipt total must equal the declared deposit amount.");
         }
         jdbc.update("""
-            UPDATE deposit_batches SET status = 'SUBMITTED', submitted_at = CURRENT_TIMESTAMP WHERE id = ?
+            UPDATE deposit_batches
+            SET status = 'SUBMITTED', submitted_at = CURRENT_TIMESTAMP, review_status = 'PENDING_REVIEW'
+            WHERE id = ?
             """, batchId);
+        jdbc.update("""
+            INSERT INTO deposit_review_history
+                (id, deposit_batch_id, action, previous_status, new_status, note, changed_by)
+            VALUES (?, ?, 'SUBMITTED', 'NOT_SUBMITTED', 'PENDING_REVIEW', NULL, ?)
+            """, UUID.randomUUID(), batchId, actorId());
         jdbc.update("""
             UPDATE contribution_deposit_followups f
             SET status = 'SUBMITTED', assigned_to = ?, updated_at = CURRENT_TIMESTAMP
@@ -225,6 +232,9 @@ public class DepositManagementController {
     public DepositBatchDto reconcile(@PathVariable UUID batchId, @Valid @RequestBody ReconcileDeposit request) {
         DepositBatchContext batch = requireBatchContext(batchId, true);
         authorization.requireUnitPermission("FINANCE_RECONCILE", batch.scopeUnitId());
+        if (!"ACCEPTED".equals(batch.reviewStatus())) {
+            throw new ConflictException("Central Financial Administration must accept the deposit package before bank reconciliation.");
+        }
         if (!"SUBMITTED".equals(batch.status()) && !"PARTIALLY_RECONCILED".equals(batch.status())) {
             throw new ConflictException("Only submitted or partially reconciled deposit batches can be reconciled.");
         }
@@ -312,7 +322,7 @@ public class DepositManagementController {
     private DepositBatchDto requireBatch(UUID id) {
         return jdbc.query("""
             SELECT b.id, b.scope_unit_id, u.name AS scope_name, b.deposit_date, b.bank_name,
-                   b.bank_reference, b.expected_amount, b.status, b.note, b.created_at,
+                   b.bank_reference, b.expected_amount, b.status, b.review_status, b.review_response_note, b.note, b.created_at,
                    COALESCE(SUM(a.allocated_amount), 0) AS allocated_amount,
                    COUNT(a.id) AS receipt_count,
                    COALESCE((SELECT SUM(e.amount) FROM deposit_reconciliations r
@@ -336,19 +346,20 @@ public class DepositManagementController {
                 rs.getString("bank_reference"), rs.getBigDecimal("expected_amount"), rs.getString("status"),
                 rs.getString("note"), rs.getBigDecimal("allocated_amount"), rs.getLong("receipt_count"),
                 rs.getBigDecimal("banked_amount"), rs.getBigDecimal("outstanding_amount"),
-                rs.getString("outstanding_note"), rs.getTimestamp("created_at").toInstant().toString()), id).stream().findFirst()
+                rs.getString("outstanding_note"), rs.getTimestamp("created_at").toInstant().toString(),
+                rs.getString("review_status"), rs.getString("review_response_note")), id).stream().findFirst()
             .orElseThrow(() -> new ResourceNotFoundException("Deposit batch not found."));
     }
 
     private DepositBatchContext requireBatchContext(UUID id, boolean lock) {
         String sql = """
-            SELECT id, organisation_id, scope_unit_id, deposit_date, bank_reference, expected_amount, status
+            SELECT id, organisation_id, scope_unit_id, deposit_date, bank_reference, expected_amount, status, review_status
             FROM deposit_batches WHERE id = ?
             """ + (lock ? " FOR UPDATE" : "");
         return jdbc.query(sql, (rs, n) -> new DepositBatchContext(rs.getObject("id", UUID.class),
             rs.getObject("organisation_id", UUID.class), rs.getObject("scope_unit_id", UUID.class),
             rs.getDate("deposit_date").toLocalDate().toString(), rs.getString("bank_reference"),
-            rs.getBigDecimal("expected_amount"), rs.getString("status")), id).stream().findFirst()
+            rs.getBigDecimal("expected_amount"), rs.getString("status"), rs.getString("review_status")), id).stream().findFirst()
             .orElseThrow(() -> new ResourceNotFoundException("Deposit batch not found."));
     }
 
@@ -391,13 +402,13 @@ public class DepositManagementController {
     public record DepositBatchDto(String id, String scopeUnitId, String scopeName, String depositDate,
         String bankName, String bankReference, BigDecimal expectedAmount, String status, String note,
         BigDecimal allocatedAmount, long receiptCount, BigDecimal bankedAmount,
-        BigDecimal outstandingAmount, String outstandingNote, String createdAt) {}
+        BigDecimal outstandingAmount, String outstandingNote, String createdAt, String reviewStatus, String reviewResponseNote) {}
     public record BankStatementEntryDto(String id, String scopeUnitId, String scopeName,
         String transactionDate, String bankReference, BigDecimal amount, String entryType,
         String description, boolean reconciled) {}
     private record DepositTotals(long receiptCount, BigDecimal allocatedAmount) {}
     private record DepositBatchContext(UUID id, UUID organisationId, UUID scopeUnitId, String depositDate,
-        String bankReference, BigDecimal expectedAmount, String status) {}
+        String bankReference, BigDecimal expectedAmount, String status, String reviewStatus) {}
     private record ContributionDepositContext(UUID id, UUID organisationId, UUID scopeUnitId,
         BigDecimal amount, String paymentMethod) {}
 }
