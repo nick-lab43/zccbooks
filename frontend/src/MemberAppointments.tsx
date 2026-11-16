@@ -5,6 +5,7 @@ type Unit = { id: string; parentId: string | null; level: string; code: string; 
 type Member = { id: string; cellId: string; zccAppNumber: string | null; firstName: string; lastName: string; active: boolean };
 type Position = { id: string; code: string; name: string; description: string | null; allowConcurrent: boolean; active: boolean };
 type Appointment = { id: string; positionId: string; positionCode: string; positionName: string; scopeUnitId: string; scopeLevel: string; scopeName: string; validFrom: string; validTo: string | null; note: string | null };
+type RegisterAppointment = { id: string; memberId: string; firstName: string; lastName: string; zccAppNumber: string | null; memberActive: boolean; positionCode: string; positionName: string; scopeUnitId: string; scopeLevel: string; scopeName: string; validFrom: string; validTo: string | null; note: string | null };
 
 export default function MemberAppointments({ organisationId, authorizationHeader }: {
   organisationId: string; authorizationHeader: string;
@@ -16,6 +17,11 @@ export default function MemberAppointments({ organisationId, authorizationHeader
   const [positions, setPositions] = useState<Position[]>([]);
   const [canConfigurePositions, setCanConfigurePositions] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [registerScopeId, setRegisterScopeId] = useState("");
+  const [registerRows, setRegisterRows] = useState<RegisterAppointment[]>([]);
+  const [registerPosition, setRegisterPosition] = useState("");
+  const [registerStatus, setRegisterStatus] = useState("ALL");
+  const [registerSearch, setRegisterSearch] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,6 +51,8 @@ export default function MemberAppointments({ organisationId, authorizationHeader
       .then(rows => {
         const cells = rows.filter(unit => unit.level === "CELL" && unit.active);
         setUnits(rows);
+        const scopes = rows.filter(unit => unit.active && ["NYIKA", "TABHERA", "CELL"].includes(unit.level));
+        setRegisterScopeId(current => scopes.some(unit => unit.id === current) ? current : scopes[0]?.id ?? "");
         setCellId(current => cells.some(cell => cell.id === current) ? current : cells[0]?.id ?? "");
       }).catch((e: Error) => setError(e.message));
     request<Position[]>("/api/appointments/positions")
@@ -52,6 +60,13 @@ export default function MemberAppointments({ organisationId, authorizationHeader
     request<boolean>("/api/appointments/positions/management-access")
       .then(setCanConfigurePositions).catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
+
+  useEffect(() => {
+    setRegisterRows([]);
+    if (!organisationId || !registerScopeId) return;
+    request<RegisterAppointment[]>(`/api/organisations/${organisationId}/appointments?scopeUnitId=${registerScopeId}`)
+      .then(setRegisterRows).catch((e: Error) => setError(e.message));
+  }, [organisationId, registerScopeId, authorizationHeader]);
 
   useEffect(() => {
     setMemberId(""); setMembers([]); setAppointments([]);
@@ -134,6 +149,20 @@ export default function MemberAppointments({ organisationId, authorizationHeader
     });
   }
 
+  const today = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  })();
+  const filteredRegisterRows = registerRows.filter(item => {
+    const status = item.validTo && item.validTo < today ? "ENDED"
+      : item.validFrom > today ? "SCHEDULED"
+      : item.validTo === today ? "ENDED" : "CURRENT";
+    const matchesStatus = registerStatus === "ALL" || status === registerStatus;
+    const matchesPosition = !registerPosition || item.positionCode === registerPosition;
+    const term = registerSearch.trim().toLowerCase();
+    const matchesSearch = !term || `${item.firstName} ${item.lastName} ${item.zccAppNumber ?? ""}`.toLowerCase().includes(term);
+    return matchesStatus && matchesPosition && matchesSearch;
+  });
   const selectedCell = units.find(unit => unit.id === cellId);
   const selectedMember = members.find(member => member.id === memberId);
 
@@ -150,6 +179,32 @@ export default function MemberAppointments({ organisationId, authorizationHeader
           {units.filter(unit => unit.level === "CELL" && unit.active).map(unit => <option key={unit.id} value={unit.id}>{unit.code} — {unit.name}</option>)}
         </select>
       </label>
+      <div className="panel-divider" />
+      <div className="register-heading"><div><h3>Organisation appointments register</h3><p>Appointments within the selected geographical scope, including its subordinate units.</p></div><span className="count-box">{filteredRegisterRows.length} RECORDS</span></div>
+      <div className="field-pair">
+        <label>REGISTER SCOPE<select value={registerScopeId} onChange={e => setRegisterScopeId(e.target.value)}><option value="">Select scope</option>{units.filter(unit => unit.active && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)).map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
+        <label>APPOINTMENT STATUS<select value={registerStatus} onChange={e => setRegisterStatus(e.target.value)}><option value="ALL">All statuses</option><option value="CURRENT">Current</option><option value="SCHEDULED">Scheduled</option><option value="ENDED">Ended</option></select></label>
+      </div>
+      <div className="field-pair">
+        <label>POSITION FILTER<select value={registerPosition} onChange={e => setRegisterPosition(e.target.value)}><option value="">All positions</option>{positions.map(position => <option key={position.id} value={position.code}>{position.name}</option>)}</select></label>
+        <label>SEARCH MEMBER<input value={registerSearch} onChange={e => setRegisterSearch(e.target.value)} placeholder="Name or application number" /></label>
+      </div>
+      <div className="table-wrap"><table><thead><tr><th>MEMBER</th><th>POSITION</th><th>APPOINTMENT SCOPE</th><th>FROM</th><th>TO</th><th>STATUS</th></tr></thead><tbody>
+        {filteredRegisterRows.map(item => {
+          const status = item.validTo && item.validTo <= today ? "ENDED" : item.validFrom > today ? "SCHEDULED" : "CURRENT";
+          return <tr key={item.id}>
+            <td><strong>{item.lastName}, {item.firstName}</strong><small className="table-subtext">{item.zccAppNumber || "No application number"}{!item.memberActive ? " · INACTIVE MEMBER" : ""}</small></td>
+            <td>{item.positionName}<small className="table-subtext">{item.positionCode}</small></td>
+            <td>{item.scopeLevel}<small className="table-subtext">{item.scopeName}</small></td>
+            <td>{item.validFrom}</td><td>{item.validTo || "—"}</td>
+            <td><span className={status === "ENDED" ? "inactive-label" : "active-label"}>{status}</span></td>
+          </tr>;
+        })}
+        {!filteredRegisterRows.length && <tr><td colSpan={6} className="empty-table">No appointments match the selected scope and filters.</td></tr>}
+      </tbody></table></div>
+      <div className="panel-divider" />
+      <h3>Manage appointments by member</h3>
+      <p className="panel-description">Select a member to record a new appointment or review their individual appointment history.</p>
       {cellId && <>
         <label className="search-field"><span>MEMBER</span>
           <select value={memberId} onChange={e => setMemberId(e.target.value)}>
