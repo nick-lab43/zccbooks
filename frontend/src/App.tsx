@@ -3,12 +3,13 @@ import type { FormEvent } from "react";
 import OrganisationalHierarchy from "./OrganisationalHierarchy";
 import CellMembership from "./CellMembership";
 import MemberAppointments from "./MemberAppointments";
+import MembershipReports from "./MembershipReports";
 import FinancialAdministration from "./FinancialAdministration";
 import FinancialReports from "./FinancialReports";
 import ExpenditureManagement from "./ExpenditureManagement";
 import BudgetManagement from "./BudgetManagement";
 
-type Module = "overview" | "organisation" | "membership" | "appointments" | "financial" | "reports" | "expenditure" | "budgets" | "access";
+type Module = "overview" | "organisation" | "membership" | "appointments" | "membershipReports" | "financial" | "reports" | "expenditure" | "budgets" | "access";
 type CurrentAdmin = { username: string; displayName: string; permissions: string[] };
 type AdminUser = { id: string; username: string; displayName: string; email?: string | null; enabled: boolean; createdAt: string | null; assignments: string };
 type AdminRole = { id: string; code: string; name: string; description?: string; systemRole: boolean; permissions: string[] };
@@ -267,6 +268,7 @@ function MainApp() {
           {currentAdmin?.permissions.includes("MEMBERS_VIEW") && <>
             <button className={activeModule === "membership" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("membership")} aria-current={activeModule === "membership" ? "page" : undefined}><span className="sidebar-icon">ME</span><span>Membership</span></button>
             <button className={activeModule === "appointments" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("appointments")} aria-current={activeModule === "appointments" ? "page" : undefined}><span className="sidebar-icon">AP</span><span>Church appointments</span></button>
+            <button className={activeModule === "membershipReports" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("membershipReports")} aria-current={activeModule === "membershipReports" ? "page" : undefined}><span className="sidebar-icon">MR</span><span>Membership Reports</span></button>
           </>}
           {(currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("FINANCE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_DEPOSIT") || currentAdmin?.permissions.includes("FINANCE_RECONCILE") || currentAdmin?.permissions.includes("FINANCE_EXPENSE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_EXPENSE_APPROVE") || currentAdmin?.permissions.includes("FINANCE_BUDGET_MANAGE")) && <>
             <div className="sidebar-section-label">FINANCIAL ADMINISTRATION</div>
@@ -405,6 +407,7 @@ function MainApp() {
       {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_CAPTURE") ?? false} canDeposit={currentAdmin?.permissions.includes("FINANCE_DEPOSIT") ?? false} canReconcile={currentAdmin?.permissions.includes("FINANCE_RECONCILE") ?? false} canManageExceptions={currentAdmin?.permissions.includes("FINANCE_EXCEPTION") ?? false} />}
 
       {activeModule === "reports" && <FinancialReports organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
+      {activeModule === "membershipReports" && <MembershipReports organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
 
       {activeModule === "expenditure" && <ExpenditureManagement organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_EXPENSE_CAPTURE") ?? false} canApprove={currentAdmin?.permissions.includes("FINANCE_EXPENSE_APPROVE") ?? false} />}
 
