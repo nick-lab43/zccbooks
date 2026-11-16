@@ -312,13 +312,14 @@ public class ReconciliationExceptionController {
                 "resolutionAmount", request.resolutionAmount() == null ? "" : request.resolutionAmount().toPlainString()));
         return jdbc.query("""
             SELECT x.id, x.source_type, x.source_id, x.exception_type, x.status, x.summary,
-                   x.resolution_note, x.created_at, x.updated_at, u.name AS scope_name
+                   x.resolution_note, x.resolution_code, x.resolution_amount, x.created_at, x.updated_at, u.name AS scope_name
             FROM reconciliation_exceptions x JOIN organisational_units u ON u.id = x.scope_unit_id
             WHERE x.id = ?
             """, (rs, n) -> new ReconciliationExceptionDto(
                 rs.getObject("id", UUID.class).toString(), rs.getString("source_type"),
                 rs.getObject("source_id", UUID.class).toString(), rs.getString("exception_type"),
                 rs.getString("status"), rs.getString("summary"), rs.getString("resolution_note"),
+                rs.getString("resolution_code"), rs.getBigDecimal("resolution_amount"),
                 rs.getTimestamp("created_at").toInstant().toString(),
                 rs.getTimestamp("updated_at").toInstant().toString(), rs.getString("scope_name")), exceptionId).get(0);
     }
