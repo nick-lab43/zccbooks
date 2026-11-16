@@ -287,7 +287,8 @@ public class FinancialReportController {
         }
     }
 
-    public record ReportUnit(String id, String level, String code, String name) {}\n    public record ReportContext(String unitId, String unitName, String unitLevel, LocalDate from, LocalDate to) {}
+    public record ReportUnit(String id, String level, String code, String name) {}
+    public record ReportContext(String unitId, String unitName, String unitLevel, LocalDate from, LocalDate to) {}
     public record ContributionGroup(String categoryId, String categoryName, String streamId, String streamName,
         long contributionCount, BigDecimal totalAmount) {}
     public record ContributionSummary(ReportContext context, long contributionCount, BigDecimal totalAmount,
