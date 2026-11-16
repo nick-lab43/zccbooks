@@ -124,7 +124,7 @@ public class ExpenditureManagementController {
             SELECT e.id, e.scope_unit_id, u.name AS unit_name, e.category_id, c.name AS category_name,
                    e.expense_date, e.payee, e.description, e.reference, e.amount, e.currency, e.status,
                    e.captured_by, e.created_at, e.submitted_at, e.reviewed_by, e.reviewed_at,
-                   e.review_note, e.paid_at, e.payment_reference
+                   e.review_note, e.paid_at, e.payment_reference, e.version, e.voided_by, e.voided_at, e.void_reason
             FROM expenditures e
             JOIN organisational_units u ON u.id = e.scope_unit_id
             JOIN expenditure_categories c ON c.id = e.category_id AND c.organisation_id = e.organisation_id
@@ -162,6 +162,50 @@ public class ExpenditureManagementController {
                 "categoryId", request.categoryId().toString(), "amount", request.amount().toPlainString(),
                 "currency", request.currency().toUpperCase()));
         return ResponseEntity.status(HttpStatus.CREATED).body(requireExpense(id));
+    }
+
+    @PatchMapping("/expenditures/{expenseId}")
+    @Transactional
+    public ExpenditureDto amendDraft(@PathVariable UUID expenseId, @Valid @RequestBody AmendDraftExpenditure request) {
+        ExpenseContext expense = requireExpenseContext(expenseId, true);
+        authorization.requireUnitPermission("FINANCE_EXPENSE_CAPTURE", expense.scopeUnitId());
+        if (!"DRAFT".equals(expense.status())) throw new ConflictException("Only draft expenditure records can be amended.");
+        if (expense.version() != request.version()) throw new ConflictException("This draft has changed. Reload it before amending.");
+        Integer categoryCount = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM expenditure_categories
+            WHERE id = ? AND organisation_id = ? AND active = TRUE
+            """, Integer.class, request.categoryId(), expense.organisationId());
+        if (categoryCount == null || categoryCount == 0) throw new ResourceNotFoundException("Active expenditure category not found in this organisation.");
+        int updated = jdbc.update("""
+            UPDATE expenditures
+            SET category_id = ?, expense_date = ?, payee = ?, description = ?, reference = ?,
+                amount = ?, currency = ?, version = version + 1
+            WHERE id = ? AND status = 'DRAFT' AND version = ?
+            """, request.categoryId(), request.expenseDate(), request.payee().trim(),
+            request.description().trim(), blankToNull(request.reference()), request.amount(),
+            request.currency().toUpperCase(), expenseId, request.version());
+        if (updated != 1) throw new ConflictException("This draft has changed. Reload it before amending.");
+        audit.record("EXPENDITURE_DRAFT_AMENDED", "EXPENDITURE", expenseId,
+            Map.of("version", Integer.toString(request.version() + 1), "amount", request.amount().toPlainString(),
+                "currency", request.currency().toUpperCase()));
+        return requireExpense(expenseId);
+    }
+
+    @PostMapping("/expenditures/{expenseId}/void")
+    @Transactional
+    public ExpenditureDto voidDraft(@PathVariable UUID expenseId, @Valid @RequestBody VoidDraftExpenditure request) {
+        ExpenseContext expense = requireExpenseContext(expenseId, true);
+        authorization.requireUnitPermission("FINANCE_EXPENSE_CAPTURE", expense.scopeUnitId());
+        if (!"DRAFT".equals(expense.status())) throw new ConflictException("Only draft expenditure records can be withdrawn. Submitted or approved records must follow the review or correction process.");
+        int updated = jdbc.update("""
+            UPDATE expenditures
+            SET status = 'VOIDED', voided_by = ?, voided_at = CURRENT_TIMESTAMP, void_reason = ?, version = version + 1
+            WHERE id = ? AND status = 'DRAFT'
+            """, actorId(), request.reason().trim(), expenseId);
+        if (updated != 1) throw new ConflictException("This draft is no longer available for withdrawal.");
+        audit.record("EXPENDITURE_DRAFT_VOIDED", "EXPENDITURE", expenseId,
+            Map.of("reason", request.reason().trim(), "amount", expense.amount().toPlainString()));
+        return requireExpense(expenseId);
     }
 
     @PostMapping("/expenditures/{expenseId}/submit")
@@ -233,7 +277,7 @@ public class ExpenditureManagementController {
             SELECT e.id, e.scope_unit_id, u.name AS unit_name, e.category_id, c.name AS category_name,
                    e.expense_date, e.payee, e.description, e.reference, e.amount, e.currency, e.status,
                    e.captured_by, e.created_at, e.submitted_at, e.reviewed_by, e.reviewed_at,
-                   e.review_note, e.paid_at, e.payment_reference
+                   e.review_note, e.paid_at, e.payment_reference, e.version, e.voided_by, e.voided_at, e.void_reason
             FROM expenditures e
             JOIN organisational_units u ON u.id = e.scope_unit_id
             JOIN expenditure_categories c ON c.id = e.category_id AND c.organisation_id = e.organisation_id
@@ -243,11 +287,11 @@ public class ExpenditureManagementController {
     }
 
     private ExpenseContext requireExpenseContext(UUID id, boolean lock) {
-        String sql = "SELECT id, scope_unit_id, status, amount, captured_by FROM expenditures WHERE id = ?"
+        String sql = "SELECT id, organisation_id, scope_unit_id, status, amount, captured_by, version FROM expenditures WHERE id = ?"
             + (lock ? " FOR UPDATE" : "");
-        return jdbc.query(sql, (rs, n) -> new ExpenseContext(rs.getObject("id", UUID.class),
+        return jdbc.query(sql, (rs, n) -> new ExpenseContext(rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
             rs.getObject("scope_unit_id", UUID.class), rs.getString("status"), rs.getBigDecimal("amount"),
-            rs.getObject("captured_by", UUID.class)), id).stream().findFirst()
+            rs.getObject("captured_by", UUID.class), rs.getInt("version")), id).stream().findFirst()
             .orElseThrow(() -> new ResourceNotFoundException("Expenditure record not found."));
     }
 
@@ -264,7 +308,10 @@ public class ExpenditureManagementController {
             rs.getTimestamp("reviewed_at") == null ? null : rs.getTimestamp("reviewed_at").toInstant().toString(),
             rs.getString("review_note"),
             rs.getTimestamp("paid_at") == null ? null : rs.getTimestamp("paid_at").toInstant().toString(),
-            rs.getString("payment_reference"));
+            rs.getString("payment_reference"), rs.getInt("version"),
+            rs.getObject("voided_by", UUID.class) == null ? null : rs.getObject("voided_by", UUID.class).toString(),
+            rs.getTimestamp("voided_at") == null ? null : rs.getTimestamp("voided_at").toInstant().toString(),
+            rs.getString("void_reason"));
     }
 
     private UUID actorId() {
@@ -285,6 +332,11 @@ public class ExpenditureManagementController {
         @NotBlank @Size(max = 1000) String description, @Size(max = 120) String reference,
         @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount,
         @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency) {}
+    public record AmendDraftExpenditure(@NotNull UUID categoryId, @NotNull LocalDate expenseDate,
+        @NotBlank @Size(max = 160) String payee, @NotBlank @Size(max = 1000) String description,
+        @Size(max = 120) String reference, @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount,
+        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency, @NotNull @jakarta.validation.constraints.Min(1) Integer version) {}
+    public record VoidDraftExpenditure(@NotBlank @Size(max = 500) String reason) {}
     public record ReviewExpenditure(@NotBlank String decision, @Size(max = 500) String note) {}
     public record PayExpenditure(@NotBlank @Size(max = 120) String paymentReference) {}
     public record ExpenseUnitDto(String id, String level, String code, String name) {}
@@ -293,6 +345,7 @@ public class ExpenditureManagementController {
         String categoryName, String expenseDate, String payee, String description, String reference,
         BigDecimal amount, String currency, String status, String capturedBy, String createdAt,
         String submittedAt, String reviewedBy, String reviewedAt, String reviewNote,
-        String paidAt, String paymentReference) {}
-    private record ExpenseContext(UUID id, UUID scopeUnitId, String status, BigDecimal amount, UUID capturedBy) {}
+        String paidAt, String paymentReference, int version, String voidedBy, String voidedAt, String voidReason) {}
+    private record ExpenseContext(UUID id, UUID organisationId, UUID scopeUnitId, String status,
+        BigDecimal amount, UUID capturedBy, int version) {}
 }
