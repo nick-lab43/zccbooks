@@ -289,6 +289,7 @@ public class ContributionController {
             JOIN financial_streams fs ON fs.id = c.stream_id
             JOIN organisational_units u ON u.id = c.scope_unit_id
             WHERE c.organisation_id = ? AND c.scope_unit_id = ?
+              AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
               AND (?::date IS NULL OR c.contribution_date >= ?)
               AND (?::date IS NULL OR c.contribution_date <= ?)
             ORDER BY c.contribution_date DESC, c.captured_at DESC
@@ -312,6 +313,7 @@ public class ContributionController {
             JOIN organisational_units u ON u.id = c.scope_unit_id
             WHERE c.organisation_id = ? AND c.scope_unit_id = ?
               AND c.payment_method = 'CASH'
+              AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
               AND NOT EXISTS (SELECT 1 FROM deposit_allocations a WHERE a.contribution_id = c.id)
             ORDER BY c.contribution_date DESC, c.captured_at DESC
             """, (rs, n) -> mapContribution(rs), organisationId, scopeUnitId);
@@ -400,6 +402,7 @@ public class ContributionController {
             JOIN members m ON m.id = c.member_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             WHERE c.organisation_id = ? AND c.scope_unit_id = ?
+              AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
               AND f.status <> 'RESOLVED'
             ORDER BY f.created_at
             """, (rs, n) -> new DepositFollowupDto(
