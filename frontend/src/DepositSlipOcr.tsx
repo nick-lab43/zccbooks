@@ -53,6 +53,8 @@ export default function DepositSlipOcr({ batchId, authorizationHeader, evidence 
 
   useEffect(() => {
     setSelectedId("");
+    setContext(null);
+    setNotice("");
     setFields({ amount: "", reference: "", date: "" });
     setRawText("");
     setError("");
