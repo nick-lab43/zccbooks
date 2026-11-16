@@ -771,3 +771,11 @@ input, select { border-radius: 5px !important; }
 .scanner-corner label{display:grid;gap:5px;color:#566678;font-size:10px}
 .scanner-corner input[type=range]{width:100%;accent-color:#263f5d}
 @media(max-width:600px){.scanner-corners{grid-template-columns:1fr}.action-row{width:100%}.action-row button{flex:1}}
+
+
+/* Deposit slip OCR review */
+.ocr-status{display:inline-flex;padding:4px 7px;border-radius:4px;font-size:10px;font-weight:700}
+.ocr-status.match{background:#e7f3eb;color:#24633a}
+.ocr-status.mismatch{background:#fbe9e7;color:#9d332b}
+.ocr-status.missing{background:#eef1f4;color:#5b6875}
+.ocr-raw-text{max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;background:#f5f7f9;border:1px solid #d5dce4;font-size:11px;color:#34465a}
