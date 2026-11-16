@@ -146,7 +146,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
         })
       });
       setReceipt(result);
-      await reloadFollowups();
+      await Promise.all([reloadFollowups(), reloadRegister()]);
       form.reset();
       setMemberId("");
     } catch (e) { setError(e instanceof Error ? e.message : "Contribution could not be posted."); }
