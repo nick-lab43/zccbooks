@@ -225,6 +225,9 @@ public class DepositManagementController {
     public DepositBatchDto reconcile(@PathVariable UUID batchId, @Valid @RequestBody ReconcileDeposit request) {
         DepositBatchContext batch = requireBatchContext(batchId, true);
         authorization.requireUnitPermission("FINANCE_RECONCILE", batch.scopeUnitId());
+        if (!"ACCEPTED".equals(batch.reviewStatus())) {
+            throw new ConflictException("Central Financial Administration must accept the deposit package before bank reconciliation.");
+        }
         if (!"SUBMITTED".equals(batch.status()) && !"PARTIALLY_RECONCILED".equals(batch.status())) {
             throw new ConflictException("Only submitted or partially reconciled deposit batches can be reconciled.");
         }
@@ -342,13 +345,13 @@ public class DepositManagementController {
 
     private DepositBatchContext requireBatchContext(UUID id, boolean lock) {
         String sql = """
-            SELECT id, organisation_id, scope_unit_id, deposit_date, bank_reference, expected_amount, status
+            SELECT id, organisation_id, scope_unit_id, deposit_date, bank_reference, expected_amount, status, review_status
             FROM deposit_batches WHERE id = ?
             """ + (lock ? " FOR UPDATE" : "");
         return jdbc.query(sql, (rs, n) -> new DepositBatchContext(rs.getObject("id", UUID.class),
             rs.getObject("organisation_id", UUID.class), rs.getObject("scope_unit_id", UUID.class),
             rs.getDate("deposit_date").toLocalDate().toString(), rs.getString("bank_reference"),
-            rs.getBigDecimal("expected_amount"), rs.getString("status")), id).stream().findFirst()
+            rs.getBigDecimal("expected_amount"), rs.getString("status"), rs.getString("review_status")), id).stream().findFirst()
             .orElseThrow(() -> new ResourceNotFoundException("Deposit batch not found."));
     }
 
@@ -397,7 +400,7 @@ public class DepositManagementController {
         String description, boolean reconciled) {}
     private record DepositTotals(long receiptCount, BigDecimal allocatedAmount) {}
     private record DepositBatchContext(UUID id, UUID organisationId, UUID scopeUnitId, String depositDate,
-        String bankReference, BigDecimal expectedAmount, String status) {}
+        String bankReference, BigDecimal expectedAmount, String status, String reviewStatus) {}
     private record ContributionDepositContext(UUID id, UUID organisationId, UUID scopeUnitId,
         BigDecimal amount, String paymentMethod) {}
 }
