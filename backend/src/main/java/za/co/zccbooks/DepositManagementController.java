@@ -100,10 +100,14 @@ public class DepositManagementController {
         if (contribution.amount().compareTo(request.allocatedAmount()) != 0) {
             throw new IllegalArgumentException("The allocation must equal the full receipt amount. Partial allocations are not supported.");
         }
-        jdbc.update("""
+        int inserted = jdbc.update("""
             INSERT INTO deposit_allocations (id, deposit_batch_id, contribution_id, allocated_amount)
             VALUES (?, ?, ?, ?)
+            ON CONFLICT (contribution_id) DO NOTHING
             """, UUID.randomUUID(), batchId, contribution.id(), request.allocatedAmount());
+        if (inserted == 0) {
+            throw new ConflictException("This contribution receipt has already been allocated to a deposit batch.");
+        }
         audit.record("DEPOSIT_RECEIPT_ALLOCATED", "DEPOSIT_BATCH", batchId,
             Map.of("contributionId", contribution.id().toString(), "amount", request.allocatedAmount().toPlainString()));
         return requireBatch(batchId);
