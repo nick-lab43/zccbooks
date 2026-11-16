@@ -337,7 +337,7 @@ public class ContributionController {
               ON p.organisation_id = t.organisation_id
              AND p.category_id = t.category_id
              AND p.scope_unit_id = t.unit_id
-             AND p.contribution_date BETWEEN t.period_start AND t.period_end
+             AND p.contribution_date BETWEEN t.period_start AND t.period_end\n             AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = p.id)
             WHERE t.organisation_id = ?
             """;
         if (!authorization.hasOrganisationWidePermission("FINANCE_VIEW", organisationId)) {
