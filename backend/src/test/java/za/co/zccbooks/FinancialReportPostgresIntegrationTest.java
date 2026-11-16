@@ -1178,6 +1178,7 @@ class FinancialReportPostgresIntegrationTest {
             WHERE a.user_id = ?
             ON CONFLICT DO NOTHING
             """, fixture.adminId());
+        authenticate(fixture);
 
         var cash = financialJournals.createAccount(fixture.organisationId(),
             new FinancialJournalController.CreateFinanceAccount("1000", "Cash at bank", "ASSET", "ZAR"));
