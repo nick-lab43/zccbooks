@@ -18,3 +18,15 @@ CREATE TABLE deposit_ocr_reviews (
 
 CREATE INDEX ix_deposit_ocr_reviews_batch_reviewed
     ON deposit_ocr_reviews (deposit_batch_id, reviewed_at DESC);
+
+
+CREATE FUNCTION prevent_deposit_ocr_review_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'Deposit OCR review history is immutable';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_deposit_ocr_reviews_immutable
+    BEFORE UPDATE OR DELETE ON deposit_ocr_reviews
+    FOR EACH ROW EXECUTE FUNCTION prevent_deposit_ocr_review_mutation();
