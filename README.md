@@ -50,7 +50,7 @@ Open `http://localhost:5173`. Vite proxies `/api` requests to the backend.
 - Centrally governed church positions and date-effective member appointments.
 - Financial Administration foundation: configurable financial streams, contribution categories, category applicability by geographical level and period-based financial targets.
 - Scoped Financial Officer and Auditor access to financial configuration and target registers.
-- Scoped contribution capture for authorised finance roles, sequential receipts, idempotent posting, target achievement calculations and pending-deposit follow-ups.
+- Scoped contribution capture with cash-only deposit follow-ups tied to draft allocation, submission, partial banking and verified reconciliation, sequential receipts, idempotent posting, target achievement calculations and pending-deposit follow-ups.
 - Cash deposit batches with full-receipt allocation, submission controls and exact bank-statement reconciliation.
 - Expenditure capture, versioned draft amendments, audited draft withdrawal, independent approval, payment-reference recording and currency-separated income-versus-expenditure reporting.
 - Versioned expenditure budgets, descendant-aware budget-versus-actual tracking, audited budget amendments and scoped Word performance reports.

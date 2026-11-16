@@ -128,10 +128,12 @@ public class ContributionController {
             context.streamId(), request.scopeUnitId(), receiptNumber, sequence, request.amount(),
             request.contributionDate(), request.paymentMethod(), blankToNull(request.paymentReference()),
             blankToNull(request.note()), request.idempotencyKey(), actorId);
-        jdbc.update("""
-            INSERT INTO contribution_deposit_followups (id, contribution_id)
-            VALUES (?, ?)
-            """, UUID.randomUUID(), contributionId);
+        if ("CASH".equals(request.paymentMethod())) {
+            jdbc.update("""
+                INSERT INTO contribution_deposit_followups (id, contribution_id)
+                VALUES (?, ?)
+                """, UUID.randomUUID(), contributionId);
+        }
         audit.record("CONTRIBUTION_POSTED", "CONTRIBUTION", contributionId,
             Map.of("organisationId", organisationId.toString(), "memberId", request.memberId().toString(),
                 "categoryId", request.categoryId().toString(), "scopeUnitId", request.scopeUnitId().toString(),
@@ -366,16 +368,30 @@ public class ContributionController {
         if ("RESOLVED".equals(context.status())) {
             throw new ConflictException("A resolved deposit follow-up cannot be reopened.");
         }
+        String note = blankToNull(request.note());
+        if ("RESOLVED".equals(request.status())) {
+            if (note == null) throw new IllegalArgumentException("A resolution reason is required.");
+            Integer activeAllocation = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM deposit_allocations a
+                JOIN deposit_batches b ON b.id = a.deposit_batch_id
+                WHERE a.contribution_id = ? AND b.status IN ('DRAFT', 'SUBMITTED', 'PARTIALLY_RECONCILED', 'EXCEPTION')
+                """, Integer.class, jdbc.queryForObject(
+                    "SELECT contribution_id FROM contribution_deposit_followups WHERE id = ?", UUID.class, followupId));
+            if (activeAllocation != null && activeAllocation > 0) {
+                throw new ConflictException("A contribution allocated to an active deposit batch cannot be manually resolved.");
+            }
+        }
         jdbc.update("""
             UPDATE contribution_deposit_followups
             SET status = ?, note = ?, assigned_to = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-            """, request.status(), blankToNull(request.note()),
+            """, request.status(), note,
             jdbc.queryForObject("SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?)",
                 UUID.class, authorization.currentUsername()), followupId);
         audit.record("DEPOSIT_FOLLOWUP_UPDATED", "DEPOSIT_FOLLOWUP", followupId,
             Map.of("previousStatus", context.status(), "status", request.status(),
-                "scopeUnitId", context.scopeUnitId().toString()));
+                "scopeUnitId", context.scopeUnitId().toString(),
+                "note", note == null ? "" : note));
         return jdbc.query("""
             SELECT f.id, f.status, f.note, f.created_at, c.id AS contribution_id,
                    c.receipt_number, m.first_name, m.last_name, cat.name AS category_name,

@@ -38,7 +38,16 @@ A contribution counts toward a target only when organisation, category, exact ge
 
 ## Pending deposits
 
-Every posted contribution creates one PENDING follow-up. An authorised finance capturer can move it to ACKNOWLEDGED or RESOLVED. Resolved follow-ups cannot be reopened. This is a follow-up register, not a bank deposit or reconciliation ledger. Deposit batches, bank evidence, allocation, reconciliation and cash custody controls remain separate future work.
+Only CASH contributions create deposit follow-ups. Their status follows the linked deposit workflow:
+
+- PENDING: cash receipt has not been allocated.
+- ACKNOWLEDGED: an authorised finance capturer has acknowledged the outstanding follow-up.
+- IN_DRAFT: the receipt is allocated to a draft deposit batch.
+- SUBMITTED: the containing deposit batch has been submitted for reconciliation.
+- PARTIALLY_BANKED: the batch has received a partial bank credit and retains an outstanding balance.
+- RESOLVED: the batch has been fully reconciled against bank credits, or an authorised capturer has manually resolved an unallocated receipt with a mandatory reason.
+
+Removing a receipt from a draft batch returns its follow-up to PENDING. A follow-up linked to an active deposit batch cannot be manually resolved. Resolved follow-ups cannot be reopened. Non-cash payment methods do not enter the cash deposit follow-up queue.
 
 ## Verification still required
 

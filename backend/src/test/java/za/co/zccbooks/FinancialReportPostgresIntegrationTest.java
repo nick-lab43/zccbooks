@@ -47,6 +47,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired FinancialReportController reports;
     @Autowired AdminAuditService audit;
     @Autowired DepositManagementController depositManagement;
+    @Autowired ContributionController contributionController;
     @Autowired ExpenditureManagementController expenditureManagement;
     @Autowired BudgetManagementController budgetManagement;
 
@@ -533,6 +534,14 @@ class FinancialReportPostgresIntegrationTest {
             new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00")));
         assertEquals(1, allocated.receiptCount());
         assertEquals(new BigDecimal("125.00"), allocated.allocatedAmount());
+        UUID followupId = jdbc.queryForObject(
+            "SELECT id FROM contribution_deposit_followups WHERE contribution_id = ?", UUID.class, receiptId);
+        assertEquals("IN_DRAFT", jdbc.queryForObject(
+            "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
+        assertThrows(IllegalArgumentException.class, () -> contributionController.updateDepositFollowup(followupId,
+            new ContributionController.UpdateDepositFollowup("RESOLVED", null)));
+        assertThrows(ConflictException.class, () -> contributionController.updateDepositFollowup(followupId,
+            new ContributionController.UpdateDepositFollowup("RESOLVED", "Attempted early resolution")));
 
         var secondBatch = depositManagement.createBatch(fixture.organisationId(),
             new DepositManagementController.CreateDepositBatch(fixture.nyikaA(), depositDate,
@@ -540,9 +549,16 @@ class FinancialReportPostgresIntegrationTest {
         assertThrows(ConflictException.class,
             () -> depositManagement.allocate(UUID.fromString(secondBatch.id()),
                 new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00"))));
+        depositManagement.removeAllocation(UUID.fromString(batch.id()), receiptId);
+        assertEquals("PENDING", jdbc.queryForObject(
+            "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
+        depositManagement.allocate(UUID.fromString(batch.id()),
+            new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00")));
 
         var submitted = depositManagement.submit(UUID.fromString(batch.id()));
         assertEquals("SUBMITTED", submitted.status());
+        assertEquals("SUBMITTED", jdbc.queryForObject(
+            "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
 
         var statement = depositManagement.recordStatementEntry(fixture.organisationId(),
             new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), depositDate,
@@ -550,6 +566,8 @@ class FinancialReportPostgresIntegrationTest {
         var reconciled = depositManagement.reconcile(UUID.fromString(batch.id()),
             new DepositManagementController.ReconcileDeposit(UUID.fromString(statement.id()), "Matched to statement"));
         assertEquals("RECONCILED", reconciled.status());
+        assertEquals("RESOLVED", jdbc.queryForObject(
+            "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
         assertTrue(depositManagement.statementEntries(fixture.organisationId(), fixture.nyikaA())
             .stream().filter(entry -> entry.id().equals(statement.id())).findFirst().orElseThrow().reconciled());
 
@@ -626,6 +644,11 @@ class FinancialReportPostgresIntegrationTest {
             new DepositManagementController.ReconcileDeposit(UUID.fromString(firstCredit.id()),
                 "Bank branch deposit limit; remaining cash will be deposited tomorrow."));
         assertEquals("PARTIALLY_RECONCILED", partiallyReconciled.status());
+        assertEquals("PARTIALLY_BANKED", jdbc.queryForObject("""
+            SELECT f.status FROM contribution_deposit_followups f
+            JOIN deposit_allocations a ON a.contribution_id = f.contribution_id
+            WHERE a.deposit_batch_id = ?
+            """, String.class, UUID.fromString(batch.id())));
         assertEquals(new BigDecimal("75.00"), partiallyReconciled.bankedAmount());
         assertEquals(new BigDecimal("50.00"), partiallyReconciled.outstandingAmount());
         assertEquals("Bank branch deposit limit; remaining cash will be deposited tomorrow.",
@@ -651,6 +674,11 @@ class FinancialReportPostgresIntegrationTest {
             new DepositManagementController.ReconcileDeposit(UUID.fromString(finalCredit.id()),
                 "Outstanding balance deposited in full."));
         assertEquals("RECONCILED", fullyReconciled.status());
+        assertEquals("RESOLVED", jdbc.queryForObject("""
+            SELECT f.status FROM contribution_deposit_followups f
+            JOIN deposit_allocations a ON a.contribution_id = f.contribution_id
+            WHERE a.deposit_batch_id = ?
+            """, String.class, UUID.fromString(batch.id())));
         assertEquals(new BigDecimal("125.00"), fullyReconciled.bankedAmount());
         assertEquals(new BigDecimal("0.00"), fullyReconciled.outstandingAmount());
         assertTrue(depositManagement.statementEntries(fixture.organisationId(), fixture.nyikaA()).stream()
@@ -988,6 +1016,11 @@ class FinancialReportPostgresIntegrationTest {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CASH', ?, ?)
             """, UUID.randomUUID(), organisationId, memberId, categoryId, streamId, scopeUnitId,
             receipt, sequence, amount, currency, contributionDate, "IDEMP-" + receipt, adminId);
+        UUID contributionId = jdbc.queryForObject(
+            "SELECT id FROM contributions WHERE organisation_id = ? AND receipt_number = ?",
+            UUID.class, organisationId, receipt);
+        jdbc.update("INSERT INTO contribution_deposit_followups (id, contribution_id) VALUES (?, ?)",
+            UUID.randomUUID(), contributionId);
     }
 
     private void authenticate(Fixture fixture) {

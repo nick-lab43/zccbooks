@@ -121,6 +121,11 @@ public class DepositManagementController {
         if (inserted == 0) {
             throw new ConflictException("This contribution receipt has already been allocated to a deposit batch.");
         }
+        jdbc.update("""
+            UPDATE contribution_deposit_followups
+            SET status = 'IN_DRAFT', assigned_to = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE contribution_id = ? AND status <> 'RESOLVED'
+            """, actorId(), contribution.id());
         audit.record("DEPOSIT_RECEIPT_ALLOCATED", "DEPOSIT_BATCH", batchId,
             Map.of("contributionId", contribution.id().toString(), "amount", request.allocatedAmount().toPlainString()));
         return requireBatch(batchId);
@@ -135,6 +140,11 @@ public class DepositManagementController {
         int deleted = jdbc.update("DELETE FROM deposit_allocations WHERE deposit_batch_id = ? AND contribution_id = ?",
             batchId, contributionId);
         if (deleted == 0) throw new ResourceNotFoundException("Receipt allocation not found in this batch.");
+        jdbc.update("""
+            UPDATE contribution_deposit_followups
+            SET status = 'PENDING', assigned_to = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE contribution_id = ? AND status = 'IN_DRAFT'
+            """, contributionId);
         audit.record("DEPOSIT_RECEIPT_REMOVED", "DEPOSIT_BATCH", batchId,
             Map.of("contributionId", contributionId.toString()));
         return requireBatch(batchId);
@@ -157,6 +167,13 @@ public class DepositManagementController {
         jdbc.update("""
             UPDATE deposit_batches SET status = 'SUBMITTED', submitted_at = CURRENT_TIMESTAMP WHERE id = ?
             """, batchId);
+        jdbc.update("""
+            UPDATE contribution_deposit_followups f
+            SET status = 'SUBMITTED', assigned_to = ?, updated_at = CURRENT_TIMESTAMP
+            FROM deposit_allocations a
+            WHERE a.deposit_batch_id = ? AND f.contribution_id = a.contribution_id
+              AND f.status = 'IN_DRAFT'
+            """, actorId(), batchId);
         audit.record("DEPOSIT_BATCH_SUBMITTED", "DEPOSIT_BATCH", batchId,
             Map.of("receiptCount", Long.toString(totals.receiptCount()),
                 "allocatedAmount", totals.allocatedAmount().toPlainString()));
@@ -272,6 +289,15 @@ public class DepositManagementController {
                 WHERE a.deposit_batch_id = ? AND f.contribution_id = a.contribution_id
                   AND f.status <> 'RESOLVED'
                 """, actorId(), batchId);
+        } else {
+            jdbc.update("""
+                UPDATE contribution_deposit_followups f
+                SET status = 'PARTIALLY_BANKED', assigned_to = ?, note = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                FROM deposit_allocations a
+                WHERE a.deposit_batch_id = ? AND f.contribution_id = a.contribution_id
+                  AND f.status <> 'RESOLVED'
+                """, actorId(), blankToNull(request.note()), batchId);
         }
         audit.record(partial ? "DEPOSIT_BATCH_PARTIALLY_RECONCILED" : "DEPOSIT_BATCH_RECONCILED",
             "DEPOSIT_BATCH", batchId,
