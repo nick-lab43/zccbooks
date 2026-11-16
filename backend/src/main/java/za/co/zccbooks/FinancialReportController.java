@@ -239,6 +239,56 @@ public class FinancialReportController {
         return new IncomeExpenditureSummary(reportContext, positions);
     }
 
+
+    @GetMapping("/budget-performance")
+    public List<BudgetPerformanceLine> budgetPerformance(@PathVariable UUID organisationId,
+            @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to) {
+        context(organisationId, scopeUnitId, from, to);
+        return jdbc.query("""
+            WITH RECURSIVE report_units(id) AS (
+              SELECT id FROM organisational_units WHERE id = ? AND organisation_id = ?
+              UNION ALL
+              SELECT child.id FROM organisational_units child
+              JOIN report_units parent ON child.parent_id = parent.id
+              WHERE child.organisation_id = ?
+            )
+            SELECT b.id, b.period_start, b.period_end, u.name AS unit_name,
+                   c.code AS category_code, c.name AS category_name,
+                   b.budget_amount, b.currency,
+                   COALESCE((
+                     WITH RECURSIVE budget_scope(id) AS (
+                       SELECT b.unit_id
+                       UNION ALL
+                       SELECT child.id FROM organisational_units child
+                       JOIN budget_scope parent ON child.parent_id = parent.id
+                       WHERE child.organisation_id = b.organisation_id
+                     )
+                     SELECT SUM(e.amount) FROM expenditures e
+                     JOIN budget_scope bs ON bs.id = e.scope_unit_id
+                     WHERE e.organisation_id = b.organisation_id
+                       AND e.category_id = b.category_id AND e.currency = b.currency
+                       AND e.expense_date BETWEEN b.period_start AND b.period_end
+                       AND e.status IN ('APPROVED', 'PAID')
+                   ), 0.00::numeric) AS actual_amount
+            FROM expenditure_budgets b
+            JOIN report_units ru ON ru.id = b.unit_id
+            JOIN organisational_units u ON u.id = b.unit_id
+            JOIN expenditure_categories c ON c.id = b.category_id
+            WHERE b.organisation_id = ?
+              AND b.period_start >= ? AND b.period_end <= ?
+            ORDER BY b.period_start, u.name, c.name, b.currency
+            """, (rs, n) -> {
+                BigDecimal budget = rs.getBigDecimal("budget_amount");
+                BigDecimal actual = rs.getBigDecimal("actual_amount");
+                return new BudgetPerformanceLine(rs.getObject("id", UUID.class).toString(),
+                    rs.getDate("period_start").toLocalDate(), rs.getDate("period_end").toLocalDate(),
+                    rs.getString("unit_name"), rs.getString("category_code"), rs.getString("category_name"),
+                    budget, actual, budget.subtract(actual),
+                    actual.multiply(new BigDecimal("100")).divide(budget, 2, java.math.RoundingMode.HALF_UP),
+                    rs.getString("currency"));
+            }, scopeUnitId, organisationId, organisationId, organisationId, from, to);
+    }
+
     @GetMapping("/exceptions")
     public List<ExceptionLine> exceptions(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to) {
@@ -271,7 +321,7 @@ public class FinancialReportController {
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to,
             @RequestParam(defaultValue = "CONTRIBUTION_SUMMARY") String type) throws IOException {
         ReportContext context = context(organisationId, scopeUnitId, from, to);
-        if (!List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER", "DEPOSIT_REGISTER", "EXPENDITURE_REGISTER", "INCOME_EXPENDITURE", "EXCEPTION_REGISTER").contains(type)) {
+        if (!List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER", "DEPOSIT_REGISTER", "EXPENDITURE_REGISTER", "INCOME_EXPENDITURE", "BUDGET_PERFORMANCE", "EXCEPTION_REGISTER").contains(type)) {
             throw new IllegalArgumentException("Unsupported report type.");
         }
         try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
@@ -334,6 +384,18 @@ public class FinancialReportController {
                         item.payee(), item.description(), item.reference(), item.amount().toPlainString(),
                         item.currency(), item.status());
                 }
+            } else if (type.equals("BUDGET_PERFORMANCE")) {
+                List<BudgetPerformanceLine> lines = budgetPerformance(organisationId, scopeUnitId, from, to);
+                XWPFTable table = document.createTable(1, 10);
+                setRow(table.getRow(0), "Period start", "Period end", "Unit", "Category", "Budget",
+                    "Actual", "Variance", "Utilisation", "Currency", "Status");
+                for (BudgetPerformanceLine item : lines) {
+                    setRow(table.createRow(), item.periodStart().toString(), item.periodEnd().toString(),
+                        item.unitName(), item.categoryName(), item.budgetAmount().toPlainString(),
+                        item.actualAmount().toPlainString(), item.remainingAmount().toPlainString(),
+                        item.utilisationPercentage().toPlainString() + "%",
+                        item.currency(), item.remainingAmount().signum() < 0 ? "OVER BUDGET" : "WITHIN BUDGET");
+                }
             } else if (type.equals("INCOME_EXPENDITURE")) {
                 IncomeExpenditureSummary report = incomeExpenditure(organisationId, scopeUnitId, from, to);
                 XWPFTable table = document.createTable(1, 4);
@@ -390,6 +452,7 @@ public class FinancialReportController {
             case "DEPOSIT_REGISTER" -> "DEPOSIT REGISTER";
             case "EXPENDITURE_REGISTER" -> "EXPENDITURE REGISTER";
             case "INCOME_EXPENDITURE" -> "INCOME AND EXPENDITURE SUMMARY";
+            case "BUDGET_PERFORMANCE" -> "EXPENDITURE BUDGET PERFORMANCE";
             case "EXCEPTION_REGISTER" -> "RECONCILIATION EXCEPTION REGISTER";
             default -> "CONTRIBUTION SUMMARY";
         };
@@ -418,6 +481,9 @@ public class FinancialReportController {
     public record ExpenseLine(String id, LocalDate expenseDate, String unitName, String categoryName,
         String payee, String description, String reference, BigDecimal amount, String currency,
         String status, String paymentReference, String reviewNote) {}
+    public record BudgetPerformanceLine(String id, LocalDate periodStart, LocalDate periodEnd, String unitName,
+        String categoryCode, String categoryName, BigDecimal budgetAmount, BigDecimal actualAmount,
+        BigDecimal remainingAmount, BigDecimal utilisationPercentage, String currency) {}
     public record CurrencyPosition(String currency, BigDecimal income, BigDecimal expenditure, BigDecimal netPosition) {}
     public record IncomeExpenditureSummary(ReportContext context, List<CurrencyPosition> positions) {}
     public record ExceptionLine(String id, String exceptionType, String status, String summary,

@@ -738,7 +738,7 @@ class FinancialReportPostgresIntegrationTest {
 
 
     @Test
-    void budgetsTrackDescendantActualsAndKeepVersionedRevisionHistory() {
+    void budgetsTrackDescendantActualsAndKeepVersionedRevisionHistory() throws Exception {
         Fixture fixture = fixture();
         UUID centralId = UUID.randomUUID();
         String centralUsername = "budget.admin." + centralId.toString().replace("-", "").substring(0, 12);
@@ -776,6 +776,27 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(new BigDecimal("250.00"), performance.get(0).actualAmount());
         assertEquals(new BigDecimal("750.00"), performance.get(0).remainingAmount());
         assertEquals(new BigDecimal("25.00"), performance.get(0).utilisationPercentage());
+
+        var budgetReport = reports.budgetPerformance(fixture.organisationId(), fixture.nyikaA(),
+            LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31"));
+        assertEquals(1, budgetReport.size());
+        assertEquals("Travel", budgetReport.get(0).categoryName());
+        assertEquals(new BigDecimal("1000.00"), budgetReport.get(0).budgetAmount());
+        assertEquals(new BigDecimal("250.00"), budgetReport.get(0).actualAmount());
+        assertEquals(new BigDecimal("750.00"), budgetReport.get(0).remainingAmount());
+        assertEquals(new BigDecimal("25.00"), budgetReport.get(0).utilisationPercentage());
+
+        var budgetExport = reports.export(fixture.organisationId(), fixture.nyikaA(),
+            LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31"), "BUDGET_PERFORMANCE");
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(budgetExport.getBody()))) {
+            String tableText = document.getTables().stream().flatMap(table -> table.getRows().stream())
+                .flatMap(row -> row.getTableCells().stream()).map(cell -> cell.getText())
+                .reduce("", (left, right) -> left + " " + right);
+            assertTrue(tableText.contains("1000.00"));
+            assertTrue(tableText.contains("250.00"));
+            assertTrue(tableText.contains("750.00"));
+            assertTrue(tableText.contains("25.00%"));
+        }
 
         authenticateAs(centralUsername);
         assertThrows(ConflictException.class, () -> budgetManagement.create(fixture.organisationId(),

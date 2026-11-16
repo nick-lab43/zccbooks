@@ -8,6 +8,7 @@ type Exception = { id: string; exceptionType: string; status: string; summary: s
 type Expense = { id: string; expenseDate: string; unitName: string; categoryName: string; payee: string; description: string; reference: string | null; amount: number; currency: string; status: string; paymentReference: string | null; reviewNote: string | null };
 type Position = { currency: string; income: number; expenditure: number; netPosition: number };
 type IncomeExpenditure = { context: { unitName: string; from: string; to: string }; positions: Position[] };
+type BudgetPerformance = { id: string; periodStart: string; periodEnd: string; unitName: string; categoryCode: string; categoryName: string; budgetAmount: number; actualAmount: number; remainingAmount: number; utilisationPercentage: number; currency: string };
 
 export default function FinancialReports({ organisationId, authorizationHeader }: { organisationId: string; authorizationHeader: string }) {
   const [units, setUnits] = useState<Unit[]>([]);
@@ -21,6 +22,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
   const [exceptions, setExceptions] = useState<Exception[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [incomeExpenditure, setIncomeExpenditure] = useState<IncomeExpenditure | null>(null);
+  const [budgetPerformance, setBudgetPerformance] = useState<BudgetPerformance[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -57,7 +59,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
       return;
     }
     setBusy(true); setError("");
-    setSummary(null); setContributions([]); setDeposits([]); setExceptions([]); setExpenses([]); setIncomeExpenditure(null);
+    setSummary(null); setContributions([]); setDeposits([]); setExceptions([]); setExpenses([]); setIncomeExpenditure(null); setBudgetPerformance([]);
     try {
       const query = params();
       if (type === "CONTRIBUTION_SUMMARY") setSummary(await request<Summary>(`/api/organisations/${organisationId}/financial-reports/summary?${query}`));
@@ -66,6 +68,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
       if (type === "EXCEPTION_REGISTER") setExceptions(await request<Exception[]>(`/api/organisations/${organisationId}/financial-reports/exceptions?${query}`));
       if (type === "EXPENDITURE_REGISTER") setExpenses(await request<Expense[]>(`/api/organisations/${organisationId}/financial-reports/expenses?${query}`));
       if (type === "INCOME_EXPENDITURE") setIncomeExpenditure(await request<IncomeExpenditure>(`/api/organisations/${organisationId}/financial-reports/income-expenditure?${query}`));
+      if (type === "BUDGET_PERFORMANCE") setBudgetPerformance(await request<BudgetPerformance[]>(`/api/organisations/${organisationId}/financial-reports/budget-performance?${query}`));
     } catch (e) { setError(e instanceof Error ? e.message : "Report could not be loaded."); }
     finally { setBusy(false); }
   }
@@ -101,6 +104,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
           <option value="DEPOSIT_REGISTER">Deposit register</option>
           <option value="EXPENDITURE_REGISTER">Expenditure register</option>
           <option value="INCOME_EXPENDITURE">Income and expenditure summary</option>
+          <option value="BUDGET_PERFORMANCE">Expenditure budget performance</option>
           <option value="EXCEPTION_REGISTER">Reconciliation exceptions</option>
         </select></label>
         <label>Geographical scope<select value={scopeUnitId} onChange={e => setScopeUnitId(e.target.value)}><option value="">Select scope</option>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
@@ -114,6 +118,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
     {type === "DEPOSIT_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Deposit register</h2></div><span className="panel-tag">{deposits.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>UNIT</th><th>BANK</th><th>REFERENCE</th><th>EXPECTED</th><th>ALLOCATED</th><th>BANKED</th><th>OUTSTANDING</th><th>STATUS</th></tr></thead><tbody>{deposits.map(row=><tr key={row.id}><td>{row.depositDate}</td><td>{row.unitName}</td><td>{row.bankName}</td><td>{row.bankReference}</td><td>R {Number(row.expectedAmount).toFixed(2)}</td><td>R {Number(row.allocatedAmount).toFixed(2)}</td><td>R {Number(row.bankedAmount).toFixed(2)}</td><td>R {Number(row.outstandingAmount).toFixed(2)}</td><td>{row.status}</td></tr>)}{!deposits.length && <tr><td colSpan={9} className="empty-table">No deposits were recorded for this period.</td></tr>}</tbody></table></div></section>}
     {type === "EXPENDITURE_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Expenditure register</h2></div><span className="panel-tag">{expenses.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>UNIT</th><th>CATEGORY</th><th>PAYEE / DETAILS</th><th>AMOUNT</th><th>STATUS</th></tr></thead><tbody>{expenses.map(row=><tr key={row.id}><td>{row.expenseDate}</td><td>{row.unitName}</td><td>{row.categoryName}</td><td><strong>{row.payee}</strong><small className="table-subtext">{row.description}</small></td><td>{row.currency} {Number(row.amount).toFixed(2)}</td><td>{row.status}</td></tr>)}{!expenses.length && <tr><td colSpan={6} className="empty-table">No expenditure records were recorded for this period.</td></tr>}</tbody></table></div></section>}
     {type === "INCOME_EXPENDITURE" && incomeExpenditure && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Income and expenditure</h2></div><span className="panel-tag">{incomeExpenditure.context.unitName}</span></div><p className="panel-description">Income is based on captured contributions. Expenditure includes approved and paid records only. Draft, submitted and rejected expenses are excluded. Totals remain separate by currency.</p><div className="table-wrap"><table><thead><tr><th>CURRENCY</th><th>INCOME</th><th>APPROVED EXPENDITURE</th><th>NET POSITION</th></tr></thead><tbody>{incomeExpenditure.positions.map(row=><tr key={row.currency}><td><strong>{row.currency}</strong></td><td>{row.currency} {Number(row.income).toFixed(2)}</td><td>{row.currency} {Number(row.expenditure).toFixed(2)}</td><td><strong>{row.currency} {Number(row.netPosition).toFixed(2)}</strong></td></tr>)}{!incomeExpenditure.positions.length && <tr><td colSpan={4} className="empty-table">No income or approved expenditure was recorded for this period.</td></tr>}</tbody></table></div></section>}
+    {type === "BUDGET_PERFORMANCE" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Expenditure budget performance</h2></div><span className="panel-tag">{budgetPerformance.length} BUDGET LINES</span></div><p className="panel-description">Each allocation is shown only when its complete budget period falls within the selected reporting dates. Actuals include approved and paid expenditure in the budget unit and descendants. Draft, submitted and rejected expenditure is excluded. Amounts are kept separate by currency.</p><div className="table-wrap"><table><thead><tr><th>PERIOD</th><th>UNIT</th><th>CATEGORY</th><th>BUDGET</th><th>ACTUAL</th><th>REMAINING</th><th>UTILISATION</th></tr></thead><tbody>{budgetPerformance.map(row=><tr key={row.id}><td>{row.periodStart} — {row.periodEnd}</td><td>{row.unitName}</td><td><strong>{row.categoryName}</strong><small className="table-subtext">{row.categoryCode}</small></td><td>{row.currency} {Number(row.budgetAmount).toFixed(2)}</td><td>{row.currency} {Number(row.actualAmount).toFixed(2)}</td><td><strong>{row.currency} {Number(row.remainingAmount).toFixed(2)}</strong><small className="table-subtext">{row.remainingAmount < 0 ? "OVER BUDGET" : "WITHIN BUDGET"}</small></td><td>{Number(row.utilisationPercentage).toFixed(2)}%</td></tr>)}{!budgetPerformance.length && <tr><td colSpan={7} className="empty-table">No complete budget periods were found within the selected dates and geographical scope.</td></tr>}</tbody></table></div></section>}
     {type === "EXCEPTION_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Reconciliation exceptions</h2></div><span className="panel-tag">{exceptions.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>UNIT</th><th>TYPE</th><th>STATUS</th><th>SUMMARY</th></tr></thead><tbody>{exceptions.map(row=><tr key={row.id}><td>{new Date(row.createdAt).toLocaleDateString()}</td><td>{row.unitName}</td><td>{row.exceptionType}</td><td>{row.status}</td><td>{row.summary}</td></tr>)}{!exceptions.length && <tr><td colSpan={5} className="empty-table">No reconciliation exceptions were recorded for this period.</td></tr>}</tbody></table></div></section>}
   </div>;
 }
