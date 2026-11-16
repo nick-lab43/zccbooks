@@ -1078,10 +1078,16 @@ class FinancialReportPostgresIntegrationTest {
 
         var filtered = adminController.auditEvents(LocalDate.parse("2026-02-02"),
             LocalDate.parse("2026-02-03"), "CONTRIBUTION", auditActorUsername,
-            "CONTRIBUTION", null, null, 1, 1);
+            "CONTRIBUTION", null, null, 1, 0);
         assertEquals(1, filtered.size());
         assertEquals(laterContributionTarget.toString(), filtered.get(0).targetId());
         assertEquals("CONTRIBUTION_POSTED", filtered.get(0).action());
+
+        var secondPage = adminController.auditEvents(LocalDate.parse("2026-02-02"),
+            LocalDate.parse("2026-02-03"), "CONTRIBUTION", auditActorUsername,
+            "CONTRIBUTION", null, null, 1, 1);
+        assertEquals(1, secondPage.size());
+        assertEquals(contributionTarget.toString(), secondPage.get(0).targetId());
 
         var searched = adminController.auditEvents(null, null, null, auditActorUsername,
             null, null, "R-100", 20, 0);
