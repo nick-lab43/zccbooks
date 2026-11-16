@@ -59,7 +59,9 @@ Over-banking, debit entries, cross-scope entries, mismatched references, out-of-
 
 ## Remaining limitations
 
-This workflow does not yet upload or parse bank files in the UI, connect to bank APIs, allocate partial contribution receipts, or handle bank fees, shortages/overages, reversals, refunds or electronic settlement batches. Differences must be investigated; they are not silently adjusted.
+The deposit workspace now exposes the existing generic CSV import endpoint. Finance-reconcile users can select a CSV file, review the import result (inserted rows and skipped duplicates), and refresh the statement-entry register. The interface enforces the 5 MB file limit and `.csv` extension before upload; the server remains authoritative for parsing, required headers, ISO dates, non-zero amounts and the 10,000-row limit. The CSV contract is generic rather than bank-specific: `date`, `reference` and `amount` are required; `description` and `type` are optional. Positive amounts are credits and negative amounts are debits unless an explicit type is supplied. Exact duplicate files are rejected and duplicate transaction identities are skipped.
+
+The workflow still does not connect to bank APIs, allocate partial contribution receipts, or handle bank fees, shortages/overages, reversals, refunds or electronic settlement batches. Differences must be investigated; they are not silently adjusted.
 
 Hosted PostgreSQL verification is required for the V16 migration, multi-credit reconciliation, over-banking prevention, concurrent reconciliation, scope enforcement and reconciliation locking. Do not use the system for live funds until those controls have been tested against the deployed database and operating procedures.
 
