@@ -7,6 +7,7 @@ type Receipt = { id: string; receiptNumber: string; memberName: string; amount: 
 type Batch = { id: string; scopeUnitId: string; scopeName: string; depositDate: string; bankName: string; bankReference: string; expectedAmount: number; status: string; note: string | null; allocatedAmount: number; receiptCount: number; bankedAmount: number; outstandingAmount: number; outstandingNote: string | null; createdAt: string };
 type Allocated = { contributionId: string; receiptNumber: string; memberName: string; amount: number; contributionDate: string; paymentReference: string | null };
 type StatementEntry = { id: string; scopeUnitId: string; scopeName: string; transactionDate: string; bankReference: string; amount: number; entryType: string; description: string | null; reconciled: boolean };
+type StatementImportResult = { importId: string; fileName: string; importedRows: number; duplicateRows: number };
 
 export default function DepositManagement({ organisationId, authorizationHeader, canDeposit, canReconcile }: {
   organisationId: string; authorizationHeader: string; canDeposit: boolean; canReconcile: boolean;
@@ -135,6 +136,37 @@ export default function DepositManagement({ organisationId, authorizationHeader,
     }, "Bank statement entry recorded.");
   }
 
+  async function importStatement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const file = (new FormData(form).get("statementFile")) as File | null;
+    if (!file || file.size === 0) { setError("Choose a CSV statement file."); return; }
+    if (file.size > 5 * 1024 * 1024) { setError("The statement file must be no larger than 5 MB."); return; }
+    if (!file.name.toLowerCase().endsWith(".csv")) { setError("Only CSV statement files are supported."); return; }
+
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const payload = new FormData();
+      payload.append("file", file);
+      const response = await fetch(
+        `${apiBase}/api/organisations/${organisationId}/bank-statement-imports?scopeUnitId=${scopeUnitId}`,
+        { method: "POST", headers, body: payload }
+      );
+      if (!response.ok) {
+        const problem = await response.json().catch(() => null);
+        throw new Error(problem?.detail ?? `Statement import failed (${response.status}).`);
+      }
+      const result = await response.json() as StatementImportResult;
+      form.reset();
+      await reloadScope();
+      setNotice(`Imported ${result.importedRows} bank statement rows; skipped ${result.duplicateRows} duplicates. File: ${result.fileName}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The statement could not be imported.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function reconcile(batch: Batch, entry: StatementEntry, note: string) {
     await perform(async () => {
       await request(`/api/deposit-batches/${batch.id}/reconcile`, {
@@ -187,7 +219,14 @@ export default function DepositManagement({ organisationId, authorizationHeader,
     {canReconcile && <>
       <div className="panel-divider" />
       <div className="panel-title"><div><span className="panel-index">02</span><h3>Bank statement entries</h3></div><span className="panel-tag">CENTRAL RECONCILIATION</span></div>
-      <p className="panel-description">Record a deposit transaction from the bank statement. Reconciliation requires the same reference and amount, with a transaction date within three days of the deposit date.</p>
+      <p className="panel-description">Import a bank CSV or record individual statement entries. Imports accept ISO dates, references and non-zero amounts; positive values are credits and negative values are debits. Files are limited to 5 MB and 10,000 rows. Exact duplicate files are rejected and duplicate transactions are skipped.</p>
+      <form className="form-stack" onSubmit={importStatement}>
+        <label>Bank statement CSV<input name="statementFile" type="file" accept=".csv,text/csv" required disabled={busy || !scopeUnitId} /></label>
+        <small className="table-subtext">Required headers: date, reference, amount. Optional headers: description, type. Dates must use YYYY-MM-DD.</small>
+        <button className="primary-button" disabled={busy || !scopeUnitId}>Import statement CSV</button>
+      </form>
+      <div className="panel-divider" />
+      <h4>Record a single statement entry</h4>
       <form className="form-stack" onSubmit={recordEntry}>
         <div className="field-pair"><label>Statement date<input name="transactionDate" type="date" required /></label><label>Bank reference<input name="bankReference" maxLength={120} required /></label></div>
         <div className="field-pair"><label>Statement amount<input name="amount" type="number" min="0.01" step="0.01" required /></label><label>Description<input name="description" maxLength={500} /></label></div>
