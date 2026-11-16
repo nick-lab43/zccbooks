@@ -327,7 +327,7 @@ class FinancialReportPostgresIntegrationTest {
 
         assertExportTable(fixture, from, to, "DEPOSIT_REGISTER",
             List.of("Date", "Unit", "Bank", "Reference", "Expected", "Allocated", "Banked", "Outstanding", "Status"),
-            List.of("Nyika A", "Test Bank", "BANK-A-1", "125.00", "0.00", "SUBMITTED"));
+            List.of("Nyika A", "Test Bank", "BANK-A-1", "125.00", "0", "SUBMITTED"));
 
         assertExportTable(fixture, from, to, "EXCEPTION_REGISTER",
             List.of("Date", "Unit", "Type", "Status", "Summary"),
