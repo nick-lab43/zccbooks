@@ -142,6 +142,63 @@ public class ContributionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(requireContribution(contributionId));
     }
 
+    @PostMapping("/contributions/{contributionId}/reverse")
+    @Transactional
+    public ResponseEntity<ContributionReversalDto> reverseContribution(
+            @PathVariable UUID contributionId, @Valid @RequestBody ReverseContribution request) {
+        ContributionForReversal contribution = jdbc.query("""
+            SELECT id, scope_unit_id, organisation_id, receipt_number, amount
+            FROM contributions WHERE id = ? FOR UPDATE
+            """, (rs, n) -> new ContributionForReversal(
+                rs.getObject("id", UUID.class), rs.getObject("scope_unit_id", UUID.class),
+                rs.getObject("organisation_id", UUID.class), rs.getString("receipt_number"),
+                rs.getBigDecimal("amount")), contributionId).stream().findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("Contribution receipt not found."));
+
+        authorization.requireUnitPermission("FINANCE_REVERSE", contribution.scopeUnitId());
+
+        if (exists("SELECT COUNT(*) FROM contribution_reversals WHERE contribution_id = ?", contributionId)) {
+            throw new ConflictException("This contribution has already been reversed.");
+        }
+        if (exists("SELECT COUNT(*) FROM deposit_allocations WHERE contribution_id = ?", contributionId)) {
+            throw new ConflictException("A contribution allocated to a deposit batch cannot be reversed. Resolve the deposit workflow first.");
+        }
+
+        UUID reversalId = UUID.randomUUID();
+        UUID actorId = jdbc.queryForObject(
+            "SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?)",
+            UUID.class, authorization.currentUsername());
+        jdbc.update("""
+            INSERT INTO contribution_reversals (id, contribution_id, reason, reversed_by)
+            VALUES (?, ?, ?, ?)
+            """, reversalId, contributionId, request.reason().trim(), actorId);
+        audit.record("CONTRIBUTION_REVERSED", "CONTRIBUTION", contributionId,
+            Map.of("reversalId", reversalId.toString(), "receiptNumber", contribution.receiptNumber(),
+                "amount", contribution.amount().toPlainString(), "reason", request.reason().trim()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(new ContributionReversalDto(
+            reversalId.toString(), contributionId.toString(), contribution.receiptNumber(),
+            contribution.amount(), request.reason().trim(), authorization.currentUsername(), null));
+    }
+
+    @GetMapping("/contributions/{contributionId}/reversal")
+    public ContributionReversalDto contributionReversal(@PathVariable UUID contributionId) {
+        ContributionDto contribution = requireContribution(contributionId);
+        authorization.requireUnitPermission("FINANCE_VIEW", UUID.fromString(contribution.scopeUnitId()));
+        return jdbc.query("""
+            SELECT r.id, r.contribution_id, c.receipt_number, c.amount, r.reason,
+                   u.username, r.reversed_at
+            FROM contribution_reversals r
+            JOIN contributions c ON c.id = r.contribution_id
+            JOIN admin_users u ON u.id = r.reversed_by
+            WHERE r.contribution_id = ?
+            """, (rs, n) -> new ContributionReversalDto(
+                rs.getObject("id", UUID.class).toString(), rs.getObject("contribution_id", UUID.class).toString(),
+                rs.getString("receipt_number"), rs.getBigDecimal("amount"), rs.getString("reason"),
+                rs.getString("username"), rs.getTimestamp("reversed_at").toInstant().toString()),
+            contributionId).stream().findFirst().orElseThrow(
+                () -> new ResourceNotFoundException("No reversal exists for this contribution."));
+    }
+
     @GetMapping("/organisations/{organisationId}/financial-units")
     public List<FinancialUnitDto> financialUnits(@PathVariable UUID organisationId) {
         authorization.requireOrganisationOrUnitPermission("FINANCE_CAPTURE", organisationId);
@@ -450,6 +507,11 @@ public class ContributionController {
     public record DepositFollowupDto(String id, String status, String note, String receiptNumber,
         String memberName, String categoryName, BigDecimal amount, String currency, String contributionDate) {}
     private record DepositFollowupContext(UUID id, UUID scopeUnitId, UUID organisationId, String status) {}
+    public record ReverseContribution(@NotBlank @Size(max = 1000) String reason) {}
+    public record ContributionReversalDto(String id, String contributionId, String receiptNumber,
+        BigDecimal amount, String reason, String reversedBy, String reversedAt) {}
+    private record ContributionForReversal(UUID id, UUID scopeUnitId, UUID organisationId,
+        String receiptNumber, BigDecimal amount) {}
     public record CaptureContribution(@NotNull UUID memberId, @NotNull UUID categoryId,
         @NotNull UUID scopeUnitId, @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount,
         @NotNull LocalDate contributionDate, @NotBlank String paymentMethod,
