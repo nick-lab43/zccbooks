@@ -9,6 +9,7 @@ import FinancialReports from "./FinancialReports";
 import ExpenditureManagement from "./ExpenditureManagement";
 import BudgetManagement from "./BudgetManagement";
 import DepositReview from "./DepositReview";
+import AdminAuditLog from "./AdminAuditLog";
 
 type Module = "overview" | "organisation" | "membership" | "appointments" | "membershipReports" | "financial" | "reports" | "expenditure" | "budgets" | "depositReview" | "access";
 type CurrentAdmin = { username: string; displayName: string; permissions: string[] };
@@ -17,7 +18,6 @@ type AdminRole = { id: string; code: string; name: string; description?: string;
 type Permission = { code: string; name: string; description: string };
 type UnitOption = { id: string; level: string; code: string; name: string };
 type Invitation = { id: string; username: string; displayName: string; email: string; nyikaCode: string; nyikaName: string; expiresAt: string; status: string };
-type AuditEvent = { id: string; actor: string; action: string; targetType: string; targetId: string | null; details: string; occurredAt: string };
 type Organisation = { id: string; name: string; createdAt: string };
 type Branch = { id: string; organisationId: string; code: string; name: string; districtName?: string; countryCode?: string };
 type Classification = { id: string; code: string; name: string; active: boolean };
@@ -45,7 +45,6 @@ function MainApp() {
   const [adminRoles, setAdminRoles] = useState<AdminRole[]>([]);
   const [permissionOptions, setPermissionOptions] = useState<Permission[]>([]);
   const [accessUnits, setAccessUnits] = useState<UnitOption[]>([]);
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [accessOrganisationId, setAccessOrganisationId] = useState("");
   const [organisations, setOrganisations] = useState<Organisation[]>([]);
   const [organisationId, setOrganisationId] = useState("");
@@ -73,9 +72,8 @@ function MainApp() {
       api<AdminUser[]>("/api/admin/users"),
       api<AdminRole[]>("/api/admin/roles"),
       api<Permission[]>("/api/admin/permissions"),
-      api<AuditEvent[]>("/api/admin/audit"),
       api<Invitation[]>("/api/admin/nyika-invitations"),
-    ]).then(([users, roles, permissions, events, inviteRows]) => { setAdminUsers(users); setAdminRoles(roles); setPermissionOptions(permissions); setAuditEvents(events); setInvitations(inviteRows); })
+    ]).then(([users, roles, permissions, inviteRows]) => { setAdminUsers(users); setAdminRoles(roles); setPermissionOptions(permissions); setInvitations(inviteRows); })
       .catch((e: Error) => setError(e.message));
   }, [authenticated, activeModule]);
 
@@ -133,7 +131,7 @@ function MainApp() {
 
   function logout() {
     currentAuthHeader = null; setAuthenticated(false); setCurrentAdmin(null);
-    setAdminUsers([]); setAdminRoles([]); setOrganisations([]); setBranches([]); setMembers([]); setAccessOrganisationId(""); setAccessUnits([]); setAuditEvents([]); setActiveModule("overview");
+    setAdminUsers([]); setAdminRoles([]); setOrganisations([]); setBranches([]); setMembers([]); setAccessOrganisationId(""); setAccessUnits([]); setActiveModule("overview");
     setOrganisationId(""); setBranchId(""); setError(""); setNotice("");
   }
 
@@ -481,14 +479,7 @@ function MainApp() {
               <p className="panel-description access-help">System roles are protected. Create a custom role to define a different permission set. Use Ctrl or Command to select multiple permissions.</p>
             </section>
           </div>
-          
-            <section className="panel">
-              <div className="panel-title"><div><span className="panel-index">05</span><h2>Administrator audit history</h2></div><span className="panel-tag">LATEST 250 EVENTS</span></div>
-              <div className="table-wrap"><table><thead><tr><th>DATE / TIME</th><th>ACTOR</th><th>ACTION</th><th>RECORD</th><th>DETAILS</th></tr></thead><tbody>
-                {auditEvents.map((event) => <tr key={event.id}><td>{new Date(event.occurredAt).toLocaleString()}</td><td>{event.actor}</td><td><strong>{event.action}</strong></td><td>{event.targetType}</td><td>{event.details}</td></tr>)}
-                {!auditEvents.length && <tr><td colSpan={5} className="empty-table">No administrator events recorded.</td></tr>}
-              </tbody></table></div>
-            </section>
+            <AdminAuditLog authorizationHeader={currentAuthHeader ?? ""} />
         </div>
       )}
 
