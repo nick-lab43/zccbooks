@@ -547,7 +547,10 @@ public class ContributionController {
     public record DepositFollowupDto(String id, String status, String note, String receiptNumber,
         String memberName, String categoryName, BigDecimal amount, String currency, String contributionDate) {}
     private record DepositFollowupContext(UUID id, UUID scopeUnitId, UUID organisationId, String status) {}
-    public record ContributionRegisterDto(String id, String receiptNumber, String memberName, String categoryName,\n        BigDecimal amount, String currency, String contributionDate, String paymentMethod, String capturedAt,\n        boolean reversed, String reversalReason, String reversedBy, String reversedAt) {}\n    public record ReverseContribution(@NotBlank @Size(max = 1000) String reason) {}
+    public record ContributionRegisterDto(String id, String receiptNumber, String memberName, String categoryName,
+        BigDecimal amount, String currency, String contributionDate, String paymentMethod, String capturedAt,
+        boolean reversed, String reversalReason, String reversedBy, String reversedAt) {}
+    public record ReverseContribution(@NotBlank @Size(max = 1000) String reason) {}
     public record ContributionReversalDto(String id, String contributionId, String receiptNumber,
         BigDecimal amount, String reason, String reversedBy, String reversedAt) {}
     private record ContributionForReversal(UUID id, UUID scopeUnitId, UUID organisationId,
