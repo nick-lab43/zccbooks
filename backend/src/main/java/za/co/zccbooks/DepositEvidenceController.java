@@ -35,15 +35,7 @@ public class DepositEvidenceController {
     public List<EvidenceDto> list(@PathVariable UUID batchId) {
         BatchScope batch = requireBatch(batchId);
         authorization.requireUnitPermission("FINANCE_VIEW", batch.scopeUnitId());
-        return jdbc.query("""
-            SELECT id, original_filename, content_type, file_size, sha256, uploaded_at
-            FROM deposit_evidence
-            WHERE deposit_batch_id = ?
-            ORDER BY uploaded_at, id
-            """, (rs, n) -> new EvidenceDto(rs.getObject("id", UUID.class).toString(),
-                rs.getString("original_filename"), rs.getString("content_type"),
-                rs.getLong("file_size"), rs.getString("sha256"),
-                rs.getTimestamp("uploaded_at").toInstant().toString()), batchId);
+        return evidenceRows(batchId);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -84,7 +76,7 @@ public class DepositEvidenceController {
                 Map.of("depositBatchId", batchId.toString(), "filename", filename,
                     "contentType", contentType, "fileSize", Integer.toString(bytes.length), "sha256", digest));
         }
-        return list(batchId);
+        return evidenceRows(batchId);
     }
 
     @GetMapping("/{evidenceId}/content")
@@ -105,6 +97,18 @@ public class DepositEvidenceController {
             .header(HttpHeaders.CONTENT_DISPOSITION,
                 "inline; filename=\"" + evidence.filename().replace("\\", "_").replace("\"", "_") + "\"")
             .body(evidence.bytes());
+    }
+
+    private List<EvidenceDto> evidenceRows(UUID batchId) {
+        return jdbc.query("""
+            SELECT id, original_filename, content_type, file_size, sha256, uploaded_at
+            FROM deposit_evidence
+            WHERE deposit_batch_id = ?
+            ORDER BY uploaded_at, id
+            """, (rs, n) -> new EvidenceDto(rs.getObject("id", UUID.class).toString(),
+                rs.getString("original_filename"), rs.getString("content_type"),
+                rs.getLong("file_size"), rs.getString("sha256"),
+                rs.getTimestamp("uploaded_at").toInstant().toString()), batchId);
     }
 
     private BatchScope requireBatch(UUID batchId) {
