@@ -261,7 +261,9 @@ public class FinancialJournalController {
         authorization.requireUnitPermission("FINANCE_JOURNAL_APPROVE", journal.scopeUnitId());
         if (!"APPROVED".equals(journal.status())) throw new ConflictException("Only approved journals can be posted.");
         UUID actor = actorId();
-        if (actor.equals(journal.approvedBy())) throw new ConflictException("The approver cannot post the same journal.");
+        if (actor.equals(journal.approvedBy()) || actor.equals(journal.createdBy())) {
+            throw new ConflictException("The journal creator and approver cannot post the same journal.");
+        }
         jdbc.update("""
             UPDATE finance_journals
             SET status = 'POSTED', posted_by = ?, posted_at = CURRENT_TIMESTAMP
