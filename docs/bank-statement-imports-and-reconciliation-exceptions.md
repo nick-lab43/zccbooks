@@ -49,7 +49,7 @@ Custom roles may be granted `FINANCE_EXCEPTION` by an authorised system administ
 - `POST /api/organisations/{organisationId}/bank-statement-imports?scopeUnitId={scopeUnitId}` — multipart CSV import; field name `file`.
 - `POST /api/organisations/{organisationId}/reconciliation-exceptions/scan?scopeUnitId={scopeUnitId}` — detect exceptions.
 - `GET /api/organisations/{organisationId}/reconciliation-exceptions?scopeUnitId={scopeUnitId}&includeResolved=false` — list exceptions.
-- `PATCH /api/reconciliation-exceptions/{exceptionId}` — set `UNDER_REVIEW` or `RESOLVED` and supply a resolution note.
+- `PATCH /api/reconciliation-exceptions/{exceptionId}` — set `UNDER_REVIEW` or `RESOLVED` and supply a resolution note.\n- `GET /api/reconciliation-exceptions/{exceptionId}/history` — read the immutable status-transition history within the exception's scope.
 
 ## Operational limitations
 
@@ -61,3 +61,10 @@ Custom roles may be granted `FINANCE_EXCEPTION` by an authorised system administ
 - No partial deposits, split deposits, chargebacks, refunds, reversals or automated write-offs are supported.
 - Exception scanning is repeatable and avoids duplicate exception rows, but it does not automatically close exceptions when a later transaction is reconciled. Resolved exceptions remain immutable in this workflow.
 - Hosted PostgreSQL migration and end-to-end verification are required before operational use. Continue using fictional demonstration records until that verification is complete.
+
+
+## Immutable exception lifecycle history
+
+Every newly detected exception receives an initial history entry. Moving an exception to review or resolving it appends a separate status-transition record containing the previous status, new status, operator, timestamp and any supplied note. The history table rejects updates and deletes at the database level. The exception's current status remains available in the register, while the history endpoint exposes the complete sequence to users with finance-view access.
+
+Existing exceptions are backfilled with a baseline snapshot of their status and last recorded update time. Where the older record did not retain an actor, the baseline explicitly reports that the actor was not recorded; it does not infer or fabricate one. This history records exception workflow decisions and does not itself establish that the underlying bank difference was financially corrected.

@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
 type Unit = { id: string; level: string; code: string; name: string; active: boolean };
 type ExceptionRow = {
   id: string; sourceType: string; sourceId: string; exceptionType: string; status: string;
   summary: string; resolutionNote: string | null; createdAt: string; updatedAt: string; scopeName: string;
+};
+type ExceptionHistory = {
+  id: string; previousStatus: string | null; newStatus: string; action: string;
+  note: string | null; changedBy: string | null; changedAt: string;
 };
 
 export default function FinancialReconciliationExceptions({ organisationId, authorizationHeader, canImport, canManage }: {
@@ -16,6 +20,9 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
   const [includeResolved, setIncludeResolved] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
+  const [historyOpen, setHistoryOpen] = useState<Record<string, boolean>>({});
+  const [historyRows, setHistoryRows] = useState<Record<string, ExceptionHistory[]>>({});
+  const [historyLoading, setHistoryLoading] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -93,6 +100,22 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
     }, "Exception scan completed.");
   }
 
+  async function toggleHistory(row: ExceptionRow) {
+    const nextOpen = !historyOpen[row.id];
+    setHistoryOpen(current => ({ ...current, [row.id]: nextOpen }));
+    if (!nextOpen || historyRows[row.id]) return;
+    setHistoryLoading(current => ({ ...current, [row.id]: true }));
+    try {
+      const result = await request<ExceptionHistory[]>(`/api/reconciliation-exceptions/${row.id}/history`);
+      setHistoryRows(current => ({ ...current, [row.id]: result }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load exception history.");
+      setHistoryOpen(current => ({ ...current, [row.id]: false }));
+    } finally {
+      setHistoryLoading(current => ({ ...current, [row.id]: false }));
+    }
+  }
+
   async function updateException(row: ExceptionRow, status: "UNDER_REVIEW" | "RESOLVED") {
     await perform(async () => {
       await request(`/api/reconciliation-exceptions/${row.id}`, {
@@ -127,13 +150,32 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
     <div className="panel-divider" />
     <div className="register-heading"><div><h3>Exception register</h3><p>Every resolution requires a note and is written to the administrator audit history.</p></div><label className="checkbox-label"><input type="checkbox" checked={includeResolved} onChange={e => setIncludeResolved(e.target.checked)} />Include resolved</label></div>
     <div className="table-wrap"><table><thead><tr><th>TYPE / SOURCE</th><th>ISSUE</th><th>STATUS</th><th>RESOLUTION NOTE</th><th>ACTION</th></tr></thead><tbody>
-      {rows.map(row => <tr key={row.id}>
+      {rows.map(row => <Fragment key={row.id}><tr>
         <td><strong>{row.exceptionType.replace(/_/g, " ")}</strong><small className="table-subtext">{row.sourceType.replace(/_/g, " ")} · {row.scopeName}</small></td>
         <td>{row.summary}<small className="table-subtext">{new Date(row.createdAt).toLocaleString()}</small></td>
         <td>{row.status}</td>
         <td>{row.status === "RESOLVED" ? row.resolutionNote : <input aria-label="Resolution note" value={resolutionNotes[row.id] ?? ""} onChange={e => setResolutionNotes(current => ({ ...current, [row.id]: e.target.value }))} maxLength={1000} placeholder="Required to resolve" />}</td>
-        <td>{canManage && row.status !== "RESOLVED" && <div className="action-stack"><button type="button" className="secondary-button" disabled={busy || row.status === "UNDER_REVIEW"} onClick={() => updateException(row, "UNDER_REVIEW")}>Review</button><button type="button" className="primary-button" disabled={busy || !(resolutionNotes[row.id] ?? "").trim()} onClick={() => updateException(row, "RESOLVED")}>Resolve</button></div>}</td>
-      </tr>)}
+        <td><div className="action-stack">
+          <button type="button" className="secondary-button" disabled={busy || historyLoading[row.id]} onClick={() => toggleHistory(row)}>
+            {historyLoading[row.id] ? "Loading…" : historyOpen[row.id] ? "Hide history" : "History"}
+          </button>
+          {canManage && row.status !== "RESOLVED" && <>
+            <button type="button" className="secondary-button" disabled={busy || row.status === "UNDER_REVIEW"} onClick={() => updateException(row, "UNDER_REVIEW")}>Review</button>
+            <button type="button" className="primary-button" disabled={busy || !(resolutionNotes[row.id] ?? "").trim()} onClick={() => updateException(row, "RESOLVED")}>Resolve</button>
+          </>}
+        </div></td>
+      </tr>
+      {historyOpen[row.id] && <tr key={row.id + "-history"}><td colSpan={5}>
+        <strong>Immutable status history</strong>
+        {historyLoading[row.id] ? <p>Loading history…</p> : <ol className="audit-history-list">
+          {(historyRows[row.id] ?? []).map(item => <li key={item.id}>
+            <strong>{item.action === "BASELINE" ? `History baseline · ${item.newStatus}` : item.action === "CREATED" ? "Exception created" : `${item.previousStatus} → ${item.newStatus}`}</strong>
+            <small className="table-subtext">{item.changedBy ?? "Actor not recorded"} · {new Date(item.changedAt).toLocaleString()}</small>
+            {item.note && <p>{item.note}</p>}
+          </li>)}
+          {!historyRows[row.id]?.length && <li>No history recorded.</li>}
+        </ol>}
+      </td></tr>}</Fragment>)}
       {!rows.length && <tr><td colSpan={5} className="empty-table">No reconciliation exceptions in this scope.</td></tr>}
     </tbody></table></div>
   </section>;
