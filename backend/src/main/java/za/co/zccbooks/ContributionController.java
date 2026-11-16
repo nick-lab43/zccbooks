@@ -498,7 +498,12 @@ public class ContributionController {
             rs.getTimestamp("captured_at").toInstant().toString());
     }
 
-    private boolean exists(String sql, Object... args) {\n        Integer count = jdbc.queryForObject(sql, Integer.class, args);\n        return count != null && count > 0;\n    }\n\n    private static String blankToNull(String value) {
+    private boolean exists(String sql, Object... args) {
+        Integer count = jdbc.queryForObject(sql, Integer.class, args);
+        return count != null && count > 0;
+    }
+
+    private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
