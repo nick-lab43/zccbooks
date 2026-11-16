@@ -1009,13 +1009,11 @@ class FinancialReportPostgresIntegrationTest {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CASH', ?, ?)
             """, UUID.randomUUID(), organisationId, memberId, categoryId, streamId, scopeUnitId,
             receipt, sequence, amount, currency, contributionDate, "IDEMP-" + receipt, adminId);
-        if ("CASH".equals("CASH")) {
-            UUID contributionId = jdbc.queryForObject(
-                "SELECT id FROM contributions WHERE organisation_id = ? AND receipt_number = ?",
-                UUID.class, organisationId, receipt);
-            jdbc.update("INSERT INTO contribution_deposit_followups (id, contribution_id) VALUES (?, ?)",
-                UUID.randomUUID(), contributionId);
-        }
+        UUID contributionId = jdbc.queryForObject(
+            "SELECT id FROM contributions WHERE organisation_id = ? AND receipt_number = ?",
+            UUID.class, organisationId, receipt);
+        jdbc.update("INSERT INTO contribution_deposit_followups (id, contribution_id) VALUES (?, ?)",
+            UUID.randomUUID(), contributionId);
     }
 
     private void authenticate(Fixture fixture) {
