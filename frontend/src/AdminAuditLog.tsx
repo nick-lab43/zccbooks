@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 
 type AuditEvent = {
   id: string;
@@ -65,7 +66,7 @@ export default function AdminAuditLog({ authorizationHeader }: Props) {
 
   useEffect(() => { void load(); }, [load]);
 
-  function applyFilters(event: React.FormEvent<HTMLFormElement>) {
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setOffset(0);
     setApplied({ ...filters });
