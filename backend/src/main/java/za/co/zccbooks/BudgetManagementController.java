@@ -63,7 +63,7 @@ public class BudgetManagementController {
                          AND e.category_id = b.category_id AND e.currency = b.currency
                          AND e.expense_date BETWEEN b.period_start AND b.period_end
                          AND e.status IN ('APPROVED', 'PAID')
-                   ), 0) AS actual_amount
+                   ), 0.00::numeric) AS actual_amount
             FROM expenditure_budgets b
             JOIN visible_units v ON v.id = b.unit_id
             JOIN organisational_units u ON u.id = b.unit_id
@@ -212,7 +212,7 @@ public class BudgetManagementController {
                          AND e.category_id = b.category_id AND e.currency = b.currency
                          AND e.expense_date BETWEEN b.period_start AND b.period_end
                          AND e.status IN ('APPROVED', 'PAID')
-                   ), 0) AS actual_amount
+                   ), 0.00::numeric) AS actual_amount
             FROM expenditure_budgets b
             JOIN organisational_units u ON u.id = b.unit_id
             JOIN expenditure_categories c ON c.id = b.category_id AND c.organisation_id = b.organisation_id
