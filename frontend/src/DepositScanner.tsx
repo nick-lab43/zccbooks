@@ -78,6 +78,7 @@ export default function DepositScanner({ batchId, authorizationHeader, evidence 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pagesRef = useRef<ScanPage[]>([]);
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
   const imageEvidence = useMemo(() => evidence.filter(item => item.contentType.startsWith("image/")), [evidence]);
   const activePage = pages[activeIndex];
@@ -111,7 +112,8 @@ export default function DepositScanner({ batchId, authorizationHeader, evidence 
     image.src = activePage.sourceUrl;
   }, [activePage, enhancement]);
 
-  useEffect(() => () => pages.forEach(page => URL.revokeObjectURL(page.sourceUrl)), [batchId]);
+  useEffect(() => { pagesRef.current = pages; }, [pages]);
+  useEffect(() => () => pagesRef.current.forEach(page => URL.revokeObjectURL(page.sourceUrl)), []);
 
   async function toggleEvidence(item: Evidence, checked: boolean) {
     setError(""); setNotice("");
