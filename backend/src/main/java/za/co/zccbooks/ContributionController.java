@@ -374,7 +374,7 @@ public class ContributionController {
             Integer activeAllocation = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM deposit_allocations a
                 JOIN deposit_batches b ON b.id = a.deposit_batch_id
-                WHERE a.contribution_id = ? AND b.status IN ('DRAFT', 'SUBMITTED', 'PARTIALLY_RECONCILED')
+                WHERE a.contribution_id = ? AND b.status IN ('DRAFT', 'SUBMITTED', 'PARTIALLY_RECONCILED', 'EXCEPTION')
                 """, Integer.class, jdbc.queryForObject(
                     "SELECT contribution_id FROM contribution_deposit_followups WHERE id = ?", UUID.class, followupId));
             if (activeAllocation != null && activeAllocation > 0) {
