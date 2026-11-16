@@ -279,7 +279,7 @@ function MainApp() {
             <div className="sidebar-section-label">SYSTEM ADMINISTRATION</div>
             <button className={activeModule === "access" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("access")} aria-current={activeModule === "access" ? "page" : undefined}><span className="sidebar-icon">AC</span><span>Users &amp; access</span></button>
           </>}
-          <div className="sidebar-note"><strong>Current release</strong><span>Organisation, membership, contributions, deposits, expenditure approvals and financial reporting.</span></div>
+          <div className="sidebar-note"><strong>Current release</strong><span>Organisation, membership, contributions, deposits, expenditure approvals, budget controls and financial reporting.</span></div>
         </aside>
         <main className="app-main">
 
@@ -325,7 +325,7 @@ function MainApp() {
               </div>
             </section>
           </div>
-          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION, MEMBERSHIP, CONTRIBUTION RECEIPTS, DEPOSIT MANAGEMENT AND RECONCILIATION</div>
+          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION, MEMBERSHIP, CONTRIBUTIONS, DEPOSITS, EXPENDITURE AND BUDGET ACCOUNTABILITY</div>
         </section>
       )}
 
