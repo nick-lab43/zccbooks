@@ -342,7 +342,7 @@ public class ContributionController {
     @GetMapping("/organisations/{organisationId}/contribution-register")
     public List<ContributionRegisterDto> contributionRegister(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId) {
-        authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
+        authorization.requireUnitPermission("FINANCE_REVERSE", scopeUnitId);
         return jdbc.query("""
             SELECT c.id, c.receipt_number, m.first_name, m.last_name, cat.name AS category_name,
                    c.amount, c.currency, c.contribution_date, c.payment_method, c.captured_at,
