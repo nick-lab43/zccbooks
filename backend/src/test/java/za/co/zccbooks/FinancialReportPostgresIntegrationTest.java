@@ -116,6 +116,7 @@ class FinancialReportPostgresIntegrationTest {
 
     private Fixture fixture() {
         UUID organisationId = UUID.randomUUID();
+        jdbc.update("INSERT INTO organisations (id, name) VALUES (?, ?)", organisationId, "Test Church");
         UUID country = unit(organisationId, null, "COUNTRY", "Country");
         UUID district = unit(organisationId, country, "DISTRICT", "District");
         UUID nyikaA = unit(organisationId, district, "NYIKA", "Nyika A");
@@ -125,10 +126,6 @@ class FinancialReportPostgresIntegrationTest {
         UUID tabheraB = unit(organisationId, nyikaB, "TABHERA", "Tabhera B");
         UUID cellB = unit(organisationId, tabheraB, "CELL", "Cell B");
 
-        jdbc.update("INSERT INTO organisations (id, name) VALUES (?, ?)", organisationId, "Test Church");
-
-        // Organisational units must belong to an existing organisation.
-        // They are inserted after the organisation row, preserving their hierarchy.
         UUID adminId = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
