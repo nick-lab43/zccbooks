@@ -59,6 +59,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired DepositDocumentController depositDocuments;
     @Autowired ExpenditureEvidenceController expenditureEvidence;
     @Autowired AdminController adminController;
+    @Autowired FinancialJournalController financialJournals;
 
     @AfterEach
     void clearAuthentication() {
@@ -1163,6 +1164,96 @@ class FinancialReportPostgresIntegrationTest {
             null, null, null, null, null, null, null, 501, 0));
         assertThrows(IllegalArgumentException.class, () -> adminController.auditEvents(
             null, null, null, null, null, null, null, 100, -1));
+    }
+
+    @Test
+    void financialJournalRequiresBalancedLinesAndIndependentApprovalAndPosting() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT DISTINCT a.role_id, p.permission_code
+            FROM admin_role_assignments a
+            CROSS JOIN (VALUES ('FINANCE_JOURNAL_VIEW'), ('FINANCE_JOURNAL_CREATE'),
+                               ('FINANCE_JOURNAL_APPROVE')) AS p(permission_code)
+            WHERE a.user_id = ?
+            ON CONFLICT DO NOTHING
+            """, fixture.adminId());
+
+        var cash = financialJournals.createAccount(fixture.organisationId(),
+            new FinancialJournalController.CreateFinanceAccount("1000", "Cash at bank", "ASSET", "ZAR"));
+        var bankFees = financialJournals.createAccount(fixture.organisationId(),
+            new FinancialJournalController.CreateFinanceAccount("5100", "Bank charges", "EXPENSE", "ZAR"));
+        UUID cashId = UUID.fromString(cash.getBody().id());
+        UUID feeId = UUID.fromString(bankFees.getBody().id());
+
+        var unbalanced = financialJournals.createJournal(fixture.organisationId(),
+            new FinancialJournalController.CreateFinanceJournal("JRN-2026-001", fixture.nyikaA(),
+                LocalDate.parse("2026-05-10"), "ZAR", "Record bank fee", "MANUAL", null,
+                List.of(new FinancialJournalController.FinanceJournalLineRequest(
+                    feeId, new BigDecimal("10.00"), BigDecimal.ZERO, "Bank fee"))));
+        UUID journalId = UUID.fromString(unbalanced.getBody().getId());
+        assertThrows(ConflictException.class, () -> financialJournals.submit(journalId));
+
+        financialJournals.replaceDraftLines(journalId,
+            new FinancialJournalController.ReplaceFinanceJournalLines(List.of(
+                new FinancialJournalController.FinanceJournalLineRequest(
+                    feeId, new BigDecimal("10.00"), BigDecimal.ZERO, "Bank fee expense"),
+                new FinancialJournalController.FinanceJournalLineRequest(
+                    cashId, BigDecimal.ZERO, new BigDecimal("10.00"), "Cash reduction"))));
+        assertEquals("SUBMITTED", financialJournals.submit(journalId).status());
+        assertThrows(ConflictException.class, () -> financialJournals.approve(journalId));
+
+        UUID approverId = UUID.randomUUID();
+        String approver = "journal.approver." + approverId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Journal Approver', 'not-used-in-direct-controller-test', TRUE)
+            """, approverId, approver);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            SELECT ?, ?, role_id, 'UNIT', ?, ?
+            FROM admin_role_assignments WHERE user_id = ? AND scope_unit_id = ?
+            LIMIT 1
+            """, UUID.randomUUID(), approverId, fixture.organisationId(), fixture.nyikaA(),
+            fixture.adminId(), fixture.nyikaA());
+
+        authenticateAs(approver);
+        assertEquals("APPROVED", financialJournals.approve(journalId).status());
+        assertThrows(ConflictException.class, () -> financialJournals.post(journalId));
+
+        UUID posterId = UUID.randomUUID();
+        String poster = "journal.poster." + posterId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Journal Poster', 'not-used-in-direct-controller-test', TRUE)
+            """, posterId, poster);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            SELECT ?, ?, role_id, 'UNIT', ?, ?
+            FROM admin_role_assignments WHERE user_id = ? AND scope_unit_id = ?
+            LIMIT 1
+            """, UUID.randomUUID(), posterId, fixture.organisationId(), fixture.nyikaA(),
+            fixture.adminId(), fixture.nyikaA());
+
+        authenticateAs(poster);
+        var posted = financialJournals.post(journalId);
+        assertEquals("POSTED", posted.status());
+        assertEquals(posterId.toString(), posted.postedBy());
+        assertEquals(1, financialJournals.journals(fixture.organisationId(), "POSTED").size());
+
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () ->
+            jdbc.update("UPDATE finance_journals SET description = 'Altered' WHERE id = ?", journalId));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () ->
+            jdbc.update("UPDATE finance_journal_lines SET description = 'Altered' WHERE journal_id = ?", journalId));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () ->
+            jdbc.update("DELETE FROM finance_journals WHERE id = ?", journalId));
+
+        Integer journalEvents = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM admin_audit_events
+            WHERE target_id = ? AND action_code IN ('FINANCE_JOURNAL_CREATED',
+                'FINANCE_JOURNAL_SUBMITTED', 'FINANCE_JOURNAL_APPROVED', 'FINANCE_JOURNAL_POSTED')
+            """, Integer.class, journalId);
+        assertEquals(4, journalEvents);
     }
 
     private void insertAuditEvent(UUID actorId, String action, String targetType,
