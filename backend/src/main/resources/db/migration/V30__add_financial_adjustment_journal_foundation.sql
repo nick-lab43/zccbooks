@@ -45,6 +45,7 @@ CREATE TABLE finance_journals (
     posted_by UUID REFERENCES admin_users(id),
     posted_at TIMESTAMPTZ,
     CONSTRAINT uq_finance_journals_number UNIQUE (organisation_id, journal_number),
+    CONSTRAINT uq_finance_journals_id_org_currency UNIQUE (id, organisation_id, currency),
     CONSTRAINT fk_finance_journal_scope_org
         FOREIGN KEY (scope_unit_id, organisation_id)
         REFERENCES organisational_units(id, organisation_id),
@@ -58,7 +59,7 @@ CREATE TABLE finance_journals (
 
 CREATE TABLE finance_journal_lines (
     id UUID PRIMARY KEY,
-    journal_id UUID NOT NULL REFERENCES finance_journals(id),
+    journal_id UUID NOT NULL,
     account_id UUID NOT NULL,
     organisation_id UUID NOT NULL,
     currency CHAR(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
@@ -66,6 +67,9 @@ CREATE TABLE finance_journal_lines (
     credit_amount NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (credit_amount >= 0),
     description VARCHAR(500),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_finance_journal_line_journal
+        FOREIGN KEY (journal_id, organisation_id, currency)
+        REFERENCES finance_journals(id, organisation_id, currency),
     CONSTRAINT ck_finance_journal_line_one_side
         CHECK ((debit_amount > 0 AND credit_amount = 0)
             OR (credit_amount > 0 AND debit_amount = 0)),
@@ -84,16 +88,24 @@ CREATE INDEX ix_finance_journal_lines_journal
 CREATE FUNCTION enforce_finance_journal_line_draft()
 RETURNS TRIGGER AS $$
 DECLARE
-    target_journal_id UUID;
     target_status VARCHAR(16);
 BEGIN
-    target_journal_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.journal_id ELSE NEW.journal_id END;
-    SELECT status INTO target_status
-    FROM finance_journals WHERE id = target_journal_id FOR UPDATE;
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN
+        SELECT status INTO target_status
+        FROM finance_journals WHERE id = OLD.journal_id FOR UPDATE;
+        IF target_status IS DISTINCT FROM 'DRAFT' THEN
+            RAISE EXCEPTION 'Journal lines can only be changed while the journal is a draft'
+                USING ERRCODE = '23514';
+        END IF;
+    END IF;
 
-    IF target_status IS DISTINCT FROM 'DRAFT' THEN
-        RAISE EXCEPTION 'Journal lines can only be changed while the journal is a draft'
-            USING ERRCODE = '23514';
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN
+        SELECT status INTO target_status
+        FROM finance_journals WHERE id = NEW.journal_id FOR UPDATE;
+        IF target_status IS DISTINCT FROM 'DRAFT' THEN
+            RAISE EXCEPTION 'Journal lines can only be changed while the journal is a draft'
+                USING ERRCODE = '23514';
+        END IF;
     END IF;
 
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
@@ -114,6 +126,15 @@ DECLARE
 BEGIN
     IF OLD.status = 'POSTED' THEN
         RAISE EXCEPTION 'Posted financial journals are immutable'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF NEW.status <> OLD.status AND NOT (
+        (OLD.status = 'DRAFT' AND NEW.status = 'SUBMITTED') OR
+        (OLD.status = 'SUBMITTED' AND NEW.status IN ('APPROVED', 'REJECTED')) OR
+        (OLD.status = 'APPROVED' AND NEW.status = 'POSTED')
+    ) THEN
+        RAISE EXCEPTION 'Invalid financial journal status transition'
             USING ERRCODE = '23514';
     END IF;
 
@@ -148,8 +169,8 @@ CREATE TRIGGER trg_finance_journals_transition
 CREATE FUNCTION prevent_finance_journal_delete()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF OLD.status = 'POSTED' THEN
-        RAISE EXCEPTION 'Posted financial journals cannot be deleted'
+    IF OLD.status <> 'DRAFT' THEN
+        RAISE EXCEPTION 'Only draft financial journals can be deleted'
             USING ERRCODE = '23514';
     END IF;
     RETURN OLD;
