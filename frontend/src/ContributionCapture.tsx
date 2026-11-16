@@ -8,8 +8,8 @@ type Followup = { id: string; status: string; note: string | null; receiptNumber
 type RegisterItem = { id: string; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; capturedAt: string; reversed: boolean; reversalReason: string | null; reversedBy: string | null; reversedAt: string | null };
 type Receipt = { id: string; receiptNumber: string; memberName: string; categoryName: string; streamName: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; capturedAt: string };
 
-export default function ContributionCapture({ organisationId, authorizationHeader, canReverse }: {
-  organisationId: string; authorizationHeader: string; canReverse: boolean;
+export default function ContributionCapture({ organisationId, authorizationHeader, canCapture, canReverse }: {
+  organisationId: string; authorizationHeader: string; canCapture: boolean; canReverse: boolean;
 }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -46,13 +46,13 @@ export default function ContributionCapture({ organisationId, authorizationHeade
     setMembers([]); setReceipt(null); setError("");
     if (!organisationId) return;
     Promise.all([
-      request<Unit[]>(`/api/organisations/${organisationId}/financial-units`),
-      request<Category[]>(`/api/organisations/${organisationId}/contribution-categories`)
+      request<Unit[]>(`/api/organisations/${organisationId}/${canCapture ? "financial-units" : "financial-reversal-units"}`),
+      canCapture ? request<Category[]>(`/api/organisations/${organisationId}/contribution-categories`) : Promise.resolve([] as Category[])
     ]).then(([unitRows, categoryRows]) => {
-      setUnits(unitRows.filter(unit => unit.active && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)));
+      setUnits(unitRows.filter(unit => (!canCapture || unit.active) && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)));
       setCategories(categoryRows.filter(category => category.active));
     }).catch((e: Error) => setError(e.message));
-  }, [organisationId, authorizationHeader]);
+  }, [organisationId, authorizationHeader, canCapture]);
 
   const scopeUnits = units;
   const cells = useMemo(() => {
@@ -79,10 +79,10 @@ export default function ContributionCapture({ organisationId, authorizationHeade
 
   useEffect(() => {
     setMemberId(""); setMembers([]);
-    if (!cellId || !scopeUnitId) return;
+    if (!canCapture || !cellId || !scopeUnitId) return;
     request<Member[]>(`/api/units/${cellId}/financial-members?scopeUnitId=${scopeUnitId}`)
       .then(setMembers).catch((e: Error) => setError(e.message));
-  }, [cellId, scopeUnitId, authorizationHeader]);
+  }, [cellId, scopeUnitId, authorizationHeader, canCapture]);
 
   async function reloadRegister() {
     if (!organisationId || !scopeUnitId) { setRegister([]); return; }
@@ -111,10 +111,10 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   useEffect(() => {
     setFollowups([]); setRegister([]); setReversalTarget(null); setReversalNotice("");
     if (organisationId && scopeUnitId) {
-      reloadFollowups().catch((e: Error) => setError(e.message));
-      reloadRegister().catch((e: Error) => setError(e.message));
+      if (canCapture) reloadFollowups().catch((e: Error) => setError(e.message));
+      if (canReverse) reloadRegister().catch((e: Error) => setError(e.message));
     }
-  }, [organisationId, scopeUnitId, authorizationHeader]);
+  }, [organisationId, scopeUnitId, authorizationHeader, canCapture, canReverse]);
 
   async function updateFollowup(id: string, status: "ACKNOWLEDGED" | "RESOLVED") {
     setError("");
@@ -155,10 +155,11 @@ export default function ContributionCapture({ organisationId, authorizationHeade
 
   return <section className="panel">
     <div className="panel-divider" />
-    <div className="panel-title"><div><span className="panel-index">04</span><h2>Contribution capture</h2></div><span className="panel-tag">SCOPED POSTING</span></div>
-    <p className="panel-description">Record a member contribution against an approved category and an authorised Nyika, Tabhera or Cell scope. Each successful posting creates a traceable receipt.</p>
+    <div className="panel-title"><div><span className="panel-index">04</span><h2>{canCapture ? "Contribution capture" : "Contribution reversal"}</h2></div><span className="panel-tag">{canCapture ? "SCOPED POSTING" : "REVERSAL CONTROL"}</span></div>
+    <p className="panel-description">{canCapture ? "Record a member contribution against an approved category and an authorised Nyika, Tabhera or Cell scope. Each successful posting creates a traceable receipt." : "Inspect posted receipts and reverse eligible contributions within your authorised geographical scope. Reversal records remain immutable."}</p>
     {error && <div className="message error" role="alert">{error}</div>}
-    <form onSubmit={capture} className="form-stack">
+    {!canCapture && canReverse && <label>Financial scope<select value={scopeUnitId} onChange={e => setScopeUnitId(e.target.value)} required><option value="">Select authorised scope</option>{scopeUnits.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>}
+    {canCapture && <form onSubmit={capture} className="form-stack">
       <label>Financial scope<select value={scopeUnitId} onChange={e => setScopeUnitId(e.target.value)} required><option value="">Select assigned scope</option>{scopeUnits.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
       <label>Member's Cell<select value={cellId} onChange={e => setCellId(e.target.value)} required disabled={!scopeUnitId}><option value="">Select Cell</option>{cells.map(unit => <option key={unit.id} value={unit.id}>{unit.code} — {unit.name}</option>)}</select></label>
       <label>Member<select value={memberId} onChange={e => setMemberId(e.target.value)} required disabled={!cellId}><option value="">Select active member</option>{members.map(member => <option key={member.id} value={member.id}>{member.lastName}, {member.firstName}{member.zccAppNumber ? ` · ${member.zccAppNumber}` : ""}</option>)}</select></label>
@@ -167,8 +168,8 @@ export default function ContributionCapture({ organisationId, authorizationHeade
       <div className="field-pair"><label>Payment method<select name="paymentMethod" defaultValue="CASH"><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CARD">Card</option><option value="MOBILE_MONEY">Mobile money</option><option value="OTHER">Other</option></select></label><label>Payment reference<input name="paymentReference" maxLength={120} placeholder="Optional reference" /></label></div>
       <label>Note<input name="note" maxLength={500} placeholder="Optional contribution note" /></label>
       <button className="primary-button" disabled={busy || !memberId || !applicableCategories.length}>{busy ? "Posting contribution…" : "Post contribution and issue receipt"}</button>
-    </form>
-    <div className="panel-divider" />
+    </form>}
+    {canCapture && <div className="panel-divider" />}
     {reversalNotice && <div className="message success" role="status">{reversalNotice}</div>}
     {canReverse && <>
       <div className="panel-divider" />
@@ -190,11 +191,11 @@ export default function ContributionCapture({ organisationId, authorizationHeade
         <div className="field-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setReversalTarget(null)}>Cancel</button><button type="button" className="primary-button" disabled={busy || !reversalReason.trim()} onClick={reverseContribution}>{busy ? "Reversing…" : "Confirm permanent reversal"}</button></div>
       </div>}
     </>}
-    <div className="register-heading"><div><h3>Pending deposit follow-ups</h3><p>Contributions awaiting deposit confirmation or follow-up</p></div><span className="count-box">{followups.length} OPEN</span></div>
+    {canCapture && <><div className="register-heading"><div><h3>Pending deposit follow-ups</h3><p>Contributions awaiting deposit confirmation or follow-up</p></div><span className="count-box">{followups.length} OPEN</span></div>
     <div className="table-wrap"><table><thead><tr><th>RECEIPT</th><th>MEMBER / CATEGORY</th><th>AMOUNT</th><th>STATUS</th><th>FOLLOW-UP ACTION</th></tr></thead><tbody>
       {followups.map(item => <tr key={item.id}><td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate}</small></td><td>{item.memberName}<small className="table-subtext">{item.categoryName}</small></td><td>{item.currency} {Number(item.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><strong>{item.status.replace(/_/g, " ")}</strong>{item.note && <small className="table-subtext">{item.note}</small>}</td><td><div className="field-actions">{item.status === "PENDING" && <button type="button" className="secondary-button" onClick={() => updateFollowup(item.id, "ACKNOWLEDGED")}>Acknowledge</button>}{["PENDING", "ACKNOWLEDGED"].includes(item.status) && <><input aria-label={`Resolution reason for ${item.receiptNumber}`} value={resolutionNotes[item.id] ?? ""} maxLength={500} placeholder="Reason for manual resolution" onChange={event => setResolutionNotes(rows => ({ ...rows, [item.id]: event.target.value }))} /><button type="button" className="secondary-button" disabled={!(resolutionNotes[item.id] ?? "").trim()} onClick={() => updateFollowup(item.id, "RESOLVED")}>Resolve</button></>}</div></td></tr>)}
       {!followups.length && <tr><td colSpan={5} className="empty-table">No open deposit follow-ups in this scope.</td></tr>}
-    </tbody></table></div>
+    </tbody></table></div></>}
     {receipt && <div className="legacy-record-notice" role="status">
       <strong>RECEIPT ISSUED · {receipt.receiptNumber}</strong>
       <span>{receipt.memberName} · {receipt.categoryName} · {receipt.currency} {Number(receipt.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {receipt.contributionDate}</span>

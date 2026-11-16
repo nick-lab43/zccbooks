@@ -210,7 +210,7 @@ export default function FinancialAdministration({ organisationId, authorizationH
           <button className="primary-button" disabled={busy || !activeCategories.length || !units.length}>Record financial target</button>
         </form>
       </>}
-      {canCapture && <ContributionCapture organisationId={organisationId} authorizationHeader={authorizationHeader} canReverse={canReverse} />}
+      {(canCapture || canReverse) && <ContributionCapture organisationId={organisationId} authorizationHeader={authorizationHeader} canCapture={canCapture} canReverse={canReverse} />}
       {(canDeposit || canReconcile) && <DepositManagement organisationId={organisationId} authorizationHeader={authorizationHeader} canDeposit={canDeposit} canReconcile={canReconcile} />}
       {(canReconcile || canManageExceptions) && <FinancialReconciliationExceptions organisationId={organisationId} authorizationHeader={authorizationHeader} canImport={canReconcile} canManage={canManageExceptions} />}
       <div className="panel-divider" />
