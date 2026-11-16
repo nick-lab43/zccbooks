@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -56,6 +57,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired BudgetManagementController budgetManagement;
     @Autowired DepositEvidenceController depositEvidence;
     @Autowired DepositDocumentController depositDocuments;
+    @Autowired ExpenditureEvidenceController expenditureEvidence;
 
     @AfterEach
     void clearAuthentication() {
@@ -831,6 +833,49 @@ class FinancialReportPostgresIntegrationTest {
             WHERE target_id = ? AND action_code IN ('EXPENDITURE_DRAFT_AMENDED', 'EXPENDITURE_DRAFT_VOIDED')
             """, Integer.class, expenseId);
         assertEquals(2, auditCount);
+    }
+
+    @Test
+    void expenditureEvidenceIsPrivateImmutableDeduplicatedAndAudited() throws Exception {
+        Fixture fixture = fixture();
+        UUID centralId = UUID.randomUUID();
+        String username = "evidence.admin." + centralId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Evidence Administrator', 'not-used-in-direct-controller-test', TRUE)
+            """, centralId, username);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
+            """, UUID.randomUUID(), centralId);
+        authenticateAs(username);
+
+        var category = expenditureManagement.createCategory(fixture.organisationId(),
+            new ExpenditureManagementController.CreateExpenseCategory("REPAIRS", "Repairs", "Building repairs"));
+        var expense = expenditureManagement.create(fixture.organisationId(),
+            new ExpenditureManagementController.CreateExpenditure(fixture.nyikaA(),
+                UUID.fromString(category.getBody().id()), LocalDate.parse("2026-07-01"),
+                "Roofing supplier", "Repair work", "INV-REP-01", new BigDecimal("500.00"), "ZAR"));
+        UUID expenseId = UUID.fromString(expense.getBody().id());
+        byte[] pdf = "%PDF-1.7 evidence sample".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        MockMultipartFile file = new MockMultipartFile("files", "invoice.pdf", "application/pdf", pdf);
+
+        var uploaded = expenditureEvidence.upload(expenseId, List.of(file));
+        assertEquals(1, uploaded.size());
+        assertEquals("invoice.pdf", uploaded.get(0).filename());
+        assertEquals("application/pdf", uploaded.get(0).contentType());
+        assertEquals(pdf.length, uploaded.get(0).fileSize());
+        assertEquals(username, uploaded.get(0).uploadedBy());
+        assertThrows(ConflictException.class, () -> expenditureEvidence.upload(expenseId, List.of(file)));
+
+        var content = expenditureEvidence.content(expenseId, UUID.fromString(uploaded.get(0).id()));
+        assertArrayEquals(pdf, content.getBody());
+        assertEquals("no-store", content.getHeaders().getCacheControl());
+        Integer auditCount = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM admin_audit_events
+            WHERE target_id = ? AND action_code = 'EXPENDITURE_EVIDENCE_UPLOADED'
+            """, Integer.class, UUID.fromString(uploaded.get(0).id()));
+        assertEquals(1, auditCount);
     }
 
     @Test

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import ExpenditureEvidence from "./ExpenditureEvidence";
 
 type Unit = { id: string; level: string; code: string; name: string };
 type Category = { id: string; code: string; name: string; description: string | null; active: boolean };
@@ -224,6 +225,7 @@ export default function ExpenditureManagement({ organisationId, authorizationHea
           <td>{expense.currency} {Number(expense.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
           <td><strong>{expense.status}</strong>{expense.reviewNote && <small className="table-subtext">{expense.reviewNote}</small>}</td>
           <td>
+            <ExpenditureEvidence expenseId={expense.id} authorizationHeader={authorizationHeader} canCapture={canCapture} locked={expense.status === "PAID" || expense.status === "VOIDED"} />
             {canCapture && expense.status === "DRAFT" && <div className="form-stack">
               {editingDraft?.id === expense.id ? <div className="form-stack">
                 <label>Expense date<input type="date" value={draftForm.expenseDate} onChange={e => setDraftForm(row => ({ ...row, expenseDate: e.target.value }))} /></label>
