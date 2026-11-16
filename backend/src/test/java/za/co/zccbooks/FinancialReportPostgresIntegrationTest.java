@@ -836,7 +836,6 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
-    @Test
     void expenditureEvidenceIsPrivateImmutableDeduplicatedAndAudited() throws Exception {
         Fixture fixture = fixture();
         UUID centralId = UUID.randomUUID();
@@ -879,6 +878,7 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(1, auditCount);
     }
 
+    @Test
     void budgetsTrackDescendantActualsAndKeepVersionedRevisionHistory() throws Exception {
         Fixture fixture = fixture();
         UUID centralId = UUID.randomUUID();
