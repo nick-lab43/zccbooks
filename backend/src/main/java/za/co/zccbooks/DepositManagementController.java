@@ -44,8 +44,10 @@ public class DepositManagementController {
                        FROM deposit_reconciliations r
                        JOIN bank_statement_entries e ON e.id = r.statement_entry_id
                        WHERE r.deposit_batch_id = b.id), 0), 0) AS outstanding_amount,
-                   (SELECT r.match_note FROM deposit_reconciliations r
-                       WHERE r.deposit_batch_id = b.id ORDER BY r.matched_at DESC LIMIT 1) AS outstanding_note
+                   CASE WHEN b.status = 'PARTIALLY_RECONCILED' THEN
+                       (SELECT r.match_note FROM deposit_reconciliations r
+                        WHERE r.deposit_batch_id = b.id ORDER BY r.matched_at DESC LIMIT 1)
+                   ELSE NULL END AS outstanding_note
             FROM deposit_batches b
             JOIN organisational_units u ON u.id = b.scope_unit_id
             LEFT JOIN deposit_allocations a ON a.deposit_batch_id = b.id
@@ -294,8 +296,10 @@ public class DepositManagementController {
                        FROM deposit_reconciliations r
                        JOIN bank_statement_entries e ON e.id = r.statement_entry_id
                        WHERE r.deposit_batch_id = b.id), 0), 0) AS outstanding_amount,
-                   (SELECT r.match_note FROM deposit_reconciliations r
-                       WHERE r.deposit_batch_id = b.id ORDER BY r.matched_at DESC LIMIT 1) AS outstanding_note
+                   CASE WHEN b.status = 'PARTIALLY_RECONCILED' THEN
+                       (SELECT r.match_note FROM deposit_reconciliations r
+                        WHERE r.deposit_batch_id = b.id ORDER BY r.matched_at DESC LIMIT 1)
+                   ELSE NULL END AS outstanding_note
             FROM deposit_batches b JOIN organisational_units u ON u.id = b.scope_unit_id
             LEFT JOIN deposit_allocations a ON a.deposit_batch_id = b.id
             WHERE b.id = ?
