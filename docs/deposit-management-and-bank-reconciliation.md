@@ -78,3 +78,15 @@ Evidence may be added while a batch is DRAFT, SUBMITTED or PARTIALLY_RECONCILED.
 The deposit evidence workspace includes a browser-based scanner for uploaded image evidence. It estimates document bounds from image/background contrast, then allows the operator to adjust each of the four page corners. The selected quadrilateral is rectified with a projective transform. Operators can retain original colour, apply grayscale, or apply a high-contrast grayscale preset. The corrected pages can be reordered and assembled into a multi-page A4 PDF (up to 10 pages).
 
 The generated PDF is stored as a separate private derivative linked to the exact source evidence records. Original photographs remain byte-for-byte unchanged. PDF metadata and content are available only to users with finance-view permission in the deposit's geographical scope. Creation requires finance-deposit permission and is disabled after full reconciliation. The PDF is not an independent verification of the source document. Automatic boundary detection is a contrast-based estimate and must be checked before saving. OCR, text extraction, signature verification and tamper analysis are not included.
+
+
+## Deposit-slip OCR assistance
+
+The deposit evidence workspace can run English-language OCR against an uploaded image in the user's browser. It extracts candidate amount, bank reference and date values, then compares those candidates with the deposit batch's recorded amount, reference and date. Each value remains editable so the operator can correct recognition errors.
+
+OCR is advisory only:
+- The original evidence image is fetched through the authenticated evidence endpoint and processed in the browser; image bytes are not sent to an OCR service.
+- The OCR engine and English language data are downloaded by Tesseract.js when first needed.
+- A textual match is not proof of payment, bank settlement, document authenticity or tamper-free evidence.
+- OCR does not modify a deposit, allocate receipts, submit a batch or reconcile a bank transaction.
+- The operator must inspect the original slip and verify every extracted value independently.
