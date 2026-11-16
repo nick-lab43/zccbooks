@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import ContributionCapture from "./ContributionCapture";
 import DepositManagement from "./DepositManagement";
+import FinancialReconciliationExceptions from "./FinancialReconciliationExceptions";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Stream = { id: string; code: string; name: string; active: boolean };
@@ -15,8 +16,8 @@ const scopeOptions = [
   { value: "CELL", label: "Cell" }
 ];
 
-export default function FinancialAdministration({ organisationId, authorizationHeader, canCapture, canDeposit, canReconcile }: {
-  organisationId: string; authorizationHeader: string; canCapture: boolean; canDeposit: boolean; canReconcile: boolean;
+export default function FinancialAdministration({ organisationId, authorizationHeader, canCapture, canDeposit, canReconcile, canManageExceptions }: {
+  organisationId: string; authorizationHeader: string; canCapture: boolean; canDeposit: boolean; canReconcile: boolean; canManageExceptions: boolean;
 }) {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -211,6 +212,7 @@ export default function FinancialAdministration({ organisationId, authorizationH
       </>}
       {canCapture && <ContributionCapture organisationId={organisationId} authorizationHeader={authorizationHeader} />}
       {(canDeposit || canReconcile) && <DepositManagement organisationId={organisationId} authorizationHeader={authorizationHeader} canDeposit={canDeposit} canReconcile={canReconcile} />}
+      {(canReconcile || canManageExceptions) && <FinancialReconciliationExceptions organisationId={organisationId} authorizationHeader={authorizationHeader} canImport={canReconcile} canManage={canManageExceptions} />}
       <div className="panel-divider" />
       <div className="register-heading"><div><h3>Target register</h3><p>Targets visible within the permitted financial scope</p></div></div>
       <div className="table-wrap"><table><thead><tr><th>CATEGORY</th><th>GEOGRAPHICAL UNIT</th><th>PERIOD</th><th>TARGET</th><th>PROGRESS</th></tr></thead><tbody>
