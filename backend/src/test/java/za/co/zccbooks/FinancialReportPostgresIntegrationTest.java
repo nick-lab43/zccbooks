@@ -738,6 +738,60 @@ class FinancialReportPostgresIntegrationTest {
 
 
     @Test
+    void draftExpenditureCanBeAmendedWithVersionChecksOrWithdrawnWithReason() {
+        Fixture fixture = fixture();
+        UUID centralId = UUID.randomUUID();
+        String username = "draft.editor." + centralId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Draft Editor', 'not-used-in-direct-controller-test', TRUE)
+            """, centralId, username);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
+            """, UUID.randomUUID(), centralId);
+        authenticateAs(username);
+
+        var category = expenditureManagement.createCategory(fixture.organisationId(),
+            new ExpenditureManagementController.CreateExpenseCategory("OFFICE", "Office", "Office costs"));
+        UUID categoryId = UUID.fromString(category.getBody().id());
+        var created = expenditureManagement.create(fixture.organisationId(),
+            new ExpenditureManagementController.CreateExpenditure(fixture.nyikaA(), categoryId,
+                LocalDate.parse("2026-06-01"), "Stationery supplier", "Initial draft",
+                "INV-DRAFT-01", new BigDecimal("100.00"), "ZAR"));
+        UUID expenseId = UUID.fromString(created.getBody().id());
+        assertEquals(1, created.getBody().version());
+
+        var amended = expenditureManagement.amendDraft(expenseId,
+            new ExpenditureManagementController.AmendDraftExpenditure(categoryId,
+                LocalDate.parse("2026-06-02"), "Stationery supplier", "Corrected stationery details",
+                "INV-DRAFT-01", new BigDecimal("125.00"), "ZAR", 1));
+        assertEquals(2, amended.version());
+        assertEquals(new BigDecimal("125.00"), amended.amount());
+        assertEquals("2026-06-02", amended.expenseDate());
+
+        assertThrows(ConflictException.class, () -> expenditureManagement.amendDraft(expenseId,
+            new ExpenditureManagementController.AmendDraftExpenditure(categoryId,
+                LocalDate.parse("2026-06-02"), "Stationery supplier", "Stale update",
+                "INV-DRAFT-01", new BigDecimal("130.00"), "ZAR", 1)));
+
+        assertThrows(IllegalArgumentException.class, () -> expenditureManagement.voidDraft(expenseId,
+            new ExpenditureManagementController.VoidDraftExpenditure(" ")));
+        var voided = expenditureManagement.voidDraft(expenseId,
+            new ExpenditureManagementController.VoidDraftExpenditure("Duplicate draft entered in error."));
+        assertEquals("VOIDED", voided.status());
+        assertEquals("Duplicate draft entered in error.", voided.voidReason());
+        assertEquals(3, voided.version());
+        assertThrows(ConflictException.class, () -> expenditureManagement.submit(expenseId));
+
+        Integer auditCount = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM admin_audit_events
+            WHERE entity_id = ? AND action_code IN ('EXPENDITURE_DRAFT_AMENDED', 'EXPENDITURE_DRAFT_VOIDED')
+            """, Integer.class, expenseId);
+        assertEquals(2, auditCount);
+    }
+
+    @Test
     void budgetsTrackDescendantActualsAndKeepVersionedRevisionHistory() throws Exception {
         Fixture fixture = fixture();
         UUID centralId = UUID.randomUUID();
