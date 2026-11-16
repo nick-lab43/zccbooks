@@ -5,6 +5,9 @@ type Summary = { context: { unitName: string; unitLevel: string; from: string; t
 type Contribution = { receiptNumber: string; contributionDate: string; firstName: string; lastName: string; categoryName: string; streamName: string; paymentMethod: string; amount: number; currency: string };
 type Deposit = { id: string; depositDate: string; unitName: string; bankName: string; bankReference: string; expectedAmount: number; status: string; allocatedAmount: number; allocationCount: number; bankedAmount: number; outstandingAmount: number };
 type Exception = { id: string; exceptionType: string; status: string; summary: string; createdAt: string; unitName: string };
+type Expense = { id: string; expenseDate: string; unitName: string; categoryName: string; payee: string; description: string; reference: string | null; amount: number; currency: string; status: string; paymentReference: string | null; reviewNote: string | null };
+type Position = { currency: string; income: number; expenditure: number; netPosition: number };
+type IncomeExpenditure = { context: { unitName: string; from: string; to: string }; positions: Position[] };
 
 export default function FinancialReports({ organisationId, authorizationHeader }: { organisationId: string; authorizationHeader: string }) {
   const [units, setUnits] = useState<Unit[]>([]);
@@ -16,6 +19,8 @@ export default function FinancialReports({ organisationId, authorizationHeader }
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [exceptions, setExceptions] = useState<Exception[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [incomeExpenditure, setIncomeExpenditure] = useState<IncomeExpenditure | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -52,13 +57,15 @@ export default function FinancialReports({ organisationId, authorizationHeader }
       return;
     }
     setBusy(true); setError("");
-    setSummary(null); setContributions([]); setDeposits([]); setExceptions([]);
+    setSummary(null); setContributions([]); setDeposits([]); setExceptions([]); setExpenses([]); setIncomeExpenditure(null);
     try {
       const query = params();
       if (type === "CONTRIBUTION_SUMMARY") setSummary(await request<Summary>(`/api/organisations/${organisationId}/financial-reports/summary?${query}`));
       if (type === "CONTRIBUTION_REGISTER") setContributions(await request<Contribution[]>(`/api/organisations/${organisationId}/financial-reports/contributions?${query}`));
       if (type === "DEPOSIT_REGISTER") setDeposits(await request<Deposit[]>(`/api/organisations/${organisationId}/financial-reports/deposits?${query}`));
       if (type === "EXCEPTION_REGISTER") setExceptions(await request<Exception[]>(`/api/organisations/${organisationId}/financial-reports/exceptions?${query}`));
+      if (type === "EXPENDITURE_REGISTER") setExpenses(await request<Expense[]>(`/api/organisations/${organisationId}/financial-reports/expenses?${query}`));
+      if (type === "INCOME_EXPENDITURE") setIncomeExpenditure(await request<IncomeExpenditure>(`/api/organisations/${organisationId}/financial-reports/income-expenditure?${query}`));
     } catch (e) { setError(e instanceof Error ? e.message : "Report could not be loaded."); }
     finally { setBusy(false); }
   }
@@ -92,6 +99,8 @@ export default function FinancialReports({ organisationId, authorizationHeader }
           <option value="CONTRIBUTION_SUMMARY">Contribution summary</option>
           <option value="CONTRIBUTION_REGISTER">Contributor and receipt register</option>
           <option value="DEPOSIT_REGISTER">Deposit register</option>
+          <option value="EXPENDITURE_REGISTER">Expenditure register</option>
+          <option value="INCOME_EXPENDITURE">Income and expenditure summary</option>
           <option value="EXCEPTION_REGISTER">Reconciliation exceptions</option>
         </select></label>
         <label>Geographical scope<select value={scopeUnitId} onChange={e => setScopeUnitId(e.target.value)}><option value="">Select scope</option>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
@@ -103,6 +112,8 @@ export default function FinancialReports({ organisationId, authorizationHeader }
     {summary && type === "CONTRIBUTION_SUMMARY" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Contribution summary</h2></div><span className="panel-tag">{summary.context.unitName}</span></div><div className="overview-stat-grid"><article className="overview-stat"><span>TRANSACTIONS</span><strong>{summary.contributionCount}</strong></article>{summary.currencyTotals.map(total => <article className="overview-stat" key={total.currency}><span>TOTAL CONTRIBUTIONS · {total.currency}</span><strong>{total.currency} {Number(total.totalAmount).toLocaleString("en-ZA", {minimumFractionDigits:2})}</strong></article>)}</div><div className="table-wrap"><table><thead><tr><th>STREAM</th><th>CATEGORY</th><th>COUNT</th><th>CURRENCY</th><th>TOTAL</th></tr></thead><tbody>{summary.groups.map((row,i)=><tr key={i}><td>{row.streamName}</td><td>{row.categoryName}</td><td>{row.contributionCount}</td><td>{row.currency}</td><td>{row.currency} {Number(row.totalAmount).toLocaleString("en-ZA",{minimumFractionDigits:2})}</td></tr>)}{!summary.groups.length && <tr><td colSpan={5} className="empty-table">No contributions were recorded for this period.</td></tr>}</tbody></table></div></section>}
     {type === "CONTRIBUTION_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Contributor and receipt register</h2></div><span className="panel-tag">{contributions.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>RECEIPT</th><th>CONTRIBUTOR</th><th>CATEGORY</th><th>STREAM</th><th>AMOUNT</th></tr></thead><tbody>{contributions.map(row=><tr key={row.receiptNumber}><td>{row.contributionDate}</td><td>{row.receiptNumber}</td><td>{row.firstName} {row.lastName}</td><td>{row.categoryName}</td><td>{row.streamName}</td><td>{row.currency} {Number(row.amount).toFixed(2)}</td></tr>)}{!contributions.length && <tr><td colSpan={6} className="empty-table">No contributions were recorded for this period.</td></tr>}</tbody></table></div></section>}
     {type === "DEPOSIT_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Deposit register</h2></div><span className="panel-tag">{deposits.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>UNIT</th><th>BANK</th><th>REFERENCE</th><th>EXPECTED</th><th>ALLOCATED</th><th>BANKED</th><th>OUTSTANDING</th><th>STATUS</th></tr></thead><tbody>{deposits.map(row=><tr key={row.id}><td>{row.depositDate}</td><td>{row.unitName}</td><td>{row.bankName}</td><td>{row.bankReference}</td><td>R {Number(row.expectedAmount).toFixed(2)}</td><td>R {Number(row.allocatedAmount).toFixed(2)}</td><td>R {Number(row.bankedAmount).toFixed(2)}</td><td>R {Number(row.outstandingAmount).toFixed(2)}</td><td>{row.status}</td></tr>)}{!deposits.length && <tr><td colSpan={9} className="empty-table">No deposits were recorded for this period.</td></tr>}</tbody></table></div></section>}
+    {type === "EXPENDITURE_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Expenditure register</h2></div><span className="panel-tag">{expenses.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>UNIT</th><th>CATEGORY</th><th>PAYEE / DETAILS</th><th>AMOUNT</th><th>STATUS</th></tr></thead><tbody>{expenses.map(row=><tr key={row.id}><td>{row.expenseDate}</td><td>{row.unitName}</td><td>{row.categoryName}</td><td><strong>{row.payee}</strong><small className="table-subtext">{row.description}</small></td><td>{row.currency} {Number(row.amount).toFixed(2)}</td><td>{row.status}</td></tr>)}{!expenses.length && <tr><td colSpan={6} className="empty-table">No expenditure records were recorded for this period.</td></tr>}</tbody></table></div></section>}
+    {type === "INCOME_EXPENDITURE" && incomeExpenditure && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Income and expenditure</h2></div><span className="panel-tag">{incomeExpenditure.context.unitName}</span></div><p className="panel-description">Income is based on captured contributions. Expenditure includes approved and paid records only. Draft, submitted and rejected expenses are excluded. Totals remain separate by currency.</p><div className="table-wrap"><table><thead><tr><th>CURRENCY</th><th>INCOME</th><th>APPROVED EXPENDITURE</th><th>NET POSITION</th></tr></thead><tbody>{incomeExpenditure.positions.map(row=><tr key={row.currency}><td><strong>{row.currency}</strong></td><td>{row.currency} {Number(row.income).toFixed(2)}</td><td>{row.currency} {Number(row.expenditure).toFixed(2)}</td><td><strong>{row.currency} {Number(row.netPosition).toFixed(2)}</strong></td></tr>)}{!incomeExpenditure.positions.length && <tr><td colSpan={4} className="empty-table">No income or approved expenditure was recorded for this period.</td></tr>}</tbody></table></div></section>}
     {type === "EXCEPTION_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Reconciliation exceptions</h2></div><span className="panel-tag">{exceptions.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>UNIT</th><th>TYPE</th><th>STATUS</th><th>SUMMARY</th></tr></thead><tbody>{exceptions.map(row=><tr key={row.id}><td>{new Date(row.createdAt).toLocaleDateString()}</td><td>{row.unitName}</td><td>{row.exceptionType}</td><td>{row.status}</td><td>{row.summary}</td></tr>)}{!exceptions.length && <tr><td colSpan={5} className="empty-table">No reconciliation exceptions were recorded for this period.</td></tr>}</tbody></table></div></section>}
   </div>;
 }
