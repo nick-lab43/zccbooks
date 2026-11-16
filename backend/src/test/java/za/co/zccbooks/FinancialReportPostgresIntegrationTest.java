@@ -181,6 +181,77 @@ class FinancialReportPostgresIntegrationTest {
             List.of("Nyika A", "DEPOSIT_AMOUNT_MISMATCH", "Test exception"));
     }
 
+
+    @Test
+    void wordExportsEnforceNyikaScopeAndDateRangeForEveryReportType() throws Exception {
+        Fixture fixture = fixture();
+        UUID categoryId = jdbc.queryForObject(
+            "SELECT id FROM contribution_categories WHERE organisation_id = ?",
+            UUID.class, fixture.organisationId());
+        UUID streamId = jdbc.queryForObject(
+            "SELECT id FROM financial_streams WHERE organisation_id = ?",
+            UUID.class, fixture.organisationId());
+        UUID memberId = memberForCell(fixture.organisationId(), fixture.cellA(), "OLD");
+
+        contribution(fixture.organisationId(), memberId, categoryId, streamId, fixture.nyikaA(),
+            fixture.adminId(), "RCP-OLD-1", 99, new BigDecimal("700.00"), "ZAR",
+            LocalDate.parse("2025-12-31"));
+
+        jdbc.update("""
+            INSERT INTO deposit_batches
+                (id, organisation_id, scope_unit_id, deposit_date, bank_name, bank_reference,
+                 expected_amount, status, created_by)
+            VALUES (?, ?, ?, DATE '2025-12-31', 'Test Bank', 'BANK-OLD-1', 55.00, 'SUBMITTED', ?)
+            """, UUID.randomUUID(), fixture.organisationId(), fixture.nyikaA(), fixture.adminId());
+
+        jdbc.update("""
+            INSERT INTO reconciliation_exceptions
+                (id, organisation_id, scope_unit_id, source_type, source_id, exception_type,
+                 summary, created_at)
+            VALUES (?, ?, ?, 'DEPOSIT_BATCH', ?, 'DEPOSIT_AMOUNT_MISMATCH',
+                    'Out of period exception', TIMESTAMPTZ '2025-12-31 12:00:00+00')
+            """, UUID.randomUUID(), fixture.organisationId(), fixture.nyikaA(), UUID.randomUUID());
+
+        authenticate();
+        LocalDate from = LocalDate.parse("2026-01-01");
+        LocalDate to = LocalDate.parse("2026-12-31");
+
+        String summary = exportText(fixture, from, to, "CONTRIBUTION_SUMMARY");
+        assertTrue(summary.contains("125.00"));
+        assertFalse(summary.contains("1025.00"));
+        assertFalse(summary.contains("900.00"));
+        assertFalse(summary.contains("700.00"));
+
+        String contributions = exportText(fixture, from, to, "CONTRIBUTION_REGISTER");
+        assertTrue(contributions.contains("RCP-A-1"));
+        assertTrue(contributions.contains("TestA Member"));
+        assertFalse(contributions.contains("RCP-B-1"));
+        assertFalse(contributions.contains("TestB Member"));
+        assertFalse(contributions.contains("RCP-OLD-1"));
+
+        String deposits = exportText(fixture, from, to, "DEPOSIT_REGISTER");
+        assertTrue(deposits.contains("BANK-A-1"));
+        assertFalse(deposits.contains("BANK-B-1"));
+        assertFalse(deposits.contains("BANK-OLD-1"));
+
+        String exceptions = exportText(fixture, from, to, "EXCEPTION_REGISTER");
+        assertTrue(exceptions.contains("Test exception"));
+        assertFalse(exceptions.contains("Other Nyika exception"));
+        assertFalse(exceptions.contains("Out of period exception"));
+    }
+
+    private String exportText(Fixture fixture, LocalDate from, LocalDate to, String type) throws Exception {
+        var response = reports.export(fixture.organisationId(), fixture.nyikaA(), from, to, type);
+        assertEquals(200, response.getStatusCode().value(), type);
+        assertNotNull(response.getBody(), type);
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(response.getBody()))) {
+            StringBuilder text = new StringBuilder();
+            document.getParagraphs().forEach(paragraph -> text.append(paragraph.getText()).append(' '));
+            document.getTables().forEach(table -> text.append(table.getText()).append(' '));
+            return text.toString();
+        }
+    }
+
     private void assertExportTable(Fixture fixture, LocalDate from, LocalDate to, String type,
             List<String> expectedHeaders, List<String> expectedValues) throws Exception {
         var response = reports.export(fixture.organisationId(), fixture.nyikaA(), from, to, type);
@@ -252,6 +323,20 @@ class FinancialReportPostgresIntegrationTest {
                 (id, organisation_id, scope_unit_id, source_type, source_id, exception_type, summary)
             VALUES (?, ?, ?, 'DEPOSIT_BATCH', ?, 'DEPOSIT_AMOUNT_MISMATCH', 'Test exception')
             """, UUID.randomUUID(), organisationId, nyikaA, depositId);
+
+        UUID depositIdB = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_batches
+                (id, organisation_id, scope_unit_id, deposit_date, bank_name, bank_reference,
+                 expected_amount, status, created_by)
+            VALUES (?, ?, ?, DATE '2026-05-10', 'Test Bank', 'BANK-B-1', 900.00, 'SUBMITTED', ?)
+            """, depositIdB, organisationId, nyikaB, adminId);
+
+        jdbc.update("""
+            INSERT INTO reconciliation_exceptions
+                (id, organisation_id, scope_unit_id, source_type, source_id, exception_type, summary)
+            VALUES (?, ?, ?, 'DEPOSIT_BATCH', ?, 'DEPOSIT_AMOUNT_MISMATCH', 'Other Nyika exception')
+            """, UUID.randomUUID(), organisationId, nyikaB, depositIdB);
 
         return new Fixture(organisationId, adminId, nyikaA, cellA, nyikaB, cellB);
     }
