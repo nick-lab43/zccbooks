@@ -581,6 +581,63 @@ class FinancialReportPostgresIntegrationTest {
             .stream().filter(item -> item.id().equals(batch.id())).findFirst().orElseThrow().receiptCount());
     }
 
+    @Test
+    void depositCanBeBankedInPartsWithExplainedOutstandingBalance() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_assignments
+                (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
+            """, UUID.randomUUID(), fixture.adminId());
+        authenticate(fixture);
+
+        UUID receiptId = jdbc.queryForObject(
+            "SELECT id FROM contributions WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'",
+            UUID.class, fixture.organisationId());
+        LocalDate depositDate = LocalDate.parse("2026-05-10");
+        var batch = depositManagement.createBatch(fixture.organisationId(),
+            new DepositManagementController.CreateDepositBatch(fixture.nyikaA(), depositDate,
+                "Test Bank", "PARTIAL-REF-1", new BigDecimal("125.00"), null));
+        var allocated = depositManagement.allocate(UUID.fromString(batch.id()),
+            new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00")));
+        assertEquals(new BigDecimal("125.00"), allocated.allocatedAmount());
+        var submitted = depositManagement.submit(UUID.fromString(batch.id()));
+        assertEquals("SUBMITTED", submitted.status());
+
+        var firstCredit = depositManagement.recordStatementEntry(fixture.organisationId(),
+            new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), depositDate,
+                "PARTIAL-REF-1", new BigDecimal("75.00"), "First cash deposit"));
+        var partiallyReconciled = depositManagement.reconcile(UUID.fromString(batch.id()),
+            new DepositManagementController.ReconcileDeposit(UUID.fromString(firstCredit.id()),
+                "Bank branch deposit limit; remaining cash will be deposited tomorrow."));
+        assertEquals("PARTIALLY_RECONCILED", partiallyReconciled.status());
+        assertEquals(new BigDecimal("75.00"), partiallyReconciled.bankedAmount());
+        assertEquals(new BigDecimal("50.00"), partiallyReconciled.outstandingAmount());
+        assertEquals("Bank branch deposit limit; remaining cash will be deposited tomorrow.",
+            partiallyReconciled.outstandingNote());
+
+        var excessiveCredit = depositManagement.recordStatementEntry(fixture.organisationId(),
+            new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), depositDate.plusDays(1),
+                "PARTIAL-REF-1", new BigDecimal("60.00"), "Exceeds remaining balance"));
+        assertThrows(IllegalArgumentException.class,
+            () -> depositManagement.reconcile(UUID.fromString(batch.id()),
+                new DepositManagementController.ReconcileDeposit(UUID.fromString(excessiveCredit.id()),
+                    "This amount is too high.")));
+
+        var finalCredit = depositManagement.recordStatementEntry(fixture.organisationId(),
+            new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), depositDate.plusDays(1),
+                "PARTIAL-REF-1", new BigDecimal("50.00"), "Remaining cash deposit"));
+        var fullyReconciled = depositManagement.reconcile(UUID.fromString(batch.id()),
+            new DepositManagementController.ReconcileDeposit(UUID.fromString(finalCredit.id()),
+                "Outstanding balance deposited in full."));
+        assertEquals("RECONCILED", fullyReconciled.status());
+        assertEquals(new BigDecimal("125.00"), fullyReconciled.bankedAmount());
+        assertEquals(new BigDecimal("0.00"), fullyReconciled.outstandingAmount());
+        assertTrue(depositManagement.statementEntries(fixture.organisationId(), fixture.nyikaA()).stream()
+            .filter(entry -> entry.id().equals(firstCredit.id()) || entry.id().equals(finalCredit.id()))
+            .allMatch(DepositManagementController.BankStatementEntryDto::reconciled));
+    }
+
     private Fixture fixture() {
         UUID organisationId = UUID.randomUUID();
         jdbc.update("INSERT INTO organisations (id, name) VALUES (?, ?)", organisationId, "Test Church");
