@@ -404,7 +404,7 @@ public class FinancialJournalController {
         @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency
     ) {}
 
-    public record UpdateFinanceAccount(@NotBlank @Size(max = 120) String name, boolean active) {}
+    public record UpdateFinanceAccount(@NotBlank @Size(max = 120) String name, @NotNull Boolean active) {}
 
     public record FinanceAccountDto(String id, String organisationId, String code, String name,
         String accountType, String currency, boolean active) {}
