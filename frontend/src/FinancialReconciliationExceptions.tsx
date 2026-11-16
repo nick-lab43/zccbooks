@@ -8,7 +8,7 @@ type ExceptionRow = {
 };
 type ExceptionHistory = {
   id: string; previousStatus: string | null; newStatus: string; action: string;
-  note: string | null; changedBy: string; changedAt: string;
+  note: string | null; changedBy: string | null; changedAt: string;
 };
 
 export default function FinancialReconciliationExceptions({ organisationId, authorizationHeader, canImport, canManage }: {
@@ -169,8 +169,8 @@ export default function FinancialReconciliationExceptions({ organisationId, auth
         <strong>Immutable status history</strong>
         {historyLoading[row.id] ? <p>Loading history…</p> : <ol className="audit-history-list">
           {(historyRows[row.id] ?? []).map(item => <li key={item.id}>
-            <strong>{item.action === "CREATED" ? "Exception created" : `${item.previousStatus} → ${item.newStatus}`}</strong>
-            <small className="table-subtext">{item.changedBy} · {new Date(item.changedAt).toLocaleString()}</small>
+            <strong>{item.action === "BASELINE" ? `History baseline · ${item.newStatus}` : item.action === "CREATED" ? "Exception created" : `${item.previousStatus} → ${item.newStatus}`}</strong>
+            <small className="table-subtext">{item.changedBy ?? "Actor not recorded"} · {new Date(item.changedAt).toLocaleString()}</small>
             {item.note && <p>{item.note}</p>}
           </li>)}
           {!historyRows[row.id]?.length && <li>No history recorded.</li>}
