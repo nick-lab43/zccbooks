@@ -691,6 +691,9 @@ class FinancialReportPostgresIntegrationTest {
                 new ExpenditureManagementController.ReviewExpenditure("APPROVE", "Self approval must be blocked.")));
 
         authenticateAs(approver);
+        assertThrows(IllegalArgumentException.class,
+            () -> expenditureManagement.review(UUID.fromString(created.getBody().id()),
+                new ExpenditureManagementController.ReviewExpenditure("REJECT", " ")));
         var approved = expenditureManagement.review(UUID.fromString(created.getBody().id()),
             new ExpenditureManagementController.ReviewExpenditure("APPROVE", "Invoice checked against supporting document."));
         assertEquals("APPROVED", approved.status());
@@ -711,6 +714,25 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(new BigDecimal("125.00"), position.positions().get(0).income());
         assertEquals(new BigDecimal("45.00"), position.positions().get(0).expenditure());
         assertEquals(new BigDecimal("80.00"), position.positions().get(0).netPosition());
+
+        var expenseExport = reports.export(fixture.organisationId(), fixture.nyikaA(), date, date, "EXPENDITURE_REGISTER");
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(expenseExport.getBody()))) {
+            String tableText = document.getTables().stream().flatMap(table -> table.getRows().stream())
+                .flatMap(row -> row.getTableCells().stream()).map(cell -> cell.getText())
+                .reduce("", (left, right) -> left + " " + right);
+            assertTrue(tableText.contains("Municipal account"));
+            assertTrue(tableText.contains("45.00"));
+            assertTrue(tableText.contains("PAID"));
+        }
+        var positionExport = reports.export(fixture.organisationId(), fixture.nyikaA(), date, date, "INCOME_EXPENDITURE");
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(positionExport.getBody()))) {
+            String tableText = document.getTables().stream().flatMap(table -> table.getRows().stream())
+                .flatMap(row -> row.getTableCells().stream()).map(cell -> cell.getText())
+                .reduce("", (left, right) -> left + " " + right);
+            assertTrue(tableText.contains("125.00"));
+            assertTrue(tableText.contains("45.00"));
+            assertTrue(tableText.contains("80.00"));
+        }
     }
 
     private Fixture fixture() {
