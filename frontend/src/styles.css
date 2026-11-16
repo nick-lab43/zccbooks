@@ -779,3 +779,8 @@ input, select { border-radius: 5px !important; }
 .ocr-status.mismatch{background:#fbe9e7;color:#9d332b}
 .ocr-status.missing{background:#eef1f4;color:#5b6875}
 .ocr-raw-text{max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;background:#f5f7f9;border:1px solid #d5dce4;font-size:11px;color:#34465a}
+
+
+/* Deposit OCR review confirmation */
+.checkbox-row{display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--text-primary,#263746)}
+.checkbox-row input{margin-top:2px;accent-color:var(--brand,#245b83)}
