@@ -6,6 +6,7 @@ type Category = { id: string; name: string; streamName: string; active: boolean;
 type Member = { id: string; zccAppNumber: string | null; firstName: string; lastName: string };
 type Followup = { id: string; status: string; note: string | null; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string };
 type RegisterItem = { id: string; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; capturedAt: string; reversed: boolean; reversalReason: string | null; reversedBy: string | null; reversedAt: string | null };
+type RegisterPage = { items: RegisterItem[]; page: number; size: number; totalElements: number; totalPages: number };
 type Receipt = { id: string; receiptNumber: string; memberName: string; categoryName: string; streamName: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; capturedAt: string };
 
 export default function ContributionCapture({ organisationId, authorizationHeader, canCapture, canReverse }: {
@@ -20,6 +21,11 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [followups, setFollowups] = useState<Followup[]>([]);
   const [register, setRegister] = useState<RegisterItem[]>([]);
+  const [registerPage, setRegisterPage] = useState(0);
+  const [registerSearch, setRegisterSearch] = useState("");
+  const [appliedRegisterSearch, setAppliedRegisterSearch] = useState("");
+  const [registerTotal, setRegisterTotal] = useState(0);
+  const [registerTotalPages, setRegisterTotalPages] = useState(0);
   const [reversalTarget, setReversalTarget] = useState<RegisterItem | null>(null);
   const [reversalReason, setReversalReason] = useState("");
   const [reversalNotice, setReversalNotice] = useState("");
@@ -84,10 +90,11 @@ export default function ContributionCapture({ organisationId, authorizationHeade
       .then(setMembers).catch((e: Error) => setError(e.message));
   }, [cellId, scopeUnitId, authorizationHeader, canCapture]);
 
-  async function reloadRegister() {
-    if (!organisationId || !scopeUnitId) { setRegister([]); return; }
-    const rows = await request<RegisterItem[]>(`/api/organisations/${organisationId}/contribution-register?scopeUnitId=${scopeUnitId}`);
-    setRegister(rows);
+  async function reloadRegister(page = registerPage, search = appliedRegisterSearch) {
+    if (!organisationId || !scopeUnitId) { setRegister([]); setRegisterTotal(0); setRegisterTotalPages(0); return; }
+    const params = new URLSearchParams({ scopeUnitId, page: String(page), size: "50", search });
+    const result = await request<RegisterPage>(`/api/organisations/${organisationId}/contribution-register?${params.toString()}`);
+    setRegister(result.items); setRegisterTotal(result.totalElements); setRegisterTotalPages(result.totalPages);
   }
 
   async function reverseContribution() {
@@ -96,7 +103,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
     try {
       await request(`/api/contributions/${reversalTarget.id}/reverse`, { method: "POST", body: JSON.stringify({ reason: reversalReason.trim() }) });
       setReversalTarget(null); setReversalReason("");
-      await reloadRegister();
+      await reloadRegister(registerPage, appliedRegisterSearch);
       setReversalNotice(`Receipt ${reversalTarget.receiptNumber} was reversed. The original receipt remains in the audit register.`);
     } catch (e) { setError(e instanceof Error ? e.message : "Contribution could not be reversed."); }
     finally { setBusy(false); }
@@ -109,12 +116,16 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   }
 
   useEffect(() => {
-    setFollowups([]); setRegister([]); setReversalTarget(null); setReversalNotice("");
-    if (organisationId && scopeUnitId) {
-      if (canCapture) reloadFollowups().catch((e: Error) => setError(e.message));
-      if (canReverse) reloadRegister().catch((e: Error) => setError(e.message));
+    setFollowups([]); setRegister([]); setRegisterTotal(0); setRegisterTotalPages(0);
+    setRegisterPage(0); setReversalTarget(null); setReversalNotice("");
+    if (organisationId && scopeUnitId && canCapture) reloadFollowups().catch((e: Error) => setError(e.message));
+  }, [organisationId, scopeUnitId, authorizationHeader, canCapture]);
+
+  useEffect(() => {
+    if (organisationId && scopeUnitId && canReverse) {
+      reloadRegister(registerPage, appliedRegisterSearch).catch((e: Error) => setError(e.message));
     }
-  }, [organisationId, scopeUnitId, authorizationHeader, canCapture, canReverse]);
+  }, [organisationId, scopeUnitId, authorizationHeader, canReverse, registerPage, appliedRegisterSearch]);
 
   async function updateFollowup(id: string, status: "ACKNOWLEDGED" | "RESOLVED") {
     setError("");
@@ -146,7 +157,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
         })
       });
       setReceipt(result);
-      await Promise.all([reloadFollowups(), reloadRegister()]);
+      await Promise.all([reloadFollowups(), reloadRegister(registerPage, appliedRegisterSearch)]);
       form.reset();
       setMemberId("");
     } catch (e) { setError(e instanceof Error ? e.message : "Contribution could not be posted."); }
@@ -173,7 +184,11 @@ export default function ContributionCapture({ organisationId, authorizationHeade
     {reversalNotice && <div className="message success" role="status">{reversalNotice}</div>}
     {canReverse && <>
       <div className="panel-divider" />
-      <div className="register-heading"><div><h3>Contribution register</h3><p>Posted receipts in the selected scope, including immutable reversal history</p></div><span className="count-box">{register.length} RECORDS</span></div>
+      <div className="register-heading"><div><h3>Contribution register</h3><p>Search receipts, members and categories. Results are paginated and include reversal history.</p></div><span className="count-box">{registerTotal} RECORDS</span></div>
+      <form className="field-actions" onSubmit={event => { event.preventDefault(); setRegisterPage(0); setAppliedRegisterSearch(registerSearch.trim()); }}>
+        <input aria-label="Search contribution register" value={registerSearch} maxLength={100} placeholder="Receipt number, member or category" onChange={event => setRegisterSearch(event.target.value)} />
+        <button type="submit" className="secondary-button">Search register</button>
+      </form>
       <div className="table-wrap"><table><thead><tr><th>RECEIPT / DATE</th><th>MEMBER / CATEGORY</th><th>AMOUNT</th><th>STATUS / REVERSAL</th><th>ACTION</th></tr></thead><tbody>
         {register.map(item => <tr key={item.id}>
           <td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate} · {item.paymentMethod.replace(/_/g, " ")}</small></td>
@@ -182,7 +197,7 @@ export default function ContributionCapture({ organisationId, authorizationHeade
           <td>{item.reversed ? <><strong className="inactive-label">REVERSED</strong><small className="table-subtext">{item.reversalReason}</small><small className="table-subtext">{item.reversedBy} · {item.reversedAt ? new Date(item.reversedAt).toLocaleString("en-ZA") : ""}</small></> : <strong>POSTED</strong>}</td>
           <td>{!item.reversed && <button type="button" className="secondary-button" disabled={busy} onClick={() => { setReversalTarget(item); setReversalReason(""); }}>Reverse receipt</button>}</td>
         </tr>)}
-        {!register.length && <tr><td colSpan={5} className="empty-table">No posted contributions in this scope.</td></tr>}
+        {!register.length && <tr><td colSpan={5} className="empty-table">{appliedRegisterSearch ? "No matching contributions found." : "No posted contributions in this scope."}</td></tr>}
       </tbody></table></div>
       {reversalTarget && <div className="legacy-record-notice">
         <strong>Reverse {reversalTarget.receiptNumber}</strong>
