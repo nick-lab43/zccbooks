@@ -10,35 +10,101 @@ const initialCorners = (): Corner[] => [
   { x: 5, y: 5 }, { x: 95, y: 5 }, { x: 95, y: 95 }, { x: 5, y: 95 }
 ];
 
+function detectDocumentCorners(image: HTMLImageElement): Corner[] {
+  const scale = Math.min(1, 500 / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return initialCorners();
+  context.drawImage(image, 0, 0, width, height);
+  const pixels = context.getImageData(0, 0, width, height).data;
+  const patch = Math.max(2, Math.floor(Math.min(width, height) * 0.035));
+  let bg = [0, 0, 0], samples = 0;
+  for (const [sx, sy] of [[0, 0], [width-patch, 0], [0, height-patch], [width-patch, height-patch]]) {
+    for (let y = sy; y < sy + patch; y += 2) for (let x = sx; x < sx + patch; x += 2) {
+      const i = (y * width + x) * 4;
+      bg[0] += pixels[i]; bg[1] += pixels[i+1]; bg[2] += pixels[i+2]; samples++;
+    }
+  }
+  bg = bg.map(value => value / Math.max(1, samples));
+  let minX = width, minY = height, maxX = 0, maxY = 0, found = 0;
+  for (let y = 2; y < height - 2; y += 2) for (let x = 2; x < width - 2; x += 2) {
+    const i = (y * width + x) * 4;
+    const distance = Math.hypot(pixels[i] - bg[0], pixels[i+1] - bg[1], pixels[i+2] - bg[2]);
+    if (distance > 52) {
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); found++;
+    }
+  }
+  if (found < 20 || (maxX-minX) < width * 0.3 || (maxY-minY) < height * 0.3) return initialCorners();
+  const insetX = width * 0.01, insetY = height * 0.01;
+  return [
+    { x: Math.max(0, (minX-insetX) / width * 100), y: Math.max(0, (minY-insetY) / height * 100) },
+    { x: Math.min(100, (maxX+insetX) / width * 100), y: Math.max(0, (minY-insetY) / height * 100) },
+    { x: Math.min(100, (maxX+insetX) / width * 100), y: Math.min(100, (maxY+insetY) / height * 100) },
+    { x: Math.max(0, (minX-insetX) / width * 100), y: Math.min(100, (maxY+insetY) / height * 100) }
+  ];
+}
+
+function solveHomography(matrix: number[][]): number[] {
+  for (let column = 0; column < 8; column++) {
+    let pivot = column;
+    for (let row = column + 1; row < 8; row++) {
+      if (Math.abs(matrix[row][column]) > Math.abs(matrix[pivot][column])) pivot = row;
+    }
+    if (Math.abs(matrix[pivot][column]) < 1e-10) throw new Error("The selected document corners overlap or form an invalid shape.");
+    [matrix[column], matrix[pivot]] = [matrix[pivot], matrix[column]];
+    const divisor = matrix[column][column];
+    for (let j = column; j <= 8; j++) matrix[column][j] /= divisor;
+    for (let row = 0; row < 8; row++) {
+      if (row === column) continue;
+      const factor = matrix[row][column];
+      for (let j = column; j <= 8; j++) matrix[row][j] -= factor * matrix[column][j];
+    }
+  }
+  return matrix.map(row => row[8]);
+}
+
 function warpImage(image: HTMLImageElement, corners: Corner[], enhancement: Enhancement): HTMLCanvasElement {
   const sourceWidth = image.naturalWidth;
   const sourceHeight = image.naturalHeight;
-  const top = Math.hypot((corners[1].x - corners[0].x) * sourceWidth / 100, (corners[1].y - corners[0].y) * sourceHeight / 100);
-  const bottom = Math.hypot((corners[2].x - corners[3].x) * sourceWidth / 100, (corners[2].y - corners[3].y) * sourceHeight / 100);
-  const left = Math.hypot((corners[3].x - corners[0].x) * sourceWidth / 100, (corners[3].y - corners[0].y) * sourceHeight / 100);
-  const right = Math.hypot((corners[2].x - corners[1].x) * sourceWidth / 100, (corners[2].y - corners[1].y) * sourceHeight / 100);
-  const width = Math.max(400, Math.min(2400, Math.round(Math.max(top, bottom))));
-  const height = Math.max(500, Math.min(3200, Math.round(Math.max(left, right))));
+  const points = corners.map(p => ({ x: p.x * sourceWidth / 100, y: p.y * sourceHeight / 100 }));
+  const [tl, tr, br, bl] = points;
+  const width = Math.max(400, Math.min(2400, Math.round(Math.max(
+    Math.hypot(tr.x-tl.x, tr.y-tl.y), Math.hypot(br.x-bl.x, br.y-bl.y)
+  ))));
+  const height = Math.max(500, Math.min(3200, Math.round(Math.max(
+    Math.hypot(bl.x-tl.x, bl.y-tl.y), Math.hypot(br.x-tr.x, br.y-tr.y)
+  ))));
+  const correspondences = [
+    [0, 0, tl.x, tl.y], [1, 0, tr.x, tr.y], [1, 1, br.x, br.y], [0, 1, bl.x, bl.y]
+  ];
+  const equations: number[][] = [];
+  for (const [u, v, x, y] of correspondences) {
+    equations.push([u, v, 1, 0, 0, 0, -x*u, -x*v, x]);
+    equations.push([0, 0, 0, u, v, 1, -y*u, -y*v, y]);
+  }
+  const [a,b,c,d,e,f,g,h] = solveHomography(equations);
   const source = document.createElement("canvas");
-  source.width = sourceWidth;
-  source.height = sourceHeight;
+  source.width = sourceWidth; source.height = sourceHeight;
   const sourceContext = source.getContext("2d", { willReadFrequently: true });
   if (!sourceContext) throw new Error("This browser cannot process the selected image.");
   sourceContext.drawImage(image, 0, 0);
   const sourcePixels = sourceContext.getImageData(0, 0, sourceWidth, sourceHeight);
   const output = document.createElement("canvas");
-  output.width = width;
-  output.height = height;
+  output.width = width; output.height = height;
   const outputContext = output.getContext("2d");
   if (!outputContext) throw new Error("This browser cannot create the scanned page.");
   const targetPixels = outputContext.createImageData(width, height);
-  const [tl, tr, br, bl] = corners.map(p => ({ x: p.x * sourceWidth / 100, y: p.y * sourceHeight / 100 }));
   for (let y = 0; y < height; y++) {
     const v = y / Math.max(1, height - 1);
     for (let x = 0; x < width; x++) {
       const u = x / Math.max(1, width - 1);
-      const sx = (1-u)*(1-v)*tl.x + u*(1-v)*tr.x + u*v*br.x + (1-u)*v*bl.x;
-      const sy = (1-u)*(1-v)*tl.y + u*(1-v)*tr.y + u*v*br.y + (1-u)*v*bl.y;
+      const denominator = g*u + h*v + 1;
+      const sx = (a*u + b*v + c) / denominator;
+      const sy = (d*u + e*v + f) / denominator;
       const ix = Math.max(0, Math.min(sourceWidth - 1, Math.round(sx)));
       const iy = Math.max(0, Math.min(sourceHeight - 1, Math.round(sy)));
       const from = (iy * sourceWidth + ix) * 4;
@@ -52,8 +118,7 @@ function warpImage(image: HTMLImageElement, corners: Corner[], enhancement: Enha
   outputContext.putImageData(targetPixels, 0, 0);
   if (enhancement !== "original") {
     const enhanced = document.createElement("canvas");
-    enhanced.width = width;
-    enhanced.height = height;
+    enhanced.width = width; enhanced.height = height;
     const context = enhanced.getContext("2d");
     if (!context) throw new Error("This browser cannot enhance the scanned page.");
     context.filter = enhancement === "grayscale" ? "grayscale(1) contrast(1.15)" : "grayscale(1) contrast(1.55) brightness(1.08)";
@@ -131,7 +196,11 @@ export default function DepositScanner({ batchId, authorizationHeader, evidence 
       });
       if (!response.ok) throw new Error("Could not load the selected original photograph.");
       const blob = await response.blob();
-      const page = { evidenceId: item.id, filename: item.filename, sourceUrl: URL.createObjectURL(blob), corners: initialCorners() };
+      const sourceUrl = URL.createObjectURL(blob);
+      const sourceImage = new Image();
+      sourceImage.src = sourceUrl;
+      await new Promise<void>((resolve, reject) => { sourceImage.onload = () => resolve(); sourceImage.onerror = () => reject(new Error("The source photograph could not be decoded.")); });
+      const page = { evidenceId: item.id, filename: item.filename, sourceUrl, corners: detectDocumentCorners(sourceImage) };
       setPages(current => [...current, page]);
       setActiveIndex(pages.length);
     } catch (e) {
@@ -256,6 +325,6 @@ export default function DepositScanner({ batchId, authorizationHeader, evidence 
         {!documents.length && <tr><td colSpan={5} className="empty-table">No scanned PDFs have been generated.</td></tr>}
       </tbody></table></div>
     </div>
-    <small className="table-subtext">The scanner creates a derivative PDF linked to its source photographs. It does not delete, replace or alter original evidence. Boundary positioning is manually adjustable; automatic document-edge detection and OCR are not included.</small>
+    <small className="table-subtext">The scanner creates a derivative PDF linked to its source photographs. It does not delete, replace or alter original evidence. An automatic contrast-based boundary estimate is provided as a starting point; verify and adjust all four corners before creating the PDF. OCR is not included.</small>
   </section>;
 }
