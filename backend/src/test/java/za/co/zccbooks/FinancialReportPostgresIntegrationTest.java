@@ -1054,10 +1054,16 @@ class FinancialReportPostgresIntegrationTest {
     @Test
     void auditLogSupportsScopedFiltersDateRangesAndStablePagination() {
         Fixture fixture = fixture();
+        UUID auditActorId = UUID.randomUUID();
+        String auditActorUsername = "audit.tester." + auditActorId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Audit Tester', 'not-used-in-direct-controller-test', TRUE)
+            """, auditActorId, auditActorUsername);
         jdbc.update("""
             INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
             VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
-            """, UUID.randomUUID(), fixture.adminId());
+            """, UUID.randomUUID(), auditActorId);
 
         UUID contributionTarget = UUID.randomUUID();
         UUID depositTarget = UUID.randomUUID();
