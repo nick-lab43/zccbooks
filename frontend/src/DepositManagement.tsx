@@ -4,7 +4,7 @@ import DepositEvidence from "./DepositEvidence";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Receipt = { id: string; receiptNumber: string; memberName: string; amount: number; contributionDate: string; paymentMethod: string; paymentReference: string | null; categoryName: string; scopeUnitId: string };
-type Batch = { id: string; scopeUnitId: string; scopeName: string; depositDate: string; bankName: string; bankReference: string; expectedAmount: number; status: string; note: string | null; allocatedAmount: number; receiptCount: number; bankedAmount: number; outstandingAmount: number; outstandingNote: string | null; createdAt: string };
+type Batch = { id: string; scopeUnitId: string; scopeName: string; depositDate: string; bankName: string; bankReference: string; expectedAmount: number; status: string; note: string | null; allocatedAmount: number; receiptCount: number; bankedAmount: number; outstandingAmount: number; outstandingNote: string | null; createdAt: string; reviewStatus: string; reviewResponseNote: string | null };
 type Allocated = { contributionId: string; receiptNumber: string; memberName: string; amount: number; contributionDate: string; paymentReference: string | null };
 type StatementEntry = { id: string; scopeUnitId: string; scopeName: string; transactionDate: string; bankReference: string; amount: number; entryType: string; description: string | null; reconciled: boolean };
 type StatementImportResult = { importId: string; fileName: string; importedRows: number; duplicateRows: number };
@@ -20,6 +20,7 @@ export default function DepositManagement({ organisationId, authorizationHeader,
   const [allocations, setAllocations] = useState<Allocated[]>([]);
   const [entries, setEntries] = useState<StatementEntry[]>([]);
   const [partialNotes, setPartialNotes] = useState<Record<string, string>>({});
+  const [reviewResponse, setReviewResponse] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -123,6 +124,17 @@ export default function DepositManagement({ organisationId, authorizationHeader,
     }, "Deposit batch submitted for bank reconciliation.");
   }
 
+  async function respondToReview() {
+    if (!selectedBatch || !reviewResponse.trim()) return;
+    await perform(async () => {
+      await request(`/api/deposit-batches/${selectedBatch.id}/review-response`, {
+        method: "POST", body: JSON.stringify({ note: reviewResponse.trim() })
+      });
+      setReviewResponse("");
+      setSelectedBatchId(selectedBatch.id);
+    }, "Response submitted to Central Financial Administration for another review.");
+  }
+
   async function recordEntry(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
     await perform(async () => {
@@ -201,11 +213,17 @@ export default function DepositManagement({ organisationId, authorizationHeader,
       </tbody></table></div>
       {selectedBatch && <div className="panel-divider">
         <DepositEvidence batchId={selectedBatch.id} status={selectedBatch.status} authorizationHeader={authorizationHeader} />
-        <div className="register-heading"><div><h3>Batch {selectedBatch.bankReference}</h3><p>{selectedBatch.status} · {selectedBatch.receiptCount} allocated receipts</p></div><strong>Allocated ZAR {Number(selectedBatch.allocatedAmount).toFixed(2)}<small className="table-subtext">Banked ZAR {Number(selectedBatch.bankedAmount).toFixed(2)} · Outstanding ZAR {Number(selectedBatch.outstandingAmount).toFixed(2)}</small></strong></div>
+        <div className="register-heading"><div><h3>Batch {selectedBatch.bankReference}</h3><p>{selectedBatch.status} · {selectedBatch.reviewStatus} · {selectedBatch.receiptCount} allocated receipts</p></div><strong>Allocated ZAR {Number(selectedBatch.allocatedAmount).toFixed(2)}<small className="table-subtext">Banked ZAR {Number(selectedBatch.bankedAmount).toFixed(2)} · Outstanding ZAR {Number(selectedBatch.outstandingAmount).toFixed(2)}</small></strong></div>
         <div className="table-wrap"><table><thead><tr><th>RECEIPT</th><th>MEMBER</th><th>DATE</th><th>AMOUNT</th><th></th></tr></thead><tbody>
           {allocations.map(item => <tr key={item.contributionId}><td>{item.receiptNumber}</td><td>{item.memberName}</td><td>{item.contributionDate}</td><td>ZAR {Number(item.amount).toFixed(2)}</td><td>{selectedBatch.status === "DRAFT" && <button type="button" className="secondary-button" disabled={busy} onClick={() => removeAllocation(item)}>Remove</button>}</td></tr>)}
           {!allocations.length && <tr><td colSpan={5} className="empty-table">No receipts allocated yet.</td></tr>}
         </tbody></table></div>
+        {(selectedBatch.reviewStatus === "QUERIED" || selectedBatch.reviewStatus === "REJECTED") && canDeposit && <div className="panel-divider">
+          <h4>Central review response required</h4>
+          {selectedBatch.reviewResponseNote && <p className="panel-description">Previous response: {selectedBatch.reviewResponseNote}</p>}
+          <label className="form-stack">Response to reviewer<textarea value={reviewResponse} onChange={e => setReviewResponse(e.target.value)} rows={3} maxLength={1000} placeholder="Explain the clarification or corrective action taken." /></label>
+          <button type="button" className="primary-button" disabled={busy || !reviewResponse.trim()} onClick={respondToReview}>Submit response for re-review</button>
+        </div>}
         {selectedBatch.status === "DRAFT" && <>
           <h4>Available cash receipts</h4>
           <div className="table-wrap"><table><thead><tr><th>RECEIPT</th><th>MEMBER / CATEGORY</th><th>DATE</th><th>AMOUNT</th><th></th></tr></thead><tbody>
