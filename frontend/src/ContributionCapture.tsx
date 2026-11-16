@@ -5,10 +5,11 @@ type Unit = { id: string; parentId: string | null; level: string; code: string; 
 type Category = { id: string; name: string; streamName: string; active: boolean; scopeLevels: string[] };
 type Member = { id: string; zccAppNumber: string | null; firstName: string; lastName: string };
 type Followup = { id: string; status: string; note: string | null; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string };
-type RegisterItem = { id: string; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; capturedAt: string; reversed: boolean; reversalReason: string | null; reversedBy: string | null; reversedAt: string | null };\ntype Receipt = { id: string; receiptNumber: string; memberName: string; categoryName: string; streamName: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; capturedAt: string };
+type RegisterItem = { id: string; receiptNumber: string; memberName: string; categoryName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; capturedAt: string; reversed: boolean; reversalReason: string | null; reversedBy: string | null; reversedAt: string | null };
+type Receipt = { id: string; receiptNumber: string; memberName: string; categoryName: string; streamName: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; capturedAt: string };
 
-export default function ContributionCapture({ organisationId, authorizationHeader }: {
-  organisationId: string; authorizationHeader: string;
+export default function ContributionCapture({ organisationId, authorizationHeader, canReverse }: {
+  organisationId: string; authorizationHeader: string; canReverse: boolean;
 }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -17,7 +18,11 @@ export default function ContributionCapture({ organisationId, authorizationHeade
   const [memberId, setMemberId] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [followups, setFollowups] = useState<Followup[]>([]);\n  const [register, setRegister] = useState<RegisterItem[]>([]);\n  const [reversalTarget, setReversalTarget] = useState<RegisterItem | null>(null);\n  const [reversalReason, setReversalReason] = useState("");\n  const [reversalNotice, setReversalNotice] = useState("");
+  const [followups, setFollowups] = useState<Followup[]>([]);
+  const [register, setRegister] = useState<RegisterItem[]>([]);
+  const [reversalTarget, setReversalTarget] = useState<RegisterItem | null>(null);
+  const [reversalReason, setReversalReason] = useState("");
+  const [reversalNotice, setReversalNotice] = useState("");
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -79,7 +84,25 @@ export default function ContributionCapture({ organisationId, authorizationHeade
       .then(setMembers).catch((e: Error) => setError(e.message));
   }, [cellId, scopeUnitId, authorizationHeader]);
 
-  async function reloadRegister() {\n    if (!organisationId || !scopeUnitId) { setRegister([]); return; }\n    const rows = await request<RegisterItem[]>(`/api/organisations/${organisationId}/contribution-register?scopeUnitId=${scopeUnitId}`);\n    setRegister(rows);\n  }\n\n  async function reverseContribution() {\n    if (!reversalTarget || !reversalReason.trim()) return;\n    setBusy(true); setError(""); setReversalNotice("");\n    try {\n      await request(`/api/contributions/${reversalTarget.id}/reverse`, { method: "POST", body: JSON.stringify({ reason: reversalReason.trim() }) });\n      setReversalTarget(null); setReversalReason("");\n      await reloadRegister();\n      setReversalNotice(`Receipt ${reversalTarget.receiptNumber} was reversed. The original receipt remains in the audit register.`);\n    } catch (e) { setError(e instanceof Error ? e.message : "Contribution could not be reversed."); }\n    finally { setBusy(false); }\n  }\n\n  async function reloadFollowups() {
+  async function reloadRegister() {
+    if (!organisationId || !scopeUnitId) { setRegister([]); return; }
+    const rows = await request<RegisterItem[]>(`/api/organisations/${organisationId}/contribution-register?scopeUnitId=${scopeUnitId}`);
+    setRegister(rows);
+  }
+
+  async function reverseContribution() {
+    if (!reversalTarget || !reversalReason.trim()) return;
+    setBusy(true); setError(""); setReversalNotice("");
+    try {
+      await request(`/api/contributions/${reversalTarget.id}/reverse`, { method: "POST", body: JSON.stringify({ reason: reversalReason.trim() }) });
+      setReversalTarget(null); setReversalReason("");
+      await reloadRegister();
+      setReversalNotice(`Receipt ${reversalTarget.receiptNumber} was reversed. The original receipt remains in the audit register.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Contribution could not be reversed."); }
+    finally { setBusy(false); }
+  }
+
+  async function reloadFollowups() {
     if (!organisationId || !scopeUnitId) { setFollowups([]); return; }
     const rows = await request<Followup[]>(`/api/organisations/${organisationId}/deposit-followups?scopeUnitId=${scopeUnitId}`);
     setFollowups(rows);
