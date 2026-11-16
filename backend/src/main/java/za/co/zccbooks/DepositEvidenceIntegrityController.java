@@ -30,6 +30,17 @@ public class DepositEvidenceIntegrityController {
         BatchScope batch = requireBatch(batchId);
         authorization.requireUnitPermission("FINANCE_VIEW", batch.scopeUnitId());
 
+        Long totalBytes = jdbc.queryForObject("""
+            SELECT COALESCE(SUM(file_size), 0) FROM (
+                SELECT file_size FROM deposit_evidence WHERE deposit_batch_id = ?
+                UNION ALL
+                SELECT file_size FROM deposit_documents WHERE deposit_batch_id = ?
+            ) stored_files
+            """, Long.class, batchId, batchId);
+        if (totalBytes != null && totalBytes > 100L * 1024 * 1024) {
+            throw new ConflictException("This deposit contains more than 100 MB of stored files. Verify the evidence in smaller batches.");
+        }
+
         List<StoredFile> files = jdbc.query("""
             SELECT 'EVIDENCE' AS target_type, id AS target_id, original_filename AS filename,
                    sha256 AS stored_sha256, file_data
