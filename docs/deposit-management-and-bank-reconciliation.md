@@ -90,3 +90,10 @@ OCR is advisory only:
 - A textual match is not proof of payment, bank settlement, document authenticity or tamper-free evidence.
 - OCR does not modify a deposit, allocate receipts, submit a batch or reconcile a bank transaction.
 - The operator must inspect the original slip and verify every extracted value independently.
+
+
+### Human-confirmed OCR review history
+
+Finance operators can record reviewed deposit-slip values after checking them against the original evidence photograph. The server independently compares the reviewed amount, bank reference and deposit date with the deposit batch, then stores an immutable review entry containing the original OCR candidates, the operator-reviewed values, comparison results, reviewer and timestamp.
+
+Review history is read-only and visible to users with finance-view access. Recording a review requires finance-deposit permission and explicit confirmation that the original slip was inspected. Corrections are recorded as new entries; earlier entries are retained. This workflow does not change the deposit batch, allocate receipts or reconcile bank statement entries. A matching result remains a comparison against the batch's recorded values, not proof of bank settlement or document authenticity.
