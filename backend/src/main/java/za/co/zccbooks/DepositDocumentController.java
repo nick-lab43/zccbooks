@@ -142,6 +142,18 @@ public class DepositDocumentController {
             .body(document.bytes());
     }
 
+    @GetMapping("/ocr-context")
+    public OcrContext ocrContext(@PathVariable UUID batchId) {
+        BatchScope batch = requireBatch(batchId);
+        authorization.requireUnitPermission("FINANCE_VIEW", batch.scopeUnitId());
+        return jdbc.query("""
+            SELECT deposit_date, bank_reference, expected_amount
+            FROM deposit_batches WHERE id = ?
+            """, (rs, n) -> new OcrContext(rs.getDate("deposit_date").toLocalDate().toString(),
+                rs.getString("bank_reference"), rs.getBigDecimal("expected_amount")), batchId)
+            .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Deposit batch not found."));
+    }
+
     private static BufferedImage readSafeImage(MultipartFile page) throws IOException {
         try (ImageInputStream input = ImageIO.createImageInputStream(page.getInputStream())) {
             if (input == null) throw new IllegalArgumentException("A scanned page is not a supported image.");
@@ -188,6 +200,7 @@ public class DepositDocumentController {
     }
 
     public record DocumentDto(String id, String filename, long fileSize, String sha256, int pageCount, String createdAt) {}
+    public record OcrContext(String depositDate, String bankReference, java.math.BigDecimal expectedAmount) {}
     private record BatchScope(UUID scopeUnitId, String status) {}
     private record StoredDocument(String filename, byte[] bytes) {}
 }
