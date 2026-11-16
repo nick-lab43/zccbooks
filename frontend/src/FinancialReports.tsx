@@ -73,11 +73,12 @@ export default function FinancialReports({ organisationId, authorizationHeader }
     finally { setBusy(false); }
   }
 
-  async function download() {
+  async function download(format: "docx" | "pdf") {
     if (!scopeUnitId || from > to) { setError("Select a valid scope and date range."); return; }
     setBusy(true); setError("");
     try {
-      const response = await fetch(`${apiBase}/api/organisations/${organisationId}/financial-reports/export?${params()}&type=${type}`, { headers });
+      const endpoint = format === "pdf" ? "export/pdf" : "export";
+      const response = await fetch(`${apiBase}/api/organisations/${organisationId}/financial-reports/${endpoint}?${params()}&type=${type}`, { headers });
       if (!response.ok) {
         const problem = await response.json().catch(() => null);
         throw new Error(problem?.detail ?? `Export failed (${response.status}).`);
@@ -86,10 +87,10 @@ export default function FinancialReports({ organisationId, authorizationHeader }
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `zcc-${type.toLowerCase().replace(/_/g, "-")}-${from}-to-${to}.docx`;
+      anchor.download = `zcc-${type.toLowerCase().replace(/_/g, "-")}-${from}-to-${to}.${format}`;
       anchor.click();
       URL.revokeObjectURL(url);
-    } catch (e) { setError(e instanceof Error ? e.message : "Word export failed."); }
+    } catch (e) { setError(e instanceof Error ? e.message : `${format.toUpperCase()} export failed.`); }
     finally { setBusy(false); }
   }
 
@@ -110,7 +111,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
         <label>Geographical scope<select value={scopeUnitId} onChange={e => setScopeUnitId(e.target.value)}><option value="">Select scope</option>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
         <div className="field-pair"><label>From<input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div>
         {error && <div className="message error" role="alert">{error}</div>}
-        <div className="field-pair"><button className="secondary-button" disabled={busy || !scopeUnitId} onClick={loadReport}>{busy ? "Working…" : "Preview report"}</button><button className="primary-button" disabled={busy || !scopeUnitId} onClick={download}>Download Word report</button></div>
+        <div className="field-pair"><button className="secondary-button" disabled={busy || !scopeUnitId} onClick={loadReport}>{busy ? "Working…" : "Preview report"}</button><button className="primary-button" disabled={busy || !scopeUnitId} onClick={() => download("docx")}>Download Word</button><button className="secondary-button" disabled={busy || !scopeUnitId} onClick={() => download("pdf")}>Download PDF</button></div>
       </div>
     </section>
     {summary && type === "CONTRIBUTION_SUMMARY" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Contribution summary</h2></div><span className="panel-tag">{summary.context.unitName}</span></div><div className="overview-stat-grid"><article className="overview-stat"><span>TRANSACTIONS</span><strong>{summary.contributionCount}</strong></article>{summary.currencyTotals.map(total => <article className="overview-stat" key={total.currency}><span>TOTAL CONTRIBUTIONS · {total.currency}</span><strong>{total.currency} {Number(total.totalAmount).toLocaleString("en-ZA", {minimumFractionDigits:2})}</strong></article>)}</div><div className="table-wrap"><table><thead><tr><th>STREAM</th><th>CATEGORY</th><th>COUNT</th><th>CURRENCY</th><th>TOTAL</th></tr></thead><tbody>{summary.groups.map((row,i)=><tr key={i}><td>{row.streamName}</td><td>{row.categoryName}</td><td>{row.contributionCount}</td><td>{row.currency}</td><td>{row.currency} {Number(row.totalAmount).toLocaleString("en-ZA",{minimumFractionDigits:2})}</td></tr>)}{!summary.groups.length && <tr><td colSpan={5} className="empty-table">No contributions were recorded for this period.</td></tr>}</tbody></table></div></section>}
