@@ -758,3 +758,16 @@ input, select { border-radius: 5px !important; }
  .app-main .workspace-heading,.app-main .central-overview,.app-main .organisation-layout,.app-main .access-layout,.app-main .content-grid,.app-main .message,.app-main .system-footer{width:calc(100% - 24px)}
  .app-main .workspace-heading{padding:19px 0 15px}
 }
+
+/* Deposit document scanner */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.checkbox-row{display:flex;align-items:center;gap:9px;min-height:40px;padding:8px 10px;border:1px solid #d3dbe3;background:#f7f9fb;color:#34465a;font-size:11px;overflow-wrap:anywhere}
+.checkbox-row input{flex:0 0 auto;width:16px;height:16px;accent-color:#263f5d}
+.action-row{display:flex;flex-wrap:wrap;gap:6px}
+.scanner-preview{display:block;width:100%;max-height:680px;object-fit:contain;border:1px solid #cbd3dc;background:#e9edf1}
+.scanner-corners{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.scanner-corner{display:grid;gap:8px;padding:12px;border:1px solid #d5dce4;background:#f7f9fb}
+.scanner-corner strong{color:#344b64;font-size:11px}
+.scanner-corner label{display:grid;gap:5px;color:#566678;font-size:10px}
+.scanner-corner input[type=range]{width:100%;accent-color:#263f5d}
+@media(max-width:600px){.scanner-corners{grid-template-columns:1fr}.action-row{width:100%}.action-row button{flex:1}}
