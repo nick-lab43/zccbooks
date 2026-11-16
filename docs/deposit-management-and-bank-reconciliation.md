@@ -97,3 +97,10 @@ OCR is advisory only:
 Finance operators can record reviewed deposit-slip values after checking them against the original evidence photograph. The server independently compares the reviewed amount, bank reference and deposit date with the deposit batch, then stores an immutable review entry containing the original OCR candidates, the operator-reviewed values, comparison results, reviewer and timestamp.
 
 Review history is read-only and visible to users with finance-view access. Recording a review requires finance-deposit permission and explicit confirmation that the original slip was inspected. Corrections are recorded as new entries; earlier entries are retained. This workflow does not change the deposit batch, allocate receipts or reconcile bank statement entries. A matching result remains a comparison against the batch's recorded values, not proof of bank settlement or document authenticity.
+
+
+### Stored-file integrity verification
+
+Finance-view users can run a SHA-256 integrity check for every original evidence file and scanner-generated PDF attached to a deposit. The server reads the currently stored bytes, recalculates each digest and compares it with the digest recorded when that file was stored. Each check records the target file, stored and calculated digests, result, reviewer and timestamp in an append-only history protected against database updates and deletes. Each run is also written to the administrative audit log.
+
+The check is read-only with respect to deposit and reconciliation records. A mismatch is a preservation and investigation signal; it does not identify when or how a file changed. A match establishes only that the current stored bytes match the application's recorded digest. It does not prove source authenticity, capture time, chain of custody before upload or bank settlement. A run is limited to deposits containing no more than 100 MB of stored files to bound application memory use.
