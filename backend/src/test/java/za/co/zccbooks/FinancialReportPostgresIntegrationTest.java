@@ -738,7 +738,7 @@ class FinancialReportPostgresIntegrationTest {
 
 
     @Test
-    void budgetsTrackDescendantActualsAndKeepVersionedRevisionHistory() {
+    void budgetsTrackDescendantActualsAndKeepVersionedRevisionHistory() throws Exception {
         Fixture fixture = fixture();
         UUID centralId = UUID.randomUUID();
         String centralUsername = "budget.admin." + centralId.toString().replace("-", "").substring(0, 12);
