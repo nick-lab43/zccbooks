@@ -124,9 +124,9 @@ Provide centrally governed position/office definitions and authorised assignment
 
 A member may have multiple concurrent appointments only where policy permits. Ended appointments remain visible in history. Church appointment must never automatically grant application access.
 
-## 9. Church-branded Word reporting
+## 9. Church-branded reporting (Word and PDF)
 
-Reporting is a core product capability. Authorised users should generate downloadable Microsoft Word (.docx) reports suitable for printing.
+Reporting is a core product capability. Authorised users must be able to generate each report as both a downloadable Microsoft Word (.docx) document and a matching PDF. Every report type exposed as a Word download must expose a PDF alternative; neither format is optional.
 
 Initial report families:
 - Census/member registers by geographical scope, household and configured classification.
@@ -139,7 +139,7 @@ Initial report families:
 
 Report generation should support authorised scope, date range, filters, sorting and grouping. Standard, tested templates should be delivered first; a configurable report builder can follow. Reports must not bypass API permissions or expose personal/financial information outside the user's scope.
 
-Each Word report should use the official ZCC star logo without stretching, recolouring or cropping it. Include the Zion Christian Church name, report title, relevant Country/Province/District/Nyika/Tabhera/Cell context, reporting period, generation timestamp and generated-by identity. Use consistent headers/footers, page numbers, readable tables, totals and clear currency formatting. Include appropriate confidentiality markings where required.
+Word and PDF versions must contain equivalent report data, scope, filters, totals and confidentiality markings. Both formats must use the official ZCC star logo without stretching, recolouring or cropping it. Include the Zion Christian Church name, report title, relevant Country/Province/District/Nyika/Tabhera/Cell context, reporting period, generation timestamp and generated-by identity. Use consistent headers/footers, page numbers, readable tables, totals and clear currency formatting. Include appropriate confidentiality markings where required.
 
 ## 10. Security, audit and data integrity
 
@@ -161,8 +161,8 @@ Each Word report should use the official ZCC star logo without stretching, recol
 5. **Deposit package and allocation — implemented:** one-Nyika deposit batches, contribution allocations, submission, bank statement import and reconciliation exception handling. Partial banking and advanced review-history requirements still require verification against the full operating policy.
 6. **Scanner experience — outstanding:** implement capture/upload, crop, perspective correction, enhancement, original preservation and PDF/image output.
 7. **Administrator invitations — partially implemented:** invitation provisioning and activation exist; verify production email delivery, invitation lifecycle, deterministic username generation and pre-scoped account activation.
-8. **Financial reporting v1 — implemented:** permission-scoped contribution summaries, contributor/receipt registers, deposit registers and reconciliation exception registers, with downloadable Word reports and report-generation audit events. This is not yet the complete reporting family.
-9. **Membership reporting — implemented in the current development phase:** permission-scoped Cell-based member registers and date-effective church appointment registers, with preview, Word export and report-generation audit events. Member registration dates and appointment effective periods use the selected date range. Legacy branch-only members without a canonical Cell assignment are not included in the Cell-based member register.
+8. **Financial reporting v1 — implemented:** permission-scoped contribution summaries, contributor/receipt registers, deposit registers, expenditure registers, income/expenditure summaries, budget performance and reconciliation exception registers, with downloadable Word and PDF alternatives and report-generation audit events. This is not yet the complete reporting family.
+9. **Membership reporting — implemented:** permission-scoped Cell-based member registers and date-effective church appointment registers, with preview, Word and PDF exports and report-generation audit events. Member registration dates and appointment effective periods use the selected date range. Legacy branch-only members without a canonical Cell assignment are not included in the Cell-based member register.
 10. **Reporting hardening — in progress:** verify database query compatibility, currency-safe aggregation, cross-Nyika isolation, report export integrity and audit records. Census, member, appointment, top-contributor, income and expenditure reports remain future work; expenditure reporting depends on an expenditure capture model.
 11. **End-to-end verification — outstanding:** test cross-Nyika isolation, partial deposits, multiple categories and streams per deposit, delayed banking, duplicate/over-allocation prevention, rejected/resubmitted packages, invitation expiry and report scope.
 
