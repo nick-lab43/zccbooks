@@ -56,13 +56,14 @@ export default function MembershipReports({ organisationId, authorizationHeader 
     finally { setBusy(false); }
   }
 
-  async function download() {
+  async function download(format: "docx" | "pdf") {
     if (!scopeUnitId || !from || !to || from > to) {
       setError("Select a geographical scope and a valid date range."); return;
     }
     setBusy(true); setError("");
     try {
-      const response = await fetch(`${apiBase}/api/organisations/${organisationId}/membership-reports/export?${query()}&type=${type}`, { headers });
+      const endpoint = format === "pdf" ? "export/pdf" : "export";
+      const response = await fetch(`${apiBase}/api/organisations/${organisationId}/membership-reports/${endpoint}?${query()}&type=${type}`, { headers });
       if (!response.ok) {
         const problem = await response.json().catch(() => null);
         throw new Error(problem?.detail ?? `Export failed (${response.status}).`);
@@ -71,10 +72,10 @@ export default function MembershipReports({ organisationId, authorizationHeader 
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `zcc-${type.toLowerCase().replace(/_/g, "-")}-${from}-to-${to}.docx`;
+      anchor.download = `zcc-${type.toLowerCase().replace(/_/g, "-")}-${from}-to-${to}.${format}`;
       anchor.click();
       URL.revokeObjectURL(url);
-    } catch (e) { setError(e instanceof Error ? e.message : "Word export failed."); }
+    } catch (e) { setError(e instanceof Error ? e.message : `${format.toUpperCase()} export failed.`); }
     finally { setBusy(false); }
   }
 
@@ -92,7 +93,8 @@ export default function MembershipReports({ organisationId, authorizationHeader 
         {error && <div className="message error" role="alert">{error}</div>}
         <div className="field-pair">
           <button className="secondary-button" disabled={busy || !scopeUnitId} onClick={preview}>{busy ? "Working…" : "Preview report"}</button>
-          <button className="primary-button" disabled={busy || !scopeUnitId} onClick={download}>Download Word report</button>
+          <button className="primary-button" disabled={busy || !scopeUnitId} onClick={() => download("docx")}>Download Word</button>
+          <button className="secondary-button" disabled={busy || !scopeUnitId} onClick={() => download("pdf")}>Download PDF</button>
         </div>
       </div>
     </section>
