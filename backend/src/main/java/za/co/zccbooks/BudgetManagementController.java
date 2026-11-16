@@ -184,7 +184,7 @@ public class BudgetManagementController {
             SELECT unit_id FROM expenditure_budgets
             WHERE organisation_id = ? AND category_id = ? AND currency = ?
               AND period_start <= ? AND period_end >= ?
-              AND (? IS NULL OR id <> ?)
+              AND id <> COALESCE(?::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
             """, (rs, n) -> rs.getObject(1, UUID.class), organisationId, categoryId, currency,
             to, from, excludedBudgetId, excludedBudgetId);
         if (conflicts.stream().anyMatch(relatedUnits::contains)) {
