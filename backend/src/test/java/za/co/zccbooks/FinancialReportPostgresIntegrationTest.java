@@ -134,6 +134,44 @@ class FinancialReportPostgresIntegrationTest {
                 LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")));
     }
 
+
+    @Test
+    void userWithoutFinanceViewCannotReadOrExportReports() {
+        Fixture fixture = fixture();
+        UUID userId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, 'membership.only', 'Membership Only', 'not-used-in-direct-controller-test', TRUE)
+            """, userId);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000006', 'UNIT', ?, ?)
+            """, UUID.randomUUID(), userId, fixture.organisationId(), fixture.nyikaA());
+
+        authenticateAs("membership.only");
+
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.summary(fixture.organisationId(), fixture.nyikaA(),
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.export(fixture.organisationId(), fixture.nyikaA(),
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31"), "CONTRIBUTION_REGISTER"));
+    }
+
+    @Test
+    void revokedFinancialAssignmentCannotAccessReports() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            UPDATE admin_role_assignments SET revoked_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND scope_unit_id = ?
+            """, fixture.adminId(), fixture.nyikaA());
+        authenticate();
+
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> reports.summary(fixture.organisationId(), fixture.nyikaA(),
+                LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31")));
+    }
+
     @Test
     void wordExportProducesReadableDocxAndWritesAuditEvent() throws Exception {
         Fixture fixture = fixture();
@@ -284,7 +322,7 @@ class FinancialReportPostgresIntegrationTest {
         UUID adminId = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
-            VALUES (?, 'nyika.reporter', 'Nyika Reporter', 'not-used-in-direct-controller-test', TRUE)
+            VALUES (?, 'finance.reporter', 'Financial Reporter', 'not-used-in-direct-controller-test', TRUE)
             """, adminId);
         jdbc.update("""
             INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
@@ -385,8 +423,12 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     private void authenticate() {
+        authenticateAs("finance.reporter");
+    }
+
+    private void authenticateAs(String username) {
         SecurityContextHolder.getContext().setAuthentication(
-            new UsernamePasswordAuthenticationToken("nyika.reporter", "not-used", List.of()));
+            new UsernamePasswordAuthenticationToken(username, "not-used", List.of()));
     }
 
     private record Fixture(UUID organisationId, UUID adminId, UUID nyikaA, UUID cellA,
