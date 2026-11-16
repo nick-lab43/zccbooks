@@ -1083,7 +1083,7 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(laterContributionTarget.toString(), filtered.get(0).targetId());
         assertEquals("CONTRIBUTION_POSTED", filtered.get(0).action());
 
-        var searched = adminController.auditEvents(null, null, null, null,
+        var searched = adminController.auditEvents(null, null, null, auditActorUsername,
             null, null, "R-100", 20, 0);
         assertEquals(1, searched.size());
         assertEquals(contributionTarget.toString(), searched.get(0).targetId());
