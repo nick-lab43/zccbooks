@@ -24,11 +24,14 @@ public class ContributionController {
     private final JdbcTemplate jdbc;
     private final AuthorizationService authorization;
     private final AdminAuditService audit;
+    private final ContributionLedgerJournalService ledgerJournals;
 
-    public ContributionController(JdbcTemplate jdbc, AuthorizationService authorization, AdminAuditService audit) {
+    public ContributionController(JdbcTemplate jdbc, AuthorizationService authorization,
+            AdminAuditService audit, ContributionLedgerJournalService ledgerJournals) {
         this.jdbc = jdbc;
         this.authorization = authorization;
         this.audit = audit;
+        this.ledgerJournals = ledgerJournals;
     }
 
     @PostMapping("/organisations/{organisationId}/contributions")
@@ -102,7 +105,10 @@ public class ContributionController {
             WHERE c.organisation_id = ? AND c.idempotency_key = ?
             """, (rs, n) -> mapContribution(rs), organisationId, request.idempotencyKey())
             .stream().findFirst().orElse(null);
-        if (existing != null) return ResponseEntity.ok(existing);
+        if (existing != null) {
+            ledgerJournals.createDraftIfMapped(UUID.fromString(existing.id()));
+            return ResponseEntity.ok(existing);
+        }
 
         UUID actorId = jdbc.queryForObject("SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?)",
             UUID.class, authorization.currentUsername());
@@ -134,6 +140,7 @@ public class ContributionController {
                 VALUES (?, ?)
                 """, UUID.randomUUID(), contributionId);
         }
+        ledgerJournals.createDraftIfMapped(contributionId);
         audit.record("CONTRIBUTION_POSTED", "CONTRIBUTION", contributionId,
             Map.of("organisationId", organisationId.toString(), "memberId", request.memberId().toString(),
                 "categoryId", request.categoryId().toString(), "scopeUnitId", request.scopeUnitId().toString(),
@@ -162,6 +169,12 @@ public class ContributionController {
         }
         if (exists("SELECT COUNT(*) FROM deposit_allocations WHERE contribution_id = ?", contributionId)) {
             throw new ConflictException("A contribution allocated to a deposit batch cannot be reversed. Resolve the deposit workflow first.");
+        }
+        if (exists("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE source_type = 'CONTRIBUTION_RECEIPT' AND source_id = ?
+            """, contributionId)) {
+            throw new ConflictException("This contribution has a ledger journal. Complete the contribution reversal journal workflow before reversing the receipt.");
         }
 
         UUID reversalId = UUID.randomUUID();
