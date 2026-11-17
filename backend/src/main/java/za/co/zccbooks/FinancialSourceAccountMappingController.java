@@ -86,7 +86,7 @@ public class FinancialSourceAccountMappingController {
 
     @PutMapping
     @Transactional
-    public SourceMapping save(@PathVariable UUID organisationId, @Valid @RequestBody SaveSourceMapping request) {
+    public void save(@PathVariable UUID organisationId, @Valid @RequestBody SaveSourceMapping request) {
         authorization.requireOrganisationOrUnitPermission("FINANCE_JOURNAL_CREATE", organisationId);
         String sourceType = request.sourceType();
         String currency = request.currency().toUpperCase();
@@ -159,9 +159,7 @@ public class FinancialSourceAccountMappingController {
                 "debitAccountId", request.debitAccountId().toString(),
                 "creditAccountId", request.creditAccountId().toString(),
                 "paymentMethod", request.paymentMethod() == null ? "NOT_APPLICABLE" : request.paymentMethod()));
-        return options(organisationId).contributionMappings().stream().filter(m -> m.id().equals(mappingId.toString()))
-            .findFirst().orElseGet(() -> options(organisationId).expenditureMappings().stream()
-                .filter(m -> m.id().equals(mappingId.toString())).findFirst().orElseThrow());
+
     }
 
     private int count(String sql, Object... args) {
@@ -184,6 +182,6 @@ public class FinancialSourceAccountMappingController {
         List<SourceMapping> expenditureMappings) {}
     public record SaveSourceMapping(@NotNull UUID categoryId,
         @Pattern(regexp = "CONTRIBUTION|EXPENDITURE") String sourceType,
-        String paymentMethod, @Pattern(regexp = "[A-Z]{3}") String currency,
+        String paymentMethod, @NotNull @Pattern(regexp = "[A-Z]{3}") String currency,
         @NotNull UUID debitAccountId, @NotNull UUID creditAccountId) {}
 }
