@@ -2385,9 +2385,13 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals("DRAFT", financialJournals.journal(reversingJournalId).status());
 
         financialJournals.submit(reversingJournalId);
+        assertThrows(ConflictException.class, () -> financialJournals.approve(reversingJournalId));
+
         String reversalApprover = createScopedFinanceActor(fixture, "reversal.report.approver.");
         authenticateAs(reversalApprover);
         financialJournals.approve(reversingJournalId);
+        assertThrows(ConflictException.class, () -> financialJournals.post(reversingJournalId));
+
         String reversalPoster = createScopedFinanceActor(fixture, "reversal.report.poster.");
         authenticateAs(reversalPoster);
         assertEquals("POSTED", financialJournals.post(reversingJournalId).status());
