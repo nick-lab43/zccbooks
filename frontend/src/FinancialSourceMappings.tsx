@@ -76,7 +76,7 @@ export default function FinancialSourceMappings({ organisationId, authorizationH
     <form className="form-stack journal-form" onSubmit={save}>
       <div className="field-pair">
         <label>Source type<select value={sourceType} onChange={e => setSourceType(e.target.value as "CONTRIBUTION" | "EXPENDITURE")}><option value="CONTRIBUTION">Contribution</option><option value="EXPENDITURE">Expenditure</option></select></label>
-        <label>Category<select name="categoryId" required defaultValue=""><option value="">Select category</option>{categories.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}</select></label>
+        <label>Category<select key={sourceType} name="categoryId" required defaultValue=""><option value="">Select category</option>{categories.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}</select></label>
       </div>
       {sourceType === "CONTRIBUTION" && <label>Payment method<select name="paymentMethod" required defaultValue=""><option value="">Select payment method</option>{["CASH","BANK_TRANSFER","CARD","MOBILE_MONEY","OTHER"].map(v => <option key={v} value={v}>{v.replaceAll("_"," ")}</option>)}</select></label>}
       <div className="field-pair">
