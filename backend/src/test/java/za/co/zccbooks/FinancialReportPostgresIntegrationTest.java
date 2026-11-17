@@ -2048,7 +2048,7 @@ class FinancialReportPostgresIntegrationTest {
         assertTrue(cashStatement.entries().stream().anyMatch(entry -> entry.journalId().equals(reversingJournalId.toString())));
 
         var incomeStatement = ledgerReports.accountStatement(fixture.organisationId(), fixture.nyikaA(),
-            incomeAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-05-31"));
+            incomeAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-11-30"));
         assertEquals(0, incomeStatement.periodDebits().compareTo(new BigDecimal("125.00")));
         assertEquals(0, incomeStatement.periodCredits().compareTo(new BigDecimal("125.00")));
         assertEquals(0, incomeStatement.closingBalance().debit().compareTo(BigDecimal.ZERO));
