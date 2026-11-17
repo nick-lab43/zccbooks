@@ -2555,6 +2555,143 @@ class FinancialReportPostgresIntegrationTest {
     }
 
 
+
+    @Test
+    void integratedChurchFinanceWorkflowReconcilesContributionsDepositsExpensesAndLedgerSources() {
+        Fixture fixture = fixture();
+        LocalDate transactionDate = LocalDate.parse("2026-05-10");
+
+        // Give the fixture administrator deposit-management access for this integrated workflow.
+        jdbc.update("""
+            INSERT INTO admin_role_assignments
+                (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
+            """, UUID.randomUUID(), fixture.adminId());
+        authenticate(fixture);
+
+        UUID contributionId = jdbc.queryForObject("""
+            SELECT id FROM contributions
+            WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'
+            """, UUID.class, fixture.organisationId());
+
+        // Move the recorded contribution through deposit allocation, submission and bank reconciliation.
+        var batch = depositManagement.createBatch(fixture.organisationId(),
+            new DepositManagementController.CreateDepositBatch(fixture.nyikaA(), transactionDate,
+                "Test Bank", "ACCEPTANCE-BANK-001", new BigDecimal("125.00"), null));
+        UUID batchId = UUID.fromString(batch.id());
+        depositManagement.allocate(batchId,
+            new DepositManagementController.AllocateReceipt(contributionId, new BigDecimal("125.00")));
+        assertEquals("SUBMITTED", depositManagement.submit(batchId).status());
+        depositReview.review(batchId, new DepositReviewController.ReviewDecision("ACCEPT", null));
+        var statement = depositManagement.recordStatementEntry(fixture.organisationId(),
+            new DepositManagementController.RecordStatementEntry(fixture.nyikaA(), transactionDate,
+                "ACCEPTANCE-BANK-001", new BigDecimal("125.00"), "Church deposit"));
+        var reconciliation = depositManagement.reconcile(batchId,
+            new DepositManagementController.ReconcileDeposit(UUID.fromString(statement.id()),
+                "Verified against bank statement"));
+        assertEquals("RECONCILED", reconciliation.status());
+
+        // Capture an expense under one actor, then approve and pay it under another.
+        UUID capturerId = UUID.randomUUID();
+        UUID approverId = UUID.randomUUID();
+        String capturer = "acceptance.expense.capture." + capturerId.toString().replace("-", "").substring(0, 10);
+        String approver = "acceptance.expense.approve." + approverId.toString().replace("-", "").substring(0, 10);
+        for (var user : List.of(Map.entry(capturerId, capturer), Map.entry(approverId, approver))) {
+            jdbc.update("""
+                INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+                VALUES (?, ?, 'Finance Acceptance Actor', 'not-used', TRUE)
+                """, user.getKey(), user.getValue());
+            jdbc.update("""
+                INSERT INTO admin_role_assignments
+                    (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+                VALUES (?, ?, '10000000-0000-0000-0000-000000000001', 'GLOBAL', NULL, NULL)
+                """, UUID.randomUUID(), user.getKey());
+        }
+        authenticateAs(capturer);
+        var category = expenditureManagement.createCategory(fixture.organisationId(),
+            new ExpenditureManagementController.CreateExpenseCategory(
+                "ACCEPTANCE-UTILITIES", "Utilities", "Church operating costs"));
+        var expense = expenditureManagement.create(fixture.organisationId(),
+            new ExpenditureManagementController.CreateExpenditure(fixture.nyikaA(),
+                UUID.fromString(category.getBody().id()), transactionDate, "Electricity Provider",
+                "Monthly church electricity", "ACCEPTANCE-INV-001", new BigDecimal("45.00"), "ZAR"));
+        UUID expenseId = UUID.fromString(expense.getBody().id());
+        assertEquals("SUBMITTED", expenditureManagement.submit(expenseId).status());
+        authenticateAs(approver);
+        assertEquals("APPROVED", expenditureManagement.review(expenseId,
+            new ExpenditureManagementController.ReviewExpenditure(
+                "APPROVE", "Invoice verified for acceptance workflow.")).status());
+        assertEquals("PAID", expenditureManagement.pay(expenseId,
+            new ExpenditureManagementController.PayExpenditure("ACCEPTANCE-EFT-001")).status());
+
+        // Configure source mappings and confirm all three completed transaction types produce balanced journals.
+        authenticate(fixture);
+        UUID cashAccount = UUID.randomUUID();
+        UUID bankAccount = UUID.randomUUID();
+        UUID incomeAccount = UUID.randomUUID();
+        UUID expenseAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?),
+                   (?, ?, '1100', 'Bank account', 'ASSET', 'ZAR', ?),
+                   (?, ?, '4000', 'Contribution income', 'INCOME', 'ZAR', ?),
+                   (?, ?, '5000', 'Church expenses', 'EXPENSE', 'ZAR', ?)
+            """, cashAccount, fixture.organisationId(), fixture.adminId(),
+            bankAccount, fixture.organisationId(), fixture.adminId(),
+            incomeAccount, fixture.organisationId(), fixture.adminId(),
+            expenseAccount, fixture.organisationId(), fixture.adminId());
+
+        UUID contributionCategoryId = jdbc.queryForObject(
+            "SELECT category_id FROM contributions WHERE id = ?", UUID.class, contributionId);
+        jdbc.update("""
+            INSERT INTO finance_contribution_account_mappings
+                (id, organisation_id, category_id, payment_method, currency,
+                 debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'CASH', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), contributionCategoryId,
+            cashAccount, incomeAccount, fixture.adminId());
+        jdbc.update("""
+            INSERT INTO finance_deposit_settlement_mappings
+                (id, organisation_id, bank_name, currency, bank_account_id, cash_account_id, created_by)
+            VALUES (?, ?, 'Test Bank', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), bankAccount, cashAccount, fixture.adminId());
+        jdbc.update("""
+            INSERT INTO finance_expenditure_account_mappings
+                (id, organisation_id, category_id, currency,
+                 debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), UUID.fromString(category.getBody().id()),
+            expenseAccount, cashAccount, fixture.adminId());
+
+        UUID contributionJournalId = contributionLedgerJournals.createDraftIfMapped(contributionId);
+        UUID reconciliationId = UUID.fromString(reconciliation.id());
+        UUID depositJournalId = depositSettlementLedgerJournals.createDraftIfMapped(reconciliationId);
+        UUID expenditureJournalId = expenditureLedgerJournals.createDraftIfMapped(expenseId);
+        assertNotNull(contributionJournalId);
+        assertNotNull(depositJournalId);
+        assertNotNull(expenditureJournalId);
+        assertBalancedJournal(contributionJournalId, new BigDecimal("125.00"));
+        assertBalancedJournal(depositJournalId, new BigDecimal("125.00"));
+        assertBalancedJournal(expenditureJournalId, new BigDecimal("45.00"));
+
+        // The management reports must agree with the completed operational workflow.
+        var position = reports.incomeExpenditure(fixture.organisationId(), fixture.nyikaA(),
+            transactionDate, transactionDate);
+        assertEquals(1, position.positions().size());
+        assertEquals(0, position.positions().get(0).income().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, position.positions().get(0).expenditure().compareTo(new BigDecimal("45.00")));
+        assertEquals(0, position.positions().get(0).netPosition().compareTo(new BigDecimal("80.00")));
+        assertEquals("RECONCILED", jdbc.queryForObject(
+            "SELECT status FROM deposit_batches WHERE id = ?", String.class, batchId));
+        assertEquals("PAID", jdbc.queryForObject(
+            "SELECT status FROM expenditures WHERE id = ?", String.class, expenseId));
+        assertEquals(3, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE id IN (?, ?, ?) AND status = 'DRAFT'
+            """, Integer.class, contributionJournalId, depositJournalId, expenditureJournalId));
+    }
+
     private void assertDuplicateReversalConstraints(String reversalTable, String sourceColumn,
             UUID sourceId, UUID reversalId, UUID journalId, String journalSourceType, Fixture fixture) {
         String duplicateReversalSql = "INSERT INTO " + reversalTable
