@@ -105,6 +105,98 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void reversalEndpointsRejectActorsOutsideTheSourceNyika() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT role_id, 'FINANCE_REVERSE'
+            FROM admin_role_assignments
+            WHERE user_id = ?
+            ON CONFLICT DO NOTHING
+            """, fixture.adminId());
+
+        UUID actorId = UUID.randomUUID();
+        String username = "sibling.reversal." + actorId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Sibling Nyika Finance Admin', 'not-used', TRUE)
+            """, actorId, username);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments
+                (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            SELECT ?, ?, role_id, 'UNIT', organisation_id, ?
+            FROM admin_role_assignments
+            WHERE user_id = ? AND scope_unit_id = ?
+            """, UUID.randomUUID(), actorId, fixture.nyikaB(), fixture.adminId(), fixture.nyikaA());
+
+        UUID contributionId = jdbc.queryForObject("""
+            SELECT id FROM contributions
+            WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'
+            """, UUID.class, fixture.organisationId());
+
+        UUID batchId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_batches
+                (id, organisation_id, scope_unit_id, deposit_date, bank_name, bank_reference,
+                 expected_amount, status, created_by)
+            VALUES (?, ?, ?, DATE '2026-05-10', 'Test Bank', ?, 125.00, 'SUBMITTED', ?)
+            """, batchId, fixture.organisationId(), fixture.nyikaA(),
+            "SIBLING-REV-" + batchId, fixture.adminId());
+        UUID statementEntryId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO bank_statement_entries
+                (id, organisation_id, scope_unit_id, transaction_date, bank_reference,
+                 amount, description, recorded_by)
+            VALUES (?, ?, ?, DATE '2026-05-12', ?, 125.00, 'Deposit received', ?)
+            """, statementEntryId, fixture.organisationId(), fixture.nyikaA(),
+            "SIBLING-REV-" + batchId, fixture.adminId());
+        UUID reconciliationId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_reconciliations
+                (id, deposit_batch_id, statement_entry_id, matched_by, match_note)
+            VALUES (?, ?, ?, ?, 'Test reconciliation')
+            """, reconciliationId, batchId, statementEntryId, fixture.adminId());
+
+        UUID categoryId = jdbc.queryForObject("""
+            SELECT id FROM contribution_categories WHERE organisation_id = ?
+            """, UUID.class, fixture.organisationId());
+        UUID expenditureId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO expenditures
+                (id, organisation_id, scope_unit_id, category_id, expense_date, payee,
+                 description, amount, currency, status, captured_by, reviewed_by,
+                 reviewed_at, paid_by, paid_at, payment_reference)
+            VALUES (?, ?, ?, ?, DATE '2026-05-11', 'Utility Provider',
+                    'Monthly electricity', 80.00, 'ZAR', 'PAID', ?, ?, CURRENT_TIMESTAMP,
+                    ?, CURRENT_TIMESTAMP, ?)
+            """, expenditureId, fixture.organisationId(), fixture.nyikaA(), categoryId,
+            fixture.adminId(), fixture.adminId(), fixture.adminId(), "SIBLING-REV-PAY-" + expenditureId);
+
+        authenticateAs(username);
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> contributionController.reverseContribution(contributionId,
+                new ContributionController.ReverseContribution("Outside assigned Nyika.")));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> depositReconciliationReversals.reverse(reconciliationId,
+                new DepositReconciliationReversalController.ReverseDepositReconciliation(
+                    "Outside assigned Nyika.")));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+            () -> expenditurePaymentReversals.reversePayment(expenditureId,
+                new ExpenditurePaymentReversalController.ReverseExpenditurePayment(
+                    "Outside assigned Nyika.")));
+
+        assertEquals(0, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM contribution_reversals WHERE contribution_id = ?
+            """, Integer.class, contributionId));
+        assertEquals(0, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM deposit_reconciliation_reversals WHERE reconciliation_id = ?
+            """, Integer.class, reconciliationId));
+        assertEquals(0, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM expenditure_payment_reversals WHERE expenditure_id = ?
+            """, Integer.class, expenditureId));
+    }
+
+    @Test
     void contributionWithDepositAllocationCannotBeReversed() {
         Fixture fixture = fixture();
         jdbc.update("""
