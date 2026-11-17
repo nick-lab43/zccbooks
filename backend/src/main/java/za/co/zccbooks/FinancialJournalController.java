@@ -37,7 +37,7 @@ public class FinancialJournalController {
         requireOrganisation(organisationId);
         authorization.requireOrganisationOrUnitPermission("FINANCE_JOURNAL_VIEW", organisationId);
         return jdbc.query("""
-            SELECT id, account_code, account_name, account_type, currency, active
+            SELECT id, organisation_id, account_code, account_name, account_type, currency, active
             FROM finance_accounts WHERE organisation_id = ?
             ORDER BY account_code
             """, (rs, n) -> accountDto(rs), organisationId);
@@ -73,8 +73,9 @@ public class FinancialJournalController {
             @Valid @RequestBody UpdateFinanceAccount request) {
         FinanceAccountDto existing = requireAccount(accountId);
         authorization.requireOrganisationOrUnitPermission("FINANCE_JOURNAL_CREATE", UUID.fromString(existing.organisationId()));
-        if (exists("SELECT COUNT(*) FROM finance_journal_lines WHERE account_id = ?", accountId) && request.active()) {
-            // Reactivation is allowed; posted history remains linked to the same account identity.
+        if (exists("SELECT COUNT(*) FROM finance_journal_lines WHERE account_id = ?", accountId)
+                && !existing.name().equals(request.name().trim())) {
+            throw new ConflictException("An account name cannot be changed after it has been used in a journal.");
         }
         jdbc.update("""
             UPDATE finance_accounts SET account_name = ?, active = ?, updated_at = CURRENT_TIMESTAMP
@@ -160,6 +161,17 @@ public class FinancialJournalController {
                 organisationId, number)) {
             throw new ConflictException("A journal with this number already exists in the organisation.");
         }
+        String sourceType = request.sourceType() == null ? "MANUAL" : request.sourceType();
+        if ("RECONCILIATION_EXCEPTION".equals(sourceType)) {
+            if (request.sourceId() == null || !exists("""
+                SELECT COUNT(*) FROM reconciliation_exceptions
+                WHERE id = ? AND organisation_id = ? AND scope_unit_id = ?
+                """, request.sourceId(), organisationId, request.scopeUnitId())) {
+                throw new IllegalArgumentException("The linked reconciliation exception must exist in the same organisation and financial scope.");
+            }
+        } else if (request.sourceId() != null) {
+            throw new IllegalArgumentException("A manual journal cannot specify a source record.");
+        }
         UUID id = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO finance_journals
@@ -167,7 +179,7 @@ public class FinancialJournalController {
                  description, source_type, source_id, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, id, organisationId, request.scopeUnitId(), number, request.journalDate(), currency,
-            request.description().trim(), request.sourceType(), request.sourceId(), actorId());
+            request.description().trim(), sourceType, request.sourceId(), actorId());
         for (FinanceJournalLineRequest line : request.lines()) {
             insertLine(id, organisationId, currency, line);
         }
@@ -249,7 +261,9 @@ public class FinancialJournalController {
         authorization.requireUnitPermission("FINANCE_JOURNAL_APPROVE", journal.scopeUnitId());
         if (!"APPROVED".equals(journal.status())) throw new ConflictException("Only approved journals can be posted.");
         UUID actor = actorId();
-        if (actor.equals(journal.approvedBy())) throw new ConflictException("The approver cannot post the same journal.");
+        if (actor.equals(journal.approvedBy()) || actor.equals(journal.createdBy())) {
+            throw new ConflictException("The journal creator and approver cannot post the same journal.");
+        }
         jdbc.update("""
             UPDATE finance_journals
             SET status = 'POSTED', posted_by = ?, posted_at = CURRENT_TIMESTAMP
@@ -286,8 +300,13 @@ public class FinancialJournalController {
             """, (rs, n) -> new JournalTotals(rs.getLong("line_count"),
                 rs.getBigDecimal("debit_total"), rs.getBigDecimal("credit_total")),
             journalId, organisationId, currency);
+        boolean inactiveAccount = exists("""
+            SELECT COUNT(*) FROM finance_journal_lines l
+            JOIN finance_accounts a ON a.id = l.account_id
+            WHERE l.journal_id = ? AND a.active = FALSE
+            """, journalId);
         if (totals == null || totals.lineCount() < 2 || totals.debitTotal().signum() <= 0
-                || totals.debitTotal().compareTo(totals.creditTotal()) != 0) {
+                || totals.debitTotal().compareTo(totals.creditTotal()) != 0 || inactiveAccount) {
             throw new ConflictException("A journal requires at least two lines and equal positive debit and credit totals before submission.");
         }
     }
@@ -315,14 +334,15 @@ public class FinancialJournalController {
     private JournalRow requireJournal(UUID id, boolean lock) {
         String sql = """
             SELECT id, organisation_id, scope_unit_id, journal_number, journal_date, currency,
-                   description, status, created_by, approved_by
+                   description, status, created_by, approved_by, posted_by
             FROM finance_journals WHERE id = ?
             """ + (lock ? " FOR UPDATE" : "");
         return jdbc.query(sql, (rs, n) -> new JournalRow(rs.getObject("id", UUID.class),
             rs.getObject("organisation_id", UUID.class), rs.getObject("scope_unit_id", UUID.class),
             rs.getString("journal_number"), rs.getObject("journal_date", LocalDate.class),
             rs.getString("currency"), rs.getString("description"), rs.getString("status"),
-            rs.getObject("created_by", UUID.class), rs.getObject("approved_by", UUID.class)),
+            rs.getObject("created_by", UUID.class), rs.getObject("approved_by", UUID.class),
+            rs.getObject("posted_by", UUID.class)),
             id).stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Financial journal not found."));
     }
 
@@ -338,7 +358,8 @@ public class FinancialJournalController {
     }
 
     private FinanceAccountDto accountDto(java.sql.ResultSet rs) throws java.sql.SQLException {
-        return new FinanceAccountDto(rs.getObject("id", UUID.class).toString(), null,
+        return new FinanceAccountDto(rs.getObject("id", UUID.class).toString(),
+            rs.getObject("organisation_id", UUID.class).toString(),
             rs.getString("account_code"), rs.getString("account_name"), rs.getString("account_type"),
             rs.getString("currency"), rs.getBoolean("active"));
     }
@@ -381,11 +402,11 @@ public class FinancialJournalController {
     public record CreateFinanceAccount(
         @NotBlank @Size(max = 40) String code,
         @NotBlank @Size(max = 120) String name,
-        @Pattern(regexp = "ASSET|LIABILITY|EQUITY|INCOME|EXPENSE") String accountType,
-        @Pattern(regexp = "[A-Za-z]{3}") String currency
+        @NotBlank @Pattern(regexp = "ASSET|LIABILITY|EQUITY|INCOME|EXPENSE") String accountType,
+        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency
     ) {}
 
-    public record UpdateFinanceAccount(@NotBlank @Size(max = 120) String name, boolean active) {}
+    public record UpdateFinanceAccount(@NotBlank @Size(max = 120) String name, @NotNull Boolean active) {}
 
     public record FinanceAccountDto(String id, String organisationId, String code, String name,
         String accountType, String currency, boolean active) {}
@@ -401,7 +422,7 @@ public class FinancialJournalController {
         @NotBlank @Size(max = 80) String journalNumber,
         @NotNull UUID scopeUnitId,
         @NotNull LocalDate journalDate,
-        @Pattern(regexp = "[A-Za-z]{3}") String currency,
+        @NotBlank @Pattern(regexp = "[A-Za-z]{3}") String currency,
         @NotBlank @Size(max = 1000) String description,
         @Pattern(regexp = "MANUAL|RECONCILIATION_EXCEPTION") String sourceType,
         UUID sourceId,
@@ -428,6 +449,6 @@ public class FinancialJournalController {
 
     private record JournalRow(UUID id, UUID organisationId, UUID scopeUnitId, String journalNumber,
         LocalDate journalDate, String currency, String description, String status,
-        UUID createdBy, UUID approvedBy) {}
+        UUID createdBy, UUID approvedBy, UUID postedBy) {}
     private record JournalTotals(long lineCount, BigDecimal debitTotal, BigDecimal creditTotal) {}
 }
