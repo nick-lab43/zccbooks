@@ -1807,6 +1807,143 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void depositReconciliationReversalRollsBackWhenOriginalLedgerJournalIsNotPosted() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT id, 'FINANCE_REVERSE' FROM admin_roles WHERE role_code = 'NYIKA_ADMIN'
+            ON CONFLICT DO NOTHING
+            """);
+
+        UUID bankAccount = UUID.randomUUID();
+        UUID cashAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '1100', 'Bank account', 'ASSET', 'ZAR', ?),
+                   (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?)
+            """, bankAccount, fixture.organisationId(), fixture.adminId(),
+            cashAccount, fixture.organisationId(), fixture.adminId());
+        jdbc.update("""
+            INSERT INTO finance_deposit_settlement_mappings
+                (id, organisation_id, bank_name, currency, bank_account_id, cash_account_id, created_by)
+            VALUES (?, ?, 'Test Bank', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), bankAccount, cashAccount, fixture.adminId());
+
+        UUID batchId = jdbc.queryForObject("""
+            SELECT id FROM deposit_batches
+            WHERE organisation_id = ? AND bank_reference = 'BANK-A-1'
+            """, UUID.class, fixture.organisationId());
+        UUID statementEntryId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO bank_statement_entries
+                (id, organisation_id, scope_unit_id, transaction_date, bank_reference,
+                 amount, description, recorded_by)
+            VALUES (?, ?, ?, DATE '2026-05-12', 'BANK-A-1', 125.00,
+                    'Deposit received', ?)
+            """, statementEntryId, fixture.organisationId(), fixture.nyikaA(), fixture.adminId());
+        UUID reconciliationId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_reconciliations
+                (id, deposit_batch_id, statement_entry_id, matched_by, match_note)
+            VALUES (?, ?, ?, ?, 'Verified bank deposit')
+            """, reconciliationId, batchId, statementEntryId, fixture.adminId());
+
+        authenticate(fixture);
+        UUID originalJournalId = depositSettlementLedgerJournals.createDraftIfMapped(reconciliationId);
+        assertNotNull(originalJournalId);
+        assertEquals("DRAFT", financialJournals.journal(originalJournalId).status());
+        Integer reversalJournalCountBefore = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE source_type = 'DEPOSIT_SETTLEMENT_REVERSAL'
+            """, Integer.class);
+        String batchStatusBefore = jdbc.queryForObject(
+            "SELECT status FROM deposit_batches WHERE id = ?", String.class, batchId);
+
+        assertThrows(ConflictException.class, () -> depositReconciliationReversals.reverse(
+            reconciliationId, new DepositReconciliationReversalController.ReverseDepositReconciliation(
+                "Original settlement journal has not completed posting.")));
+
+        assertEquals(0, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM deposit_reconciliation_reversals WHERE reconciliation_id = ?
+            """, Integer.class, reconciliationId));
+        assertEquals(reversalJournalCountBefore, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE source_type = 'DEPOSIT_SETTLEMENT_REVERSAL'
+            """, Integer.class));
+        assertEquals("DRAFT", financialJournals.journal(originalJournalId).status());
+        assertEquals(batchStatusBefore, jdbc.queryForObject(
+            "SELECT status FROM deposit_batches WHERE id = ?", String.class, batchId));
+    }
+
+    @Test
+    void expenditurePaymentReversalRollsBackWhenOriginalLedgerJournalIsNotPosted() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT id, 'FINANCE_REVERSE' FROM admin_roles WHERE role_code = 'NYIKA_ADMIN'
+            ON CONFLICT DO NOTHING
+            """);
+
+        UUID expenseAccount = UUID.randomUUID();
+        UUID cashAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '5000', 'Church expenses', 'EXPENSE', 'ZAR', ?),
+                   (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?)
+            """, expenseAccount, fixture.organisationId(), fixture.adminId(),
+            cashAccount, fixture.organisationId(), fixture.adminId());
+        UUID categoryId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO expenditure_categories (id, organisation_id, code, name, created_by)
+            VALUES (?, ?, 'UTILITIES', 'Utilities', ?)
+            """, categoryId, fixture.organisationId(), fixture.adminId());
+        jdbc.update("""
+            INSERT INTO finance_expenditure_account_mappings
+                (id, organisation_id, category_id, currency, debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), categoryId,
+            expenseAccount, cashAccount, fixture.adminId());
+
+        UUID expenditureId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO expenditures
+                (id, organisation_id, scope_unit_id, category_id, expense_date, payee,
+                 description, amount, currency, status, captured_by, reviewed_by,
+                 reviewed_at, paid_by, paid_at, payment_reference)
+            VALUES (?, ?, ?, ?, DATE '2026-05-11', 'Utility Provider',
+                    'Monthly electricity', 80.00, 'ZAR', 'PAID', ?, ?, CURRENT_TIMESTAMP,
+                    ?, CURRENT_TIMESTAMP, 'PAY-UTIL-ROLLBACK-001')
+            """, expenditureId, fixture.organisationId(), fixture.nyikaA(),
+            categoryId, fixture.adminId(), fixture.adminId(), fixture.adminId());
+
+        authenticate(fixture);
+        UUID originalJournalId = expenditureLedgerJournals.createDraftIfMapped(expenditureId);
+        assertNotNull(originalJournalId);
+        assertEquals("DRAFT", financialJournals.journal(originalJournalId).status());
+        Integer reversalJournalCountBefore = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE source_type = 'EXPENDITURE_PAYMENT_REVERSAL'
+            """, Integer.class);
+
+        assertThrows(ConflictException.class, () -> expenditurePaymentReversals.reversePayment(
+            expenditureId, new ExpenditurePaymentReversalController.ReverseExpenditurePayment(
+                "Original expenditure journal has not completed posting.")));
+
+        assertEquals(0, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM expenditure_payment_reversals WHERE expenditure_id = ?
+            """, Integer.class, expenditureId));
+        assertEquals(reversalJournalCountBefore, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE source_type = 'EXPENDITURE_PAYMENT_REVERSAL'
+            """, Integer.class));
+        assertEquals("DRAFT", financialJournals.journal(originalJournalId).status());
+        assertEquals("PAID", jdbc.queryForObject(
+            "SELECT status FROM expenditures WHERE id = ?", String.class, expenditureId));
+    }
+
+    @Test
     void reversingPostedContributionCreatesBalancedDraftJournalWithoutChangingOriginal() {
         Fixture fixture = fixture();
         jdbc.update("""
