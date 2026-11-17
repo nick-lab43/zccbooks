@@ -62,6 +62,8 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired FinancialJournalController financialJournals;
     @Autowired FinancialExceptionJournalController financialExceptionJournals;
     @Autowired ReconciliationExceptionController reconciliationExceptions;
+    @Autowired ContributionLedgerJournalService contributionLedgerJournals;
+    @Autowired ExpenditurePaymentLedgerJournalService expenditureLedgerJournals;
 
     @AfterEach
     void clearAuthentication() {
@@ -1313,6 +1315,120 @@ class FinancialReportPostgresIntegrationTest {
             WHERE source_type = 'RECONCILIATION_EXCEPTION' AND source_id = ?
             """, Integer.class, exceptionId);
         assertEquals(1, sourceLinks);
+    }
+
+
+    @Test
+    void contributionAndExpenditureSourcesCreateBalancedIdempotentDraftJournals() {
+        Fixture fixture = fixture();
+        UUID cashAccount = UUID.randomUUID();
+        UUID incomeAccount = UUID.randomUUID();
+        UUID expenseAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?),
+                   (?, ?, '4000', 'Contribution income', 'INCOME', 'ZAR', ?),
+                   (?, ?, '5000', 'Church expenses', 'EXPENSE', 'ZAR', ?)
+            """, cashAccount, fixture.organisationId(), fixture.adminId(),
+            incomeAccount, fixture.organisationId(), fixture.adminId(),
+            expenseAccount, fixture.organisationId(), fixture.adminId());
+
+        UUID contributionId = jdbc.queryForObject("""
+            SELECT id FROM contributions
+            WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'
+            """, UUID.class, fixture.organisationId());
+        UUID contributionCategoryId = jdbc.queryForObject("""
+            SELECT category_id FROM contributions WHERE id = ?
+            """, UUID.class, contributionId);
+        jdbc.update("""
+            INSERT INTO finance_contribution_account_mappings
+                (id, organisation_id, category_id, payment_method, currency,
+                 debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'CASH', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), contributionCategoryId,
+            cashAccount, incomeAccount, fixture.adminId());
+
+        UUID contributionJournalId = contributionLedgerJournals.createDraftIfMapped(contributionId);
+        assertNotNull(contributionJournalId);
+        assertEquals(contributionJournalId,
+            contributionLedgerJournals.createDraftIfMapped(contributionId));
+        assertEquals("DRAFT", jdbc.queryForObject(
+            "SELECT status FROM finance_journals WHERE id = ?", String.class, contributionJournalId));
+        assertEquals("CONTRIBUTION_RECEIPT", jdbc.queryForObject(
+            "SELECT source_type FROM finance_journals WHERE id = ?", String.class, contributionJournalId));
+        assertEquals(contributionId, jdbc.queryForObject(
+            "SELECT source_id FROM finance_journals WHERE id = ?", UUID.class, contributionJournalId));
+        assertBalancedJournal(contributionJournalId, new BigDecimal("125.00"));
+        assertEquals(1, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE organisation_id = ? AND source_type = 'CONTRIBUTION_RECEIPT' AND source_id = ?
+            """, Integer.class, fixture.organisationId(), contributionId));
+
+        UUID expenditureCategoryId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO expenditure_categories
+                (id, organisation_id, code, name, created_by)
+            VALUES (?, ?, 'UTILITIES', 'Utilities', ?)
+            """, expenditureCategoryId, fixture.organisationId(), fixture.adminId());
+        jdbc.update("""
+            INSERT INTO finance_expenditure_account_mappings
+                (id, organisation_id, category_id, currency,
+                 debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), expenditureCategoryId,
+            expenseAccount, cashAccount, fixture.adminId());
+
+        UUID expenditureId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO expenditures
+                (id, organisation_id, scope_unit_id, category_id, expense_date, payee,
+                 description, amount, currency, status, captured_by, reviewed_by,
+                 reviewed_at, paid_by, paid_at, payment_reference)
+            VALUES (?, ?, ?, ?, DATE '2026-05-11', 'Utility Provider',
+                    'Monthly electricity', 80.00, 'ZAR', 'PAID', ?, ?, CURRENT_TIMESTAMP,
+                    ?, CURRENT_TIMESTAMP, 'PAY-UTIL-001')
+            """, expenditureId, fixture.organisationId(), fixture.nyikaA(),
+            expenditureCategoryId, fixture.adminId(), fixture.adminId(), fixture.adminId());
+
+        UUID expenditureJournalId = expenditureLedgerJournals.createDraftIfMapped(expenditureId);
+        assertNotNull(expenditureJournalId);
+        assertEquals(expenditureJournalId,
+            expenditureLedgerJournals.createDraftIfMapped(expenditureId));
+        assertEquals("DRAFT", jdbc.queryForObject(
+            "SELECT status FROM finance_journals WHERE id = ?", String.class, expenditureJournalId));
+        assertEquals("EXPENDITURE_PAYMENT", jdbc.queryForObject(
+            "SELECT source_type FROM finance_journals WHERE id = ?", String.class, expenditureJournalId));
+        assertEquals(expenditureId, jdbc.queryForObject(
+            "SELECT source_id FROM finance_journals WHERE id = ?", UUID.class, expenditureJournalId));
+        assertBalancedJournal(expenditureJournalId, new BigDecimal("80.00"));
+        assertEquals(1, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE organisation_id = ? AND source_type = 'EXPENDITURE_PAYMENT' AND source_id = ?
+            """, Integer.class, fixture.organisationId(), expenditureId));
+
+        assertEquals(1, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM admin_audit_events
+            WHERE target_type = 'FINANCE_JOURNAL'
+              AND target_id IN (?, ?)
+              AND action_code IN ('CONTRIBUTION_DRAFT_JOURNAL_CREATED',
+                                  'EXPENDITURE_DRAFT_JOURNAL_CREATED')
+            """, Integer.class, contributionJournalId, expenditureJournalId));
+    }
+
+    private void assertBalancedJournal(UUID journalId, BigDecimal expectedTotal) {
+        var totals = jdbc.queryForObject("""
+            SELECT COUNT(*) AS line_count,
+                   COALESCE(SUM(debit_amount), 0) AS debit_total,
+                   COALESCE(SUM(credit_amount), 0) AS credit_total
+            FROM finance_journal_lines WHERE journal_id = ?
+            """, (rs, n) -> new Object[] {
+                rs.getInt("line_count"), rs.getBigDecimal("debit_total"), rs.getBigDecimal("credit_total")
+            }, journalId);
+        assertNotNull(totals);
+        assertEquals(2, totals[0]);
+        assertEquals(0, ((BigDecimal) totals[1]).compareTo(expectedTotal));
+        assertEquals(0, ((BigDecimal) totals[2]).compareTo(expectedTotal));
     }
 
     private void insertAuditEvent(UUID actorId, String action, String targetType,
