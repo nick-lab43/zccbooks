@@ -163,7 +163,10 @@ public class FinancialSourceAccountMappingController {
                 "debitAccountId", request.debitAccountId().toString(),
                 "creditAccountId", request.creditAccountId().toString(),
                 "paymentMethod", request.paymentMethod() == null ? "NOT_APPLICABLE" : request.paymentMethod()));
-        if ("EXPENDITURE".equals(sourceType)) {
+        if ("CONTRIBUTION".equals(sourceType)) {
+            contributionLedger.retryForMapping(organisationId, request.categoryId(),
+                request.paymentMethod(), currency);
+        } else if ("EXPENDITURE".equals(sourceType)) {
             expenditureLedger.retryForMapping(organisationId, request.categoryId(), currency);
         }
         return ResponseEntity.noContent().build();
