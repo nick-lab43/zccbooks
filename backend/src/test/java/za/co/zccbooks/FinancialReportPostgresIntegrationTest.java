@@ -1289,7 +1289,7 @@ class FinancialReportPostgresIntegrationTest {
             new FinancialJournalController.CreateFinanceAccount("5100", "Bank charges", "EXPENSE", "ZAR"));
         financialExceptionJournals.saveMapping(fixture.organisationId(),
             new FinancialExceptionJournalController.SaveAccountMapping("BANK_FEE", "ZAR",
-                UUID.fromString(fees.getDebitAccountId()), UUID.fromString(cash.getBody().id())));
+                UUID.fromString(fees.getBody().id()), UUID.fromString(cash.getBody().id())));
 
         var created = financialExceptionJournals.createDraftJournal(exceptionId);
         assertEquals(201, created.getStatusCode().value());
@@ -1300,8 +1300,12 @@ class FinancialReportPostgresIntegrationTest {
         var journal = financialJournals.journal(UUID.fromString(created.getBody().id()));
         assertEquals("DRAFT", journal.status());
         assertEquals(2, journal.lines().size());
-        assertEquals(new BigDecimal("10.00"), journal.lines().get(0).debitAmount());
-        assertEquals(new BigDecimal("10.00"), journal.lines().get(1).creditAmount());
+        assertEquals(new BigDecimal("10.00"), journal.lines().stream()
+            .map(FinancialJournalController.FinanceJournalLineDto::debitAmount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add));
+        assertEquals(new BigDecimal("10.00"), journal.lines().stream()
+            .map(FinancialJournalController.FinanceJournalLineDto::creditAmount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add));
         assertThrows(ConflictException.class, () -> financialExceptionJournals.createDraftJournal(exceptionId));
 
         Integer sourceLinks = jdbc.queryForObject("""
