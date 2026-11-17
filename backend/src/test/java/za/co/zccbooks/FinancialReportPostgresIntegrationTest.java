@@ -157,9 +157,11 @@ class FinancialReportPostgresIntegrationTest {
             VALUES (?, ?, ?, ?, 'Test reconciliation')
             """, reconciliationId, batchId, statementEntryId, fixture.adminId());
 
-        UUID categoryId = jdbc.queryForObject("""
-            SELECT id FROM contribution_categories WHERE organisation_id = ?
-            """, UUID.class, fixture.organisationId());
+        UUID categoryId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO expenditure_categories (id, organisation_id, code, name, created_by)
+            VALUES (?, ?, 'REVERSAL-SCOPE-TEST', 'Reversal Scope Test', ?)
+            """, categoryId, fixture.organisationId(), fixture.adminId());
         UUID expenditureId = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO expenditures
