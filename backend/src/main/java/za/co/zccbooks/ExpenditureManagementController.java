@@ -24,11 +24,14 @@ public class ExpenditureManagementController {
     private final JdbcTemplate jdbc;
     private final AuthorizationService authorization;
     private final AdminAuditService audit;
+    private final ExpenditurePaymentLedgerJournalService expenditureLedger;
 
-    public ExpenditureManagementController(JdbcTemplate jdbc, AuthorizationService authorization, AdminAuditService audit) {
+    public ExpenditureManagementController(JdbcTemplate jdbc, AuthorizationService authorization,
+            AdminAuditService audit, ExpenditurePaymentLedgerJournalService expenditureLedger) {
         this.jdbc = jdbc;
         this.authorization = authorization;
         this.audit = audit;
+        this.expenditureLedger = expenditureLedger;
     }
 
     @GetMapping("/organisations/{organisationId}/expenditure-units")
@@ -261,6 +264,7 @@ public class ExpenditureManagementController {
             SET status = 'PAID', paid_by = ?, paid_at = CURRENT_TIMESTAMP, payment_reference = ?
             WHERE id = ?
             """, actorId(), request.paymentReference().trim(), expenseId);
+        expenditureLedger.createDraftIfMapped(expenseId);
         audit.record("EXPENDITURE_PAID", "EXPENDITURE", expenseId,
             Map.of("paymentReference", request.paymentReference().trim(),
                 "amount", expense.amount().toPlainString()));
