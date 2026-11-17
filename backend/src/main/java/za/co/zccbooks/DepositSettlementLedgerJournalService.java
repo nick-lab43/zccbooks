@@ -122,6 +122,76 @@ public class DepositSettlementLedgerJournalService {
         return created;
     }
 
+
+    /** Creates a draft journal reversing a posted settlement journal. */
+    @Transactional
+    public UUID createReversalDraft(UUID reconciliationId, UUID reversalId, UUID actorId, String reason) {
+        UUID existing = jdbc.query("""
+            SELECT id FROM finance_journals
+            WHERE source_type = 'DEPOSIT_SETTLEMENT_REVERSAL' AND source_id = ?
+            """, (rs, n) -> rs.getObject("id", UUID.class), reversalId)
+            .stream().findFirst().orElse(null);
+        if (existing != null) return existing;
+
+        OriginalJournal original = jdbc.query("""
+            SELECT id, organisation_id, scope_unit_id, journal_number, currency, status
+            FROM finance_journals
+            WHERE source_type = 'DEPOSIT_SETTLEMENT' AND source_id = ?
+            FOR UPDATE
+            """, (rs, n) -> new OriginalJournal(
+                rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
+                rs.getObject("scope_unit_id", UUID.class), rs.getString("journal_number"),
+                rs.getString("currency"), rs.getString("status")), reconciliationId)
+            .stream().findFirst().orElse(null);
+        if (original == null) return null;
+        if (!"POSTED".equals(original.status())) {
+            throw new ConflictException("The deposit settlement journal must be posted before its reconciliation can be reversed. Complete or reject the original journal workflow first.");
+        }
+
+        List<JournalLine> lines = jdbc.query("""
+            SELECT account_id, debit_amount, credit_amount, description
+            FROM finance_journal_lines WHERE journal_id = ?
+            ORDER BY created_at, id
+            """, (rs, n) -> new JournalLine(rs.getObject("account_id", UUID.class),
+                rs.getBigDecimal("debit_amount"), rs.getBigDecimal("credit_amount"),
+                rs.getString("description")), original.id());
+        if (lines.size() < 2) throw new ConflictException(
+            "The posted settlement journal has no complete line set and cannot be reversed automatically.");
+
+        UUID journalId = UUID.randomUUID();
+        String number = "AUTO-DEP-REV-" + reversalId.toString().replace("-", "").toUpperCase();
+        jdbc.update("""
+            INSERT INTO finance_journals
+                (id, organisation_id, scope_unit_id, journal_number, journal_date, currency,
+                 description, source_type, source_id, created_by)
+            VALUES (?, ?, ?, ?, CURRENT_DATE, ?, ?, 'DEPOSIT_SETTLEMENT_REVERSAL', ?, ?)
+            """, journalId, original.organisationId(), original.scopeUnitId(), number,
+            original.currency(), "Reversal of " + original.journalNumber() + ": " + reason,
+            reversalId, actorId);
+        for (JournalLine line : lines) {
+            jdbc.update("""
+                INSERT INTO finance_journal_lines
+                    (id, journal_id, account_id, organisation_id, currency,
+                     debit_amount, credit_amount, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), journalId, line.accountId(), original.organisationId(),
+                original.currency(), line.creditAmount(), line.debitAmount(),
+                "Reversal of " + (line.description() == null ? "original journal line" : line.description()));
+        }
+        audit.record("DEPOSIT_SETTLEMENT_REVERSAL_DRAFT_JOURNAL_CREATED", "FINANCE_JOURNAL", journalId,
+            Map.of("organisationId", original.organisationId().toString(),
+                "scopeUnitId", original.scopeUnitId().toString(),
+                "reconciliationId", reconciliationId.toString(), "reversalId", reversalId.toString(),
+                "originalJournalId", original.id().toString(), "originalJournalNumber", original.journalNumber(),
+                "journalNumber", number));
+        return journalId;
+    }
+
+    private record OriginalJournal(UUID id, UUID organisationId, UUID scopeUnitId,
+        String journalNumber, String currency, String status) {}
+    private record JournalLine(UUID accountId, java.math.BigDecimal debitAmount,
+        java.math.BigDecimal creditAmount, String description) {}
+
     private record SettlementSource(UUID reconciliationId, UUID matchedBy, UUID batchId,
         UUID organisationId, UUID scopeUnitId, String bankName, UUID statementEntryId,
         LocalDate transactionDate, java.math.BigDecimal amount, String bankReference) {}
