@@ -42,14 +42,17 @@ public class DepositManagementController {
                    COUNT(a.id) AS receipt_count,
                    COALESCE((SELECT SUM(e.amount) FROM deposit_reconciliations r
                        JOIN bank_statement_entries e ON e.id = r.statement_entry_id
-                       WHERE r.deposit_batch_id = b.id), 0) AS banked_amount,
+                       WHERE r.deposit_batch_id = b.id
+                         AND NOT EXISTS (SELECT 1 FROM deposit_reconciliation_reversals x WHERE x.reconciliation_id = r.id)), 0) AS banked_amount,
                    GREATEST(b.expected_amount - COALESCE((SELECT SUM(e.amount)
                        FROM deposit_reconciliations r
                        JOIN bank_statement_entries e ON e.id = r.statement_entry_id
-                       WHERE r.deposit_batch_id = b.id), 0), 0) AS outstanding_amount,
+                       WHERE r.deposit_batch_id = b.id
+                         AND NOT EXISTS (SELECT 1 FROM deposit_reconciliation_reversals x WHERE x.reconciliation_id = r.id)), 0), 0) AS outstanding_amount,
                    CASE WHEN b.status = 'PARTIALLY_RECONCILED' THEN
                        (SELECT r.match_note FROM deposit_reconciliations r
-                        WHERE r.deposit_batch_id = b.id ORDER BY r.matched_at DESC LIMIT 1)
+                        WHERE r.deposit_batch_id = b.id
+                         AND NOT EXISTS (SELECT 1 FROM deposit_reconciliation_reversals x WHERE x.reconciliation_id = r.id) ORDER BY r.matched_at DESC LIMIT 1)
                    ELSE NULL END AS outstanding_note
             FROM deposit_batches b
             JOIN organisational_units u ON u.id = b.scope_unit_id
@@ -271,6 +274,7 @@ public class DepositManagementController {
             FROM deposit_reconciliations r
             JOIN bank_statement_entries e ON e.id = r.statement_entry_id
             WHERE r.deposit_batch_id = ?
+              AND NOT EXISTS (SELECT 1 FROM deposit_reconciliation_reversals x WHERE x.reconciliation_id = r.id)
             """, BigDecimal.class, batchId);
         BigDecimal outstandingAmount = batch.expectedAmount().subtract(bankedAmount);
         if (entry.amount().compareTo(outstandingAmount) > 0) {
@@ -333,14 +337,17 @@ public class DepositManagementController {
                    COUNT(a.id) AS receipt_count,
                    COALESCE((SELECT SUM(e.amount) FROM deposit_reconciliations r
                        JOIN bank_statement_entries e ON e.id = r.statement_entry_id
-                       WHERE r.deposit_batch_id = b.id), 0) AS banked_amount,
+                       WHERE r.deposit_batch_id = b.id
+                         AND NOT EXISTS (SELECT 1 FROM deposit_reconciliation_reversals x WHERE x.reconciliation_id = r.id)), 0) AS banked_amount,
                    GREATEST(b.expected_amount - COALESCE((SELECT SUM(e.amount)
                        FROM deposit_reconciliations r
                        JOIN bank_statement_entries e ON e.id = r.statement_entry_id
-                       WHERE r.deposit_batch_id = b.id), 0), 0) AS outstanding_amount,
+                       WHERE r.deposit_batch_id = b.id
+                         AND NOT EXISTS (SELECT 1 FROM deposit_reconciliation_reversals x WHERE x.reconciliation_id = r.id)), 0), 0) AS outstanding_amount,
                    CASE WHEN b.status = 'PARTIALLY_RECONCILED' THEN
                        (SELECT r.match_note FROM deposit_reconciliations r
-                        WHERE r.deposit_batch_id = b.id ORDER BY r.matched_at DESC LIMIT 1)
+                        WHERE r.deposit_batch_id = b.id
+                         AND NOT EXISTS (SELECT 1 FROM deposit_reconciliation_reversals x WHERE x.reconciliation_id = r.id) ORDER BY r.matched_at DESC LIMIT 1)
                    ELSE NULL END AS outstanding_note
             FROM deposit_batches b JOIN organisational_units u ON u.id = b.scope_unit_id
             LEFT JOIN deposit_allocations a ON a.deposit_batch_id = b.id
