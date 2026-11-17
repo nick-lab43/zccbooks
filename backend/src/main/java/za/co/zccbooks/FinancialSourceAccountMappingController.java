@@ -18,13 +18,16 @@ public class FinancialSourceAccountMappingController {
     private final AuthorizationService authorization;
     private final AdminAuditService audit;
     private final ExpenditurePaymentLedgerJournalService expenditureLedger;
+    private final ContributionLedgerJournalService contributionLedger;
 
     public FinancialSourceAccountMappingController(JdbcTemplate jdbc, AuthorizationService authorization,
-            AdminAuditService audit, ExpenditurePaymentLedgerJournalService expenditureLedger) {
+            AdminAuditService audit, ExpenditurePaymentLedgerJournalService expenditureLedger,
+            ContributionLedgerJournalService contributionLedger) {
         this.jdbc = jdbc;
         this.authorization = authorization;
         this.audit = audit;
         this.expenditureLedger = expenditureLedger;
+        this.contributionLedger = contributionLedger;
     }
 
     @GetMapping("/options")
@@ -163,7 +166,10 @@ public class FinancialSourceAccountMappingController {
                 "debitAccountId", request.debitAccountId().toString(),
                 "creditAccountId", request.creditAccountId().toString(),
                 "paymentMethod", request.paymentMethod() == null ? "NOT_APPLICABLE" : request.paymentMethod()));
-        if ("EXPENDITURE".equals(sourceType)) {
+        if ("CONTRIBUTION".equals(sourceType)) {
+            contributionLedger.retryForMapping(organisationId, request.categoryId(),
+                request.paymentMethod(), currency);
+        } else if ("EXPENDITURE".equals(sourceType)) {
             expenditureLedger.retryForMapping(organisationId, request.categoryId(), currency);
         }
         return ResponseEntity.noContent().build();

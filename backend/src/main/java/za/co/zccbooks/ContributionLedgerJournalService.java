@@ -121,6 +121,37 @@ public class ContributionLedgerJournalService {
 
 
     /**
+     * Retries contribution receipts captured before their organisation mapping existed.
+     * Existing journals and reversed receipts are excluded by the selection and remain idempotent.
+     */
+    @Transactional
+    public int retryForMapping(UUID organisationId, UUID categoryId, String paymentMethod, String currency) {
+        List<UUID> eligible = jdbc.query("""
+            SELECT c.id
+            FROM contributions c
+            WHERE c.organisation_id = ? AND c.category_id = ?
+              AND c.payment_method = ? AND c.currency = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM finance_journals j
+                  WHERE j.organisation_id = c.organisation_id
+                    AND j.source_type = 'CONTRIBUTION_RECEIPT'
+                    AND j.source_id = c.id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM contribution_reversals r
+                  WHERE r.contribution_id = c.id
+              )
+            ORDER BY c.contribution_date, c.id
+            """, (rs, n) -> rs.getObject("id", UUID.class),
+            organisationId, categoryId, paymentMethod, currency);
+        int created = 0;
+        for (UUID contributionId : eligible) {
+            if (createDraftIfMapped(contributionId) != null) created++;
+        }
+        return created;
+    }
+
+    /**
      * Creates a draft journal that exactly reverses the posted contribution journal.
      * The original posted journal is never edited. A missing source journal is valid
      * when the receipt was captured before an account mapping existed.
