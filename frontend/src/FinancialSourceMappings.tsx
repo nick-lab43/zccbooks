@@ -78,7 +78,7 @@ export default function FinancialSourceMappings({ organisationId, authorizationH
         <label>Source type<select value={sourceType} onChange={e => setSourceType(e.target.value as "CONTRIBUTION" | "EXPENDITURE")}><option value="CONTRIBUTION">Contribution</option><option value="EXPENDITURE">Expenditure</option></select></label>
         <label>Category<select key={sourceType} name="categoryId" required defaultValue=""><option value="">Select category</option>{categories.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}</select></label>
       </div>
-      {sourceType === "CONTRIBUTION" && <label>Payment method<select name="paymentMethod" required defaultValue=""><option value="">Select payment method</option>{["CASH","BANK_TRANSFER","CARD","MOBILE_MONEY","OTHER"].map(v => <option key={v} value={v}>{v.replaceAll("_"," ")}</option>)}</select></label>}
+      {sourceType === "CONTRIBUTION" && <label>Payment method<select name="paymentMethod" required defaultValue=""><option value="">Select payment method</option>{["CASH","BANK_TRANSFER","CARD","MOBILE_MONEY","OTHER"].map(v => <option key={v} value={v}>{v.replace(/_/g, " ")}</option>)}</select></label>}
       <div className="field-pair">
         <label>{sourceType === "CONTRIBUTION" ? "Debit asset account" : "Debit expense account"}<select name="debitAccountId" required defaultValue=""><option value="">Select account</option>{accounts(debitType).map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>
         <label>{sourceType === "CONTRIBUTION" ? "Credit income account" : "Credit payment account"}<select name="creditAccountId" required defaultValue=""><option value="">Select account</option>{accounts(creditType).map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>
@@ -87,7 +87,7 @@ export default function FinancialSourceMappings({ organisationId, authorizationH
       <button className="primary-button" disabled={busy || !categories.some(c => c.active) || accounts(debitType).length === 0 || accounts(creditType).length === 0}>{busy ? "Saving…" : "Save source mapping"}</button>
     </form>
     <div className="table-wrap"><table><thead><tr><th>SOURCE</th><th>CATEGORY</th><th>PAYMENT METHOD</th><th>DEBIT ACCOUNT</th><th>CREDIT ACCOUNT</th><th>CURRENCY</th></tr></thead><tbody>
-      {mappings.map(m => <tr key={m.id}><td>{m.sourceType}</td><td><strong>{m.categoryCode}</strong><small className="table-subtext">{m.categoryName}</small></td><td>{m.paymentMethod?.replaceAll("_"," ") ?? "—"}</td><td>{m.debitAccountCode} — {m.debitAccountName}</td><td>{m.creditAccountCode} — {m.creditAccountName}</td><td>{m.currency}</td></tr>)}
+      {mappings.map(m => <tr key={m.id}><td>{m.sourceType}</td><td><strong>{m.categoryCode}</strong><small className="table-subtext">{m.categoryName}</small></td><td>{m.paymentMethod?.replace(/_/g, " ") ?? "—"}</td><td>{m.debitAccountCode} — {m.debitAccountName}</td><td>{m.creditAccountCode} — {m.creditAccountName}</td><td>{m.currency}</td></tr>)}
       {!mappings.length && <tr><td colSpan={6} className="empty-table">No contribution or expenditure account mappings configured.</td></tr>}
     </tbody></table></div>
   </section>;
