@@ -170,13 +170,6 @@ public class ContributionController {
         if (exists("SELECT COUNT(*) FROM deposit_allocations WHERE contribution_id = ?", contributionId)) {
             throw new ConflictException("A contribution allocated to a deposit batch cannot be reversed. Resolve the deposit workflow first.");
         }
-        if (exists("""
-            SELECT COUNT(*) FROM finance_journals
-            WHERE source_type = 'CONTRIBUTION_RECEIPT' AND source_id = ?
-            """, contributionId)) {
-            throw new ConflictException("This contribution has a ledger journal. Complete the contribution reversal journal workflow before reversing the receipt.");
-        }
-
         UUID reversalId = UUID.randomUUID();
         UUID actorId = jdbc.queryForObject(
             "SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?)",
@@ -185,6 +178,7 @@ public class ContributionController {
             INSERT INTO contribution_reversals (id, contribution_id, reason, reversed_by)
             VALUES (?, ?, ?, ?)
             """, reversalId, contributionId, request.reason().trim(), actorId);
+        ledgerJournals.createReversalDraft(contributionId, reversalId, actorId, request.reason().trim());
         audit.record("CONTRIBUTION_REVERSED", "CONTRIBUTION", contributionId,
             Map.of("reversalId", reversalId.toString(), "receiptNumber", contribution.receiptNumber(),
                 "amount", contribution.amount().toPlainString(), "reason", request.reason().trim()));
