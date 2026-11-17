@@ -5,6 +5,7 @@ import CellMembership from "./CellMembership";
 import MemberAppointments from "./MemberAppointments";
 import MembershipReports from "./MembershipReports";
 import FinancialAdministration from "./FinancialAdministration";
+import FinancialOverview from "./FinancialOverview";
 import FinancialReports from "./FinancialReports";
 import FinancialJournals from "./FinancialJournals";
 import FinancialLedgerReports from "./FinancialLedgerReports";
