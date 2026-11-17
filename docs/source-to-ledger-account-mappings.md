@@ -42,3 +42,18 @@ Subsequent source integration must define distinct accounting events:
 - Reversals and refunds through explicit reversing entries linked to their original source records.
 
 Every generated journal must have a stable source identity and database-enforced idempotency. It must remain a draft until submitted, independently approved and posted through the existing journal lifecycle.
+
+## Contribution receipt journal generation
+
+When a contribution receipt is captured, the application looks up the organisation's mapping for the receipt's category, payment method and currency. If a complete mapping exists and both mapped accounts remain active, it creates a balanced two-line journal in `DRAFT` status:
+
+- Debit the mapped asset account.
+- Credit the mapped income account.
+
+The journal uses the receipt date, amount, currency and organisational scope. It is linked to the contribution using source type `CONTRIBUTION_RECEIPT` and the contribution ID. A database unique index enforces at most one journal per receipt. Repeated capture requests with the same idempotency key reuse the receipt and safely re-check journal generation.
+
+A missing mapping does not prevent receipt capture. The application records a `CONTRIBUTION_LEDGER_MAPPING_MISSING` audit event and does not create an incomplete journal. Replaying the idempotent capture request after configuring the mapping retries journal generation.
+
+Generated journals are never submitted, approved or posted automatically. They use the existing independent journal lifecycle. A contribution with a linked journal cannot be reversed through the receipt reversal endpoint until the separate reversing-journal workflow is available; this prevents a ledger-recognised receipt from being reversed without an accounting counterpart.
+
+This generation step recognises the contribution receipt. Cash deposit settlement remains a separate asset-to-asset transfer and must not recognise income a second time.
