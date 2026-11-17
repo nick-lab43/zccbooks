@@ -1356,7 +1356,7 @@ class FinancialReportPostgresIntegrationTest {
             """, UUID.randomUUID(), fixture.organisationId(), categoryId,
             cashAccount, incomeAccount, fixture.adminId());
 
-        assertEquals(1, contributionLedgerJournals.retryForMapping(
+        assertEquals(2, contributionLedgerJournals.retryForMapping(
             fixture.organisationId(), categoryId, "CASH", "ZAR"));
         assertEquals(0, contributionLedgerJournals.retryForMapping(
             fixture.organisationId(), categoryId, "CASH", "ZAR"));
