@@ -270,12 +270,13 @@ public class ReconciliationExceptionController {
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Reconciliation exception not found."));
         authorization.requireUnitPermission("FINANCE_EXCEPTION", scope.scopeUnitId());
         if ("RESOLVED".equals(scope.status())) throw new ConflictException("A resolved exception cannot be changed.");
-        if ("RESOLVED".equals(request.status())) {
+        boolean hasClassification = request.resolutionCode() != null || request.resolutionAmount() != null;
+        if ("RESOLVED".equals(request.status()) || hasClassification) {
             if (request.resolutionNote() == null || request.resolutionNote().isBlank()) {
-                throw new IllegalArgumentException("A resolution note is required before resolving an exception.");
+                throw new IllegalArgumentException("A supporting note is required when classifying or resolving an exception.");
             }
             if (request.resolutionCode() == null || request.resolutionCode().isBlank()) {
-                throw new IllegalArgumentException("Select a resolution classification before resolving an exception.");
+                throw new IllegalArgumentException("Select a resolution classification.");
             }
             boolean amountRequired = List.of("BANK_FEE", "SHORT_DEPOSIT", "OVER_DEPOSIT", "REFUND_OR_REVERSAL")
                 .contains(request.resolutionCode());
@@ -285,8 +286,6 @@ public class ReconciliationExceptionController {
             if (!amountRequired && request.resolutionAmount() != null) {
                 throw new IllegalArgumentException("An amount is only accepted for fee, variance, refund or reversal classifications.");
             }
-        } else if (request.resolutionCode() != null || request.resolutionAmount() != null) {
-            throw new IllegalArgumentException("Resolution classification and amount can only be supplied when resolving.");
         }
         if (scope.status().equals(request.status())) {
             throw new ConflictException("The exception is already in the requested status.");
@@ -303,7 +302,8 @@ public class ReconciliationExceptionController {
             SET status = ?, resolution_note = ?, resolution_code = ?, resolution_amount = ?,
                 updated_at = CURRENT_TIMESTAMP, updated_by = ?
             WHERE id = ?
-            """, request.status(), "RESOLVED".equals(request.status()) ? blankToNull(request.resolutionNote()) : null,
+            """, request.status(), hasClassification || "RESOLVED".equals(request.status())
+                ? blankToNull(request.resolutionNote()) : null,
             request.resolutionCode(), request.resolutionAmount(), actor, exceptionId);
         audit.record("RECONCILIATION_EXCEPTION_UPDATED", "RECONCILIATION_EXCEPTION", exceptionId,
             Map.of("previousStatus", scope.status(), "status", request.status(),
