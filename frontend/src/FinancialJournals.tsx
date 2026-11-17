@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import FinancialSourceMappings from "./FinancialSourceMappings";
+import DepositSettlementMappings from "./DepositSettlementMappings";
 
 type Account = { id: string; organisationId: string; code: string; name: string; accountType: string; currency: string; active: boolean };
 type Unit = { id: string; level: string; code: string; name: string; active?: boolean };
@@ -192,6 +193,7 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
     </tbody></table></div>
 
     {canCreate && canView && <FinancialSourceMappings organisationId={organisationId} authorizationHeader={authorizationHeader} />}
+    {canCreate && canView && <DepositSettlementMappings organisationId={organisationId} authorizationHeader={authorizationHeader} />}
 
     {canCreate && canView && <>
       <div className="panel-divider" />
