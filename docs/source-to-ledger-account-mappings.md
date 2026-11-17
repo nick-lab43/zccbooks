@@ -57,3 +57,16 @@ A missing mapping does not prevent receipt capture. The application records a `C
 Generated journals are never submitted, approved or posted automatically. They use the existing independent journal lifecycle. A contribution with a linked journal cannot be reversed through the receipt reversal endpoint until the separate reversing-journal workflow is available; this prevents a ledger-recognised receipt from being reversed without an accounting counterpart.
 
 This generation step recognises the contribution receipt. Cash deposit settlement remains a separate asset-to-asset transfer and must not recognise income a second time.
+
+## Deposit settlement journal generation
+
+Each verified bank-credit reconciliation is a separate settlement event. When the reconciliation is recorded, the application looks up the organisation's mapping by the deposit batch's bank name. The mapping selects two active ZAR asset accounts:
+
+- Debit the bank asset account for the matched statement credit.
+- Credit the cash-on-hand asset account from which the deposit was made.
+
+The journal uses the bank statement transaction date, the reconciled amount, the deposit batch's organisational scope and the administrator who performed the reconciliation. Its source type is `DEPOSIT_SETTLEMENT` and its source ID is the reconciliation ID. A database unique index prevents more than one settlement journal per reconciliation. Partial bankings create separate journals for each verified statement credit; their sum follows the deposit batch's reconciliation total.
+
+If a mapping is missing, bank reconciliation continues and the application records a `DEPOSIT_SETTLEMENT_LEDGER_MAPPING_MISSING` audit event. Saving the bank mapping retries journal generation for earlier reconciliations for that bank which do not yet have a settlement journal.
+
+Generated settlement journals remain `DRAFT` and require the existing independent submission, approval and posting workflow. The entry is an asset-to-asset transfer only: it does not debit or credit income and does not recognise contribution receipts a second time.
