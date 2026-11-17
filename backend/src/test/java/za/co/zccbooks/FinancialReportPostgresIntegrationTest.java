@@ -64,6 +64,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired ReconciliationExceptionController reconciliationExceptions;
     @Autowired ContributionLedgerJournalService contributionLedgerJournals;
     @Autowired ExpenditurePaymentLedgerJournalService expenditureLedgerJournals;
+    @Autowired DepositSettlementLedgerJournalService depositSettlementLedgerJournals;
 
     @AfterEach
     void clearAuthentication() {
@@ -1415,6 +1416,68 @@ class FinancialReportPostgresIntegrationTest {
               AND action_code IN ('CONTRIBUTION_DRAFT_JOURNAL_CREATED',
                                   'EXPENDITURE_DRAFT_JOURNAL_CREATED')
             """, Integer.class, contributionJournalId, expenditureJournalId));
+    }
+
+    @Test
+    void verifiedDepositSettlementCreatesBalancedIdempotentDraftJournal() {
+        Fixture fixture = fixture();
+        authenticate(fixture);
+
+        UUID bankAccount = UUID.randomUUID();
+        UUID cashAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '1100', 'Bank account', 'ASSET', 'ZAR', ?),
+                   (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?)
+            """, bankAccount, fixture.organisationId(), fixture.adminId(),
+            cashAccount, fixture.organisationId(), fixture.adminId());
+        jdbc.update("""
+            INSERT INTO finance_deposit_settlement_mappings
+                (id, organisation_id, bank_name, currency, bank_account_id, cash_account_id, created_by)
+            VALUES (?, ?, 'Test Bank', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), bankAccount, cashAccount, fixture.adminId());
+
+        UUID batchId = jdbc.queryForObject("""
+            SELECT id FROM deposit_batches
+            WHERE organisation_id = ? AND bank_reference = 'BANK-A-1'
+            """, UUID.class, fixture.organisationId());
+        UUID statementEntryId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO bank_statement_entries
+                (id, organisation_id, scope_unit_id, transaction_date, bank_reference,
+                 amount, description, recorded_by)
+            VALUES (?, ?, ?, DATE '2026-05-12', 'BANK-A-1', 125.00,
+                    'Deposit received', ?)
+            """, statementEntryId, fixture.organisationId(), fixture.nyikaA(), fixture.adminId());
+        UUID reconciliationId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_reconciliations
+                (id, deposit_batch_id, statement_entry_id, matched_by, match_note)
+            VALUES (?, ?, ?, ?, 'Verified bank deposit')
+            """, reconciliationId, batchId, statementEntryId, fixture.adminId());
+
+        UUID journalId = depositSettlementLedgerJournals.createDraftIfMapped(reconciliationId);
+        assertNotNull(journalId);
+        assertEquals(journalId, depositSettlementLedgerJournals.createDraftIfMapped(reconciliationId));
+        assertEquals("DRAFT", jdbc.queryForObject(
+            "SELECT status FROM finance_journals WHERE id = ?", String.class, journalId));
+        assertEquals("DEPOSIT_SETTLEMENT", jdbc.queryForObject(
+            "SELECT source_type FROM finance_journals WHERE id = ?", String.class, journalId));
+        assertEquals(reconciliationId, jdbc.queryForObject(
+            "SELECT source_id FROM finance_journals WHERE id = ?", UUID.class, journalId));
+        assertEquals(LocalDate.parse("2026-05-12"), jdbc.queryForObject(
+            "SELECT journal_date FROM finance_journals WHERE id = ?", LocalDate.class, journalId));
+        assertBalancedJournal(journalId, new BigDecimal("125.00"));
+        assertEquals(1, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE organisation_id = ? AND source_type = 'DEPOSIT_SETTLEMENT' AND source_id = ?
+            """, Integer.class, fixture.organisationId(), reconciliationId));
+        assertEquals(1, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM admin_audit_events
+            WHERE target_type = 'FINANCE_JOURNAL' AND target_id = ?
+              AND action_code = 'DEPOSIT_SETTLEMENT_DRAFT_JOURNAL_CREATED'
+            """, Integer.class, journalId));
     }
 
     private void assertBalancedJournal(UUID journalId, BigDecimal expectedTotal) {
