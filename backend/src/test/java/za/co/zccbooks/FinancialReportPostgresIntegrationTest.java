@@ -1789,6 +1789,9 @@ class FinancialReportPostgresIntegrationTest {
         UUID originalJournalId = contributionLedgerJournals.createDraftIfMapped(contributionId);
         assertNotNull(originalJournalId);
         assertEquals("DRAFT", financialJournals.journal(originalJournalId).status());
+        Integer reversalJournalCountBefore = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals WHERE source_type = 'CONTRIBUTION_REVERSAL'
+            """, Integer.class);
 
         assertThrows(ConflictException.class, () -> contributionController.reverseContribution(
             contributionId, new ContributionController.ReverseContribution(
@@ -1797,9 +1800,8 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(0, jdbc.queryForObject("""
             SELECT COUNT(*) FROM contribution_reversals WHERE contribution_id = ?
             """, Integer.class, contributionId));
-        assertEquals(0, jdbc.queryForObject("""
-            SELECT COUNT(*) FROM finance_journals
-            WHERE source_type = 'CONTRIBUTION_REVERSAL' AND status <> 'DRAFT'
+        assertEquals(reversalJournalCountBefore, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals WHERE source_type = 'CONTRIBUTION_REVERSAL'
             """, Integer.class));
         assertEquals("DRAFT", financialJournals.journal(originalJournalId).status());
     }
