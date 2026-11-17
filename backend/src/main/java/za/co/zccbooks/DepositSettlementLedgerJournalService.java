@@ -157,6 +157,13 @@ public class DepositSettlementLedgerJournalService {
                 rs.getString("description")), original.id());
         if (lines.size() < 2) throw new ConflictException(
             "The posted settlement journal has no complete line set and cannot be reversed automatically.");
+        java.math.BigDecimal debits = lines.stream().map(JournalLine::debitAmount)
+            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        java.math.BigDecimal credits = lines.stream().map(JournalLine::creditAmount)
+            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        if (debits.compareTo(credits) != 0 || debits.signum() <= 0) {
+            throw new ConflictException("The original deposit settlement journal is not balanced and cannot be reversed automatically.");
+        }
 
         UUID journalId = UUID.randomUUID();
         String number = "AUTO-DEP-REV-" + reversalId.toString().replace("-", "").toUpperCase();

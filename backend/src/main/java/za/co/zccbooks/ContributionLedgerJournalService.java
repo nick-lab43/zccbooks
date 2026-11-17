@@ -192,6 +192,13 @@ public class ContributionLedgerJournalService {
         if (originalLines.size() < 2) {
             throw new ConflictException("The posted contribution journal has no complete line set and cannot be reversed automatically.");
         }
+        BigDecimal debits = originalLines.stream().map(JournalLine::debitAmount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal credits = originalLines.stream().map(JournalLine::creditAmount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (debits.compareTo(credits) != 0 || debits.signum() <= 0) {
+            throw new ConflictException("The original contribution journal is not balanced and cannot be reversed automatically.");
+        }
 
         UUID journalId = UUID.randomUUID();
         String journalNumber = "AUTO-CONTRIB-REV-" + reversalId.toString().replace("-", "").toUpperCase();
