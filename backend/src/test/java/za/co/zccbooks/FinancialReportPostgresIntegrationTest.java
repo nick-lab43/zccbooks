@@ -1321,6 +1321,7 @@ class FinancialReportPostgresIntegrationTest {
     @Test
     void contributionAndExpenditureSourcesCreateBalancedIdempotentDraftJournals() {
         Fixture fixture = fixture();
+        authenticate(fixture);
         UUID cashAccount = UUID.randomUUID();
         UUID incomeAccount = UUID.randomUUID();
         UUID expenseAccount = UUID.randomUUID();
