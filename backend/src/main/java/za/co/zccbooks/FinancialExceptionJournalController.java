@@ -57,6 +57,9 @@ public class FinancialExceptionJournalController {
         authorization.requireOrganisationOrUnitPermission("FINANCE_JOURNAL_CREATE", organisationId);
         String code = request.resolutionCode();
         String currency = request.currency().toUpperCase();
+        if (!"ZAR".equals(currency)) {
+            throw new IllegalArgumentException("Reconciliation exception amounts are currently recorded in ZAR.");
+        }
         if (!MAPPABLE_CODES.contains(code)) {
             throw new IllegalArgumentException("This reconciliation classification does not create a financial adjustment journal.");
         }
@@ -134,10 +137,10 @@ public class FinancialExceptionJournalController {
             exception.organisationId(), exception.resolutionCode()).stream().findFirst()
             .orElseThrow(() -> new ConflictException("Configure an account mapping for this classification before creating a journal."));
 
-        if (!exists("""
+        if (count("""
             SELECT COUNT(*) FROM finance_accounts
             WHERE id IN (?, ?) AND organisation_id = ? AND currency = ? AND active = TRUE
-            """, mapping.debitAccountId(), mapping.creditAccountId(), exception.organisationId(), mapping.currency())) {
+            """, mapping.debitAccountId(), mapping.creditAccountId(), exception.organisationId(), mapping.currency()) != 2) {
             throw new ConflictException("The mapped accounts are no longer active. Update the account mapping.");
         }
         String number = "ADJ-" + LocalDate.now() + "-" +
@@ -187,8 +190,12 @@ public class FinancialExceptionJournalController {
     }
 
     private boolean exists(String sql, Object... args) {
-        Integer count = jdbc.queryForObject(sql, Integer.class, args);
-        return count != null && count > 0;
+        return count(sql, args) > 0;
+    }
+
+    private int count(String sql, Object... args) {
+        Integer value = jdbc.queryForObject(sql, Integer.class, args);
+        return value == null ? 0 : value;
     }
 
     private UUID actorId() {
