@@ -2137,6 +2137,17 @@ class FinancialReportPostgresIntegrationTest {
             FROM finance_journal_lines WHERE journal_id = ? ORDER BY account_id
             """, originalJournalId));
         assertEquals("POSTED", financialJournals.journal(originalJournalId).status());
+
+        financialJournals.submit(reversingJournalId);
+        assertThrows(ConflictException.class, () -> financialJournals.approve(reversingJournalId));
+        String reversalApprover = createScopedFinanceActor(fixture, "deposit.reversal.journal.approver.");
+        authenticateAs(reversalApprover);
+        financialJournals.approve(reversingJournalId);
+        assertThrows(ConflictException.class, () -> financialJournals.post(reversingJournalId));
+        String reversalPoster = createScopedFinanceActor(fixture, "deposit.reversal.journal.poster.");
+        authenticateAs(reversalPoster);
+        assertEquals("POSTED", financialJournals.post(reversingJournalId).status());
+
         assertThrows(ConflictException.class, () -> depositReconciliationReversals.reverse(
             reconciliationId, new DepositReconciliationReversalController.ReverseDepositReconciliation(
                 "Duplicate reversal.")));
@@ -2240,6 +2251,17 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals("POSTED", financialJournals.journal(originalJournalId).status());
         assertEquals("PAID", jdbc.queryForObject(
             "SELECT status FROM expenditures WHERE id = ?", String.class, expenditureId));
+
+        financialJournals.submit(reversingJournalId);
+        assertThrows(ConflictException.class, () -> financialJournals.approve(reversingJournalId));
+        String reversalApprover = createScopedFinanceActor(fixture, "expenditure.reversal.journal.approver.");
+        authenticateAs(reversalApprover);
+        financialJournals.approve(reversingJournalId);
+        assertThrows(ConflictException.class, () -> financialJournals.post(reversingJournalId));
+        String reversalPoster = createScopedFinanceActor(fixture, "expenditure.reversal.journal.poster.");
+        authenticateAs(reversalPoster);
+        assertEquals("POSTED", financialJournals.post(reversingJournalId).status());
+
         assertThrows(ConflictException.class, () -> expenditurePaymentReversals.reversePayment(
             expenditureId, new ExpenditurePaymentReversalController.ReverseExpenditurePayment(
                 "Duplicate reversal.")));
