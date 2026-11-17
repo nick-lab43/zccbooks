@@ -118,6 +118,87 @@ public class ContributionLedgerJournalService {
         return journalId;
     }
 
+
+    /**
+     * Creates a draft journal that exactly reverses the posted contribution journal.
+     * The original posted journal is never edited. A missing source journal is valid
+     * when the receipt was captured before an account mapping existed.
+     */
+    @Transactional
+    public UUID createReversalDraft(UUID contributionId, UUID reversalId, UUID actorId, String reason) {
+        UUID existing = jdbc.query("""
+            SELECT id FROM finance_journals
+            WHERE source_type = 'CONTRIBUTION_REVERSAL' AND source_id = ?
+            """, (rs, n) -> rs.getObject("id", UUID.class), reversalId)
+            .stream().findFirst().orElse(null);
+        if (existing != null) return existing;
+
+        OriginalJournal original = jdbc.query("""
+            SELECT id, organisation_id, scope_unit_id, journal_number, currency, status
+            FROM finance_journals
+            WHERE source_type = 'CONTRIBUTION_RECEIPT' AND source_id = ?
+            FOR UPDATE
+            """, (rs, n) -> new OriginalJournal(
+                rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
+                rs.getObject("scope_unit_id", UUID.class), rs.getString("journal_number"),
+                rs.getString("currency"), rs.getString("status")), contributionId)
+            .stream().findFirst().orElse(null);
+
+        if (original == null) return null;
+        if (!"POSTED".equals(original.status())) {
+            throw new ConflictException("The contribution journal must be posted before its receipt can be reversed. Reject or complete the original journal workflow first.");
+        }
+
+        List<JournalLine> originalLines = jdbc.query("""
+            SELECT account_id, debit_amount, credit_amount, description
+            FROM finance_journal_lines
+            WHERE journal_id = ?
+            ORDER BY created_at, id
+            """, (rs, n) -> new JournalLine(
+                rs.getObject("account_id", UUID.class), rs.getBigDecimal("debit_amount"),
+                rs.getBigDecimal("credit_amount"), rs.getString("description")), original.id());
+        if (originalLines.size() < 2) {
+            throw new ConflictException("The posted contribution journal has no complete line set and cannot be reversed automatically.");
+        }
+
+        UUID journalId = UUID.randomUUID();
+        String journalNumber = "AUTO-CONTRIB-REV-" + reversalId.toString().replace("-", "").toUpperCase();
+        jdbc.update("""
+            INSERT INTO finance_journals
+                (id, organisation_id, scope_unit_id, journal_number, journal_date, currency,
+                 description, source_type, source_id, created_by)
+            VALUES (?, ?, ?, ?, CURRENT_DATE, ?, ?, 'CONTRIBUTION_REVERSAL', ?, ?)
+            """, journalId, original.organisationId(), original.scopeUnitId(), journalNumber,
+            original.currency(), "Reversal of " + original.journalNumber() + ": " + reason,
+            reversalId, actorId);
+
+        for (JournalLine line : originalLines) {
+            jdbc.update("""
+                INSERT INTO finance_journal_lines
+                    (id, journal_id, account_id, organisation_id, currency,
+                     debit_amount, credit_amount, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), journalId, line.accountId(), original.organisationId(),
+                original.currency(), line.creditAmount(), line.debitAmount(),
+                "Reversal of " + (line.description() == null ? "original journal line" : line.description()));
+        }
+
+        audit.record("CONTRIBUTION_REVERSAL_DRAFT_JOURNAL_CREATED", "FINANCE_JOURNAL", journalId,
+            Map.of("organisationId", original.organisationId().toString(),
+                "scopeUnitId", original.scopeUnitId().toString(),
+                "contributionId", contributionId.toString(),
+                "reversalId", reversalId.toString(),
+                "originalJournalId", original.id().toString(),
+                "originalJournalNumber", original.journalNumber(),
+                "journalNumber", journalNumber));
+        return journalId;
+    }
+
+    private record OriginalJournal(UUID id, UUID organisationId, UUID scopeUnitId,
+        String journalNumber, String currency, String status) {}
+    private record JournalLine(UUID accountId, BigDecimal debitAmount,
+        BigDecimal creditAmount, String description) {}
+
     private record ContributionSource(UUID id, UUID organisationId, UUID scopeUnitId,
         UUID categoryId, String receiptNumber, BigDecimal amount, String currency,
         LocalDate contributionDate, String paymentMethod, UUID capturedBy) {}
