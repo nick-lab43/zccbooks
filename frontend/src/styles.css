@@ -784,3 +784,21 @@ input, select { border-radius: 5px !important; }
 /* Deposit OCR review confirmation */
 .checkbox-row{display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--text-primary,#263746)}
 .checkbox-row input{margin-top:2px;accent-color:var(--brand,#245b83)}
+
+
+/* Financial accounts and general ledger workspace */
+.financial-journals { max-width: 1420px; margin: 0 auto 24px; }
+.journal-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin: 22px 0 12px; }
+.journal-section-heading h3 { margin: 0; color: #203a57; font-family: Georgia, serif; font-size: 17px; }
+.journal-section-heading p { margin: 5px 0 0; color: #697687; font-size: 11px; line-height: 1.5; }
+.journal-section-heading > span { color: #8b754c; font-size: 9px; font-weight: 700; letter-spacing: .1em; white-space: nowrap; }
+.journal-form { max-width: 900px; margin: 12px 0 18px; padding: 14px; border: 1px solid #d6dce3; background: #f1f4f6; }
+.journal-filter { display: grid; gap: 5px; min-width: 150px; color: #526174; font-size: 9px; font-weight: 700; letter-spacing: .1em; }
+.journal-filter select { min-height: 32px; padding: 6px 8px; border: 1px solid #bfc8d2; color: #263343; background: #fff; font-size: 11px; }
+.journal-detail { margin-top: 20px; padding: 16px; border: 1px solid #bfc8d2; background: #f1f4f6; }
+.journal-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+@media (max-width: 720px) {
+  .journal-section-heading { align-items: start; flex-direction: column; }
+  .journal-filter { width: 100%; }
+  .financial-journals { padding: 12px; }
+}
