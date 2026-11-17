@@ -43,6 +43,23 @@ Journal listing is restricted to the caller's visible unit hierarchy unless they
 
 Manual journals use source type MANUAL and no source ID. A journal linked to a reconciliation exception must identify an existing exception in the same organisation and geographical scope. The source reference is traceability metadata only; creating a journal does not resolve the exception.
 
+## Reconciliation exception account mappings
+
+Organisations can configure one debit and one credit account for each supported financial exception classification and currency. Mappings are organisation-specific; both accounts must be active, belong to the same organisation and currency, and must be different accounts.
+
+Supported journal-generating classifications are BANK_FEE, SHORT_DEPOSIT, OVER_DEPOSIT and REFUND_OR_REVERSAL. Other classifications remain investigation dispositions and do not generate journal drafts. Exception disposition amounts are currently recorded in ZAR, so journal generation uses ZAR mappings only.
+
+- `GET /api/organisations/{organisationId}/finance-exception-account-mappings`
+- `PUT /api/organisations/{organisationId}/finance-exception-account-mappings`
+
+A finance exception manager can classify an exception while moving it to UNDER_REVIEW. The classification requires a supporting note; financial classifications also require a positive amount. The exception remains under review while the adjustment is prepared.
+
+- `POST /api/reconciliation-exceptions/{exceptionId}/journal`
+
+This endpoint creates a DRAFT journal using the configured debit and credit accounts and links it to the source exception. It does not submit, approve or post the journal, and it does not resolve the exception. The normal three-person journal lifecycle remains mandatory. A unique database index prevents more than one journal from being linked to the same exception. Once the journal has been posted and supporting evidence checked, an authorised exception manager can resolve the exception through the existing exception workflow.
+
+Changing a mapping affects future journal drafts only. Existing journals retain their original account lines.
+
 ## Audit and immutability
 
 Account creation and updates, journal creation, line replacement, submission, approval, rejection and posting create administrator audit events.
