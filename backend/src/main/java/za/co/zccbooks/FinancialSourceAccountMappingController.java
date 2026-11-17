@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -86,7 +87,7 @@ public class FinancialSourceAccountMappingController {
 
     @PutMapping
     @Transactional
-    public void save(@PathVariable UUID organisationId, @Valid @RequestBody SaveSourceMapping request) {
+    public ResponseEntity<Void> save(@PathVariable UUID organisationId, @Valid @RequestBody SaveSourceMapping request) {
         authorization.requireOrganisationOrUnitPermission("FINANCE_JOURNAL_CREATE", organisationId);
         String sourceType = request.sourceType();
         String currency = request.currency().toUpperCase();
@@ -159,7 +160,7 @@ public class FinancialSourceAccountMappingController {
                 "debitAccountId", request.debitAccountId().toString(),
                 "creditAccountId", request.creditAccountId().toString(),
                 "paymentMethod", request.paymentMethod() == null ? "NOT_APPLICABLE" : request.paymentMethod()));
-
+        return ResponseEntity.noContent().build();
     }
 
     private int count(String sql, Object... args) {
