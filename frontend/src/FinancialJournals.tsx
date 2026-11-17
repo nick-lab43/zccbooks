@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import FinancialSourceMappings from "./FinancialSourceMappings";
 
 type Account = { id: string; organisationId: string; code: string; name: string; accountType: string; currency: string; active: boolean };
 type Unit = { id: string; level: string; code: string; name: string; active?: boolean };
@@ -189,6 +190,8 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
       {mappings.map(m => <tr key={m.id}><td><strong>{classifications.find(c => c.value === m.resolutionCode)?.label ?? m.resolutionCode}</strong></td><td>{m.debitAccountCode} — {m.debitAccountName}</td><td>{m.creditAccountCode} — {m.creditAccountName}</td><td>{m.currency}</td></tr>)}
       {!mappings.length && <tr><td colSpan={4} className="empty-table">No reconciliation account mappings configured.</td></tr>}
     </tbody></table></div>
+
+    {canCreate && canView && <FinancialSourceMappings organisationId={organisationId} authorizationHeader={authorizationHeader} />}
 
     {canCreate && canView && <>
       <div className="panel-divider" />
