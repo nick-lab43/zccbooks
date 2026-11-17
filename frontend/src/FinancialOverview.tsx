@@ -3,13 +3,20 @@ import { useEffect, useMemo, useState } from "react";
 type Unit = { id: string; level: string; code: string; name: string };
 type Summary = { contributionCount: number; currencyTotals: { currency: string; totalAmount: number }[] };
 type Position = { currency: string; income: number; expenditure: number; netPosition: number };
-type IncomeExpenditure = { positions: Position[] };
+type IncomeExpenditure = { context: { unitName: string; from: string; to: string }; positions: Position[] };
+
+function toLocalDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 export default function FinancialOverview({ organisationId, authorizationHeader }: { organisationId: string; authorizationHeader: string }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [scopeUnitId, setScopeUnitId] = useState("");
-  const [from, setFrom] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10));
-  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const [from, setFrom] = useState(() => toLocalDateInputValue(new Date(new Date().getFullYear(), 0, 1)));
+  const [to, setTo] = useState(() => toLocalDateInputValue(new Date()));
   const [summary, setSummary] = useState<Summary | null>(null);
   const [position, setPosition] = useState<Position[]>([]);
   const [busy, setBusy] = useState(false);
