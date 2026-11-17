@@ -2133,6 +2133,8 @@ class FinancialReportPostgresIntegrationTest {
             """, Integer.class, reversalId));
         assertThrows(ConflictException.class, () -> contributionController.reverseContribution(
             contributionId, new ContributionController.ReverseContribution("Duplicate reversal.")));
+        assertDuplicateReversalConstraints("contribution_reversals", "contribution_id",
+            contributionId, reversalId, reversingJournalId, "CONTRIBUTION_REVERSAL", fixture);
     }
 
     @Test
@@ -2245,6 +2247,8 @@ class FinancialReportPostgresIntegrationTest {
         assertThrows(ConflictException.class, () -> depositReconciliationReversals.reverse(
             reconciliationId, new DepositReconciliationReversalController.ReverseDepositReconciliation(
                 "Duplicate reversal.")));
+        assertDuplicateReversalConstraints("deposit_reconciliation_reversals", "reconciliation_id",
+            reconciliationId, reversalId, reversingJournalId, "DEPOSIT_SETTLEMENT_REVERSAL", fixture);
     }
 
     @Test
@@ -2359,6 +2363,8 @@ class FinancialReportPostgresIntegrationTest {
         assertThrows(ConflictException.class, () -> expenditurePaymentReversals.reversePayment(
             expenditureId, new ExpenditurePaymentReversalController.ReverseExpenditurePayment(
                 "Duplicate reversal.")));
+        assertDuplicateReversalConstraints("expenditure_payment_reversals", "expenditure_id",
+            expenditureId, reversalId, reversingJournalId, "EXPENDITURE_PAYMENT_REVERSAL", fixture);
     }
 
     @Test
@@ -2546,6 +2552,26 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(2, incomeStatement.entries().size());
         assertTrue(incomeStatement.entries().stream().anyMatch(entry -> entry.journalId().equals(originalJournalId.toString())));
         assertTrue(incomeStatement.entries().stream().anyMatch(entry -> entry.journalId().equals(reversingJournalId.toString())));
+    }
+
+
+    private void assertDuplicateReversalConstraints(String reversalTable, String sourceColumn,
+            UUID sourceId, UUID reversalId, UUID journalId, String journalSourceType, Fixture fixture) {
+        String duplicateReversalSql = "INSERT INTO " + reversalTable
+            + " (id, " + sourceColumn + ", reason, reversed_by) VALUES (?, ?, 'Duplicate direct insert', ?)";
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () ->
+            jdbc.update(duplicateReversalSql, UUID.randomUUID(), sourceId, fixture.adminId()));
+
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () ->
+            jdbc.update("""
+                INSERT INTO finance_journals
+                    (id, organisation_id, scope_unit_id, journal_number, journal_date, currency,
+                     description, source_type, source_id, status, created_by)
+                SELECT ?, organisation_id, scope_unit_id, ?, journal_date, currency,
+                       'Duplicate reversal journal direct insert', ?, ?, 'DRAFT', created_by
+                FROM finance_journals WHERE id = ?
+                """, UUID.randomUUID(), "DUP-REV-" + UUID.randomUUID(),
+                journalSourceType, reversalId, journalId));
     }
 
     private String createScopedFinanceActor(Fixture fixture, String usernamePrefix) {
