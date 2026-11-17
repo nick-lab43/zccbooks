@@ -1925,7 +1925,7 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals("POSTED", financialJournals.post(journalId).status());
 
         var trialBalance = ledgerReports.trialBalance(fixture.organisationId(), fixture.nyikaA(),
-            LocalDate.parse("2026-05-31"));
+            LocalDate.parse("2026-11-30"));
         var cashLine = trialBalance.lines().stream()
             .filter(line -> line.accountId().equals(cashAccount.toString())).findFirst().orElseThrow();
         var incomeLine = trialBalance.lines().stream()
@@ -1938,7 +1938,7 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(0, incomeLine.balanceCredit().compareTo(new BigDecimal("125.00")));
 
         var cashStatement = ledgerReports.accountStatement(fixture.organisationId(), fixture.nyikaA(),
-            cashAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-05-31"));
+            cashAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-11-30"));
         assertEquals(0, cashStatement.openingBalance().debit().compareTo(BigDecimal.ZERO));
         assertEquals(0, cashStatement.periodDebits().compareTo(new BigDecimal("125.00")));
         assertEquals(0, cashStatement.periodCredits().compareTo(BigDecimal.ZERO));
@@ -1947,7 +1947,7 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(journalId.toString(), cashStatement.entries().get(0).journalId());
 
         var incomeStatement = ledgerReports.accountStatement(fixture.organisationId(), fixture.nyikaA(),
-            incomeAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-05-31"));
+            incomeAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-11-30"));
         assertEquals(0, incomeStatement.periodDebits().compareTo(BigDecimal.ZERO));
         assertEquals(0, incomeStatement.periodCredits().compareTo(new BigDecimal("125.00")));
         assertEquals(0, incomeStatement.closingBalance().credit().compareTo(new BigDecimal("125.00")));
