@@ -1753,6 +1753,58 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void contributionReversalRollsBackWhenOriginalLedgerJournalIsNotPosted() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT id, 'FINANCE_REVERSE' FROM admin_roles WHERE role_code = 'NYIKA_ADMIN'
+            ON CONFLICT DO NOTHING
+            """);
+
+        UUID cashAccount = UUID.randomUUID();
+        UUID incomeAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?),
+                   (?, ?, '4000', 'Contribution income', 'INCOME', 'ZAR', ?)
+            """, cashAccount, fixture.organisationId(), fixture.adminId(),
+            incomeAccount, fixture.organisationId(), fixture.adminId());
+
+        UUID contributionId = jdbc.queryForObject("""
+            SELECT id FROM contributions
+            WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'
+            """, UUID.class, fixture.organisationId());
+        UUID categoryId = jdbc.queryForObject(
+            "SELECT category_id FROM contributions WHERE id = ?", UUID.class, contributionId);
+        jdbc.update("""
+            INSERT INTO finance_contribution_account_mappings
+                (id, organisation_id, category_id, payment_method, currency,
+                 debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'CASH', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), categoryId,
+            cashAccount, incomeAccount, fixture.adminId());
+
+        authenticate(fixture);
+        UUID originalJournalId = contributionLedgerJournals.createDraftIfMapped(contributionId);
+        assertNotNull(originalJournalId);
+        assertEquals("DRAFT", financialJournals.journal(originalJournalId).status());
+
+        assertThrows(ConflictException.class, () -> contributionController.reverseContribution(
+            contributionId, new ContributionController.ReverseContribution(
+                "Original journal has not completed posting.")));
+
+        assertEquals(0, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM contribution_reversals WHERE contribution_id = ?
+            """, Integer.class, contributionId));
+        assertEquals(0, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE source_type = 'CONTRIBUTION_REVERSAL' AND status <> 'DRAFT'
+            """, Integer.class));
+        assertEquals("DRAFT", financialJournals.journal(originalJournalId).status());
+    }
+
+    @Test
     void reversingPostedContributionCreatesBalancedDraftJournalWithoutChangingOriginal() {
         Fixture fixture = fixture();
         jdbc.update("""
