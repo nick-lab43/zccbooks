@@ -100,6 +100,10 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const debit = Number(debitAmount), credit = Number(creditAmount);
+    if (form.get("debitAccountId") === form.get("creditAccountId")) {
+      setError("Choose two different accounts for the debit and credit lines.");
+      return;
+    }
     if (!Number.isFinite(debit) || !Number.isFinite(credit) || debit <= 0 || debit !== credit) {
       setError("Enter the same positive amount for the debit and credit lines.");
       return;
@@ -193,7 +197,7 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
         <div className="field-pair"><label>Journal number<input name="journalNumber" required maxLength={80} placeholder="e.g. JV-2026-001" /></label><label>Journal date<input name="journalDate" type="date" required defaultValue={new Date().toISOString().slice(0,10)} /></label></div>
         <label>Financial scope<select name="scopeUnitId" required defaultValue=""><option value="">Select geographical unit</option>{units.map(u => <option key={u.id} value={u.id}>{u.level} · {u.code} — {u.name}</option>)}</select></label>
         <div className="field-pair"><label>Currency<select name="currency" value={manualCurrency} onChange={e => setManualCurrency(e.target.value)}><option value="ZAR">ZAR</option><option value="USD">USD</option><option value="ZWL">ZWL</option></select></label><label>Amount<input type="number" min="0.01" step="0.01" required value={debitAmount} onChange={e => {setDebitAmount(e.target.value);setCreditAmount(e.target.value);}} placeholder="0.00" /></label></div>
-        <div className="field-pair"><label>Debit account<select name="debitAccountId" required defaultValue=""><option value="">Select debit account</option>{accounts.filter(a => a.active && a.currency === manualCurrency).map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label><label>Credit account<select name="creditAccountId" required defaultValue=""><option value="">Select credit account</option>{accounts.filter(a => a.active).map(a => <option key={a.id} value={a.id}>{a.code} — {a.name} ({a.currency})</option>)}</select></label></div>
+        <div className="field-pair"><label>Debit account<select name="debitAccountId" required defaultValue=""><option value="">Select debit account</option>{accounts.filter(a => a.active && a.currency === manualCurrency).map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label><label>Credit account<select name="creditAccountId" required defaultValue=""><option value="">Select credit account</option>{accounts.filter(a => a.active && a.currency === manualCurrency).map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label></div>
         <div className="field-pair"><label>Debit line description<input name="debitDescription" maxLength={500} placeholder="Debit entry" /></label><label>Credit line description<input name="creditDescription" maxLength={500} placeholder="Credit entry" /></label></div>
         <label>Journal description<input name="description" required maxLength={1000} placeholder="Reason for this adjustment" /></label>
         <button className="primary-button" disabled={busy || !accounts.some(a => a.active && a.currency === manualCurrency) || !units.length}>Create draft journal</button>
