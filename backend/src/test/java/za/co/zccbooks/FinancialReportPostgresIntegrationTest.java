@@ -1572,6 +1572,104 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void reversingPostedContributionCreatesBalancedDraftJournalWithoutChangingOriginal() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT DISTINCT a.role_id, p.permission_code
+            FROM admin_role_assignments a
+            CROSS JOIN (VALUES ('FINANCE_JOURNAL_VIEW'), ('FINANCE_JOURNAL_CREATE'),
+                               ('FINANCE_JOURNAL_APPROVE'))
+                AS p(permission_code)
+            WHERE a.user_id = ?
+            ON CONFLICT DO NOTHING
+            """, fixture.adminId());
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT id, 'FINANCE_REVERSE' FROM admin_roles WHERE role_code = 'NYIKA_ADMIN'
+            ON CONFLICT DO NOTHING
+            """);
+
+        UUID cashAccount = UUID.randomUUID();
+        UUID incomeAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?),
+                   (?, ?, '4000', 'Contribution income', 'INCOME', 'ZAR', ?)
+            """, cashAccount, fixture.organisationId(), fixture.adminId(),
+            incomeAccount, fixture.organisationId(), fixture.adminId());
+
+        UUID contributionId = jdbc.queryForObject("""
+            SELECT id FROM contributions
+            WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'
+            """, UUID.class, fixture.organisationId());
+        UUID categoryId = jdbc.queryForObject(
+            "SELECT category_id FROM contributions WHERE id = ?", UUID.class, contributionId);
+        jdbc.update("""
+            INSERT INTO finance_contribution_account_mappings
+                (id, organisation_id, category_id, payment_method, currency,
+                 debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'CASH', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), categoryId,
+            cashAccount, incomeAccount, fixture.adminId());
+
+        authenticate(fixture);
+        UUID originalJournalId = contributionLedgerJournals.createDraftIfMapped(contributionId);
+        assertNotNull(originalJournalId);
+        financialJournals.submit(originalJournalId);
+
+        String approver = createScopedFinanceActor(fixture, "contribution.reversal.approver.");
+        authenticateAs(approver);
+        financialJournals.approve(originalJournalId);
+
+        String poster = createScopedFinanceActor(fixture, "contribution.reversal.poster.");
+        authenticateAs(poster);
+        financialJournals.post(originalJournalId);
+        assertEquals("POSTED", financialJournals.journal(originalJournalId).status());
+
+        List<Map<String, Object>> originalLinesBefore = jdbc.queryForList("""
+            SELECT account_id, debit_amount, credit_amount
+            FROM finance_journal_lines WHERE journal_id = ? ORDER BY account_id
+            """, originalJournalId);
+        assertEquals(2, originalLinesBefore.size());
+
+        authenticate(fixture);
+        var reversalResponse = contributionController.reverseContribution(contributionId,
+            new ContributionController.ReverseContribution("Receipt was recorded incorrectly."));
+        assertEquals(201, reversalResponse.getStatusCode().value());
+
+        UUID reversalId = jdbc.queryForObject(
+            "SELECT id FROM contribution_reversals WHERE contribution_id = ?",
+            UUID.class, contributionId);
+        UUID reversingJournalId = jdbc.queryForObject("""
+            SELECT id FROM finance_journals
+            WHERE source_type = 'CONTRIBUTION_REVERSAL' AND source_id = ?
+            """, UUID.class, reversalId);
+
+        assertEquals("DRAFT", financialJournals.journal(reversingJournalId).status());
+        assertEquals("CONTRIBUTION_REVERSAL", jdbc.queryForObject(
+            "SELECT source_type FROM finance_journals WHERE id = ?", String.class, reversingJournalId));
+        assertEquals(reversalId, jdbc.queryForObject(
+            "SELECT source_id FROM finance_journals WHERE id = ?", UUID.class, reversingJournalId));
+        assertBalancedJournal(reversingJournalId, new BigDecimal("125.00"));
+
+        List<Map<String, Object>> originalLinesAfter = jdbc.queryForList("""
+            SELECT account_id, debit_amount, credit_amount
+            FROM finance_journal_lines WHERE journal_id = ? ORDER BY account_id
+            """, originalJournalId);
+        assertEquals(originalLinesBefore, originalLinesAfter);
+        assertEquals("POSTED", financialJournals.journal(originalJournalId).status());
+
+        assertEquals(0, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE source_type = 'CONTRIBUTION_REVERSAL' AND source_id = ? AND status <> 'DRAFT'
+            """, Integer.class, reversalId));
+        assertThrows(ConflictException.class, () -> contributionController.reverseContribution(
+            contributionId, new ContributionController.ReverseContribution("Duplicate reversal.")));
+    }
+
+    @Test
     void postedContributionSourceJournalAppearsInTrialBalanceAndAccountStatements() {
         Fixture fixture = fixture();
         jdbc.update("""
