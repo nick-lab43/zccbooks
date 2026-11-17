@@ -1480,6 +1480,96 @@ class FinancialReportPostgresIntegrationTest {
             """, Integer.class, journalId));
     }
 
+    @Test
+    void contributionSourceJournalCompletesIndependentApprovalAndPostingLifecycle() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT DISTINCT a.role_id, p.permission_code
+            FROM admin_role_assignments a
+            CROSS JOIN (VALUES ('FINANCE_JOURNAL_VIEW'), ('FINANCE_JOURNAL_CREATE'),
+                               ('FINANCE_JOURNAL_APPROVE')) AS p(permission_code)
+            WHERE a.user_id = ?
+            ON CONFLICT DO NOTHING
+            """, fixture.adminId());
+
+        UUID cashAccount = UUID.randomUUID();
+        UUID incomeAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?),
+                   (?, ?, '4000', 'Contribution income', 'INCOME', 'ZAR', ?)
+            """, cashAccount, fixture.organisationId(), fixture.adminId(),
+            incomeAccount, fixture.organisationId(), fixture.adminId());
+        UUID contributionId = jdbc.queryForObject("""
+            SELECT id FROM contributions
+            WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'
+            """, UUID.class, fixture.organisationId());
+        UUID categoryId = jdbc.queryForObject(
+            "SELECT category_id FROM contributions WHERE id = ?", UUID.class, contributionId);
+        jdbc.update("""
+            INSERT INTO finance_contribution_account_mappings
+                (id, organisation_id, category_id, payment_method, currency,
+                 debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'CASH', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), categoryId,
+            cashAccount, incomeAccount, fixture.adminId());
+
+        authenticate(fixture);
+        UUID journalId = contributionLedgerJournals.createDraftIfMapped(contributionId);
+        assertNotNull(journalId);
+        assertEquals("DRAFT", financialJournals.journal(journalId).status());
+        assertThrows(ConflictException.class, () -> financialJournals.approve(journalId));
+        assertEquals("SUBMITTED", financialJournals.submit(journalId).status());
+
+        UUID approverId = UUID.randomUUID();
+        String approver = "source.approver." + approverId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Source Journal Approver', 'not-used', TRUE)
+            """, approverId, approver);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            SELECT ?, ?, role_id, 'UNIT', ?, ?
+            FROM admin_role_assignments WHERE user_id = ? AND scope_unit_id = ? LIMIT 1
+            """, UUID.randomUUID(), approverId, fixture.organisationId(), fixture.nyikaA(),
+            fixture.adminId(), fixture.nyikaA());
+
+        authenticateAs(approver);
+        assertEquals("APPROVED", financialJournals.approve(journalId).status());
+        assertThrows(ConflictException.class, () -> financialJournals.post(journalId));
+
+        UUID posterId = UUID.randomUUID();
+        String poster = "source.poster." + posterId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, 'Source Journal Poster', 'not-used', TRUE)
+            """, posterId, poster);
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            SELECT ?, ?, role_id, 'UNIT', ?, ?
+            FROM admin_role_assignments WHERE user_id = ? AND scope_unit_id = ? LIMIT 1
+            """, UUID.randomUUID(), posterId, fixture.organisationId(), fixture.nyikaA(),
+            fixture.adminId(), fixture.nyikaA());
+
+        authenticateAs(poster);
+        assertEquals("POSTED", financialJournals.post(journalId).status());
+        assertEquals(posterId.toString(), financialJournals.journal(journalId).postedBy());
+        assertBalancedJournal(journalId, new BigDecimal("125.00"));
+        assertEquals(1, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE id = ? AND source_type = 'CONTRIBUTION_RECEIPT'
+              AND source_id = ? AND status = 'POSTED'
+            """, Integer.class, journalId, contributionId));
+        assertEquals(4, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM admin_audit_events
+            WHERE target_id = ? AND action_code IN (
+                'CONTRIBUTION_DRAFT_JOURNAL_CREATED', 'FINANCE_JOURNAL_SUBMITTED',
+                'FINANCE_JOURNAL_APPROVED', 'FINANCE_JOURNAL_POSTED')
+            """, Integer.class, journalId));
+    }
+
     private void assertBalancedJournal(UUID journalId, BigDecimal expectedTotal) {
         var totals = jdbc.queryForObject("""
             SELECT COUNT(*) AS line_count,
