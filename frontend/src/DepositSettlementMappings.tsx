@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 
 type Account = { id: string; code: string; name: string; active: boolean };
 type Mapping = { id: string; bankName: string; bankAccountId: string; bankAccountCode: string; bankAccountName: string; cashAccountId: string; cashAccountCode: string; cashAccountName: string };
@@ -36,7 +37,7 @@ export default function DepositSettlementMappings({ organisationId, authorizatio
     load().catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
 
-  async function save(event: React.FormEvent<HTMLFormElement>) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setBusy(true); setError(""); setNotice("");
