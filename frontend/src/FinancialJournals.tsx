@@ -47,11 +47,13 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
   const reload = useCallback(async () => {
     if (!organisationId) return;
     const tasks: Promise<unknown>[] = [];
-    if (canView || canCreate) {
+    if (canView) {
       tasks.push(request<Account[]>(`/api/organisations/${organisationId}/finance-accounts`).then(setAccounts));
-      tasks.push(request<Unit[]>(`/api/organisations/${organisationId}/units`).then(rows => setUnits(rows.filter(u => u.active !== false))));
       tasks.push(request<Mapping[]>(`/api/organisations/${organisationId}/finance-exception-account-mappings`).then(setMappings));
       tasks.push(request<JournalSummary[]>(`/api/organisations/${organisationId}/finance-journals${statusFilter ? `?status=${statusFilter}` : ""}`).then(setJournals));
+    }
+    if (canCreate) {
+      tasks.push(request<Unit[]>(`/api/organisations/${organisationId}/units`).then(rows => setUnits(rows.filter(u => u.active !== false))));
     }
     await Promise.all(tasks);
   }, [organisationId, canView, canCreate, request, statusFilter]);
@@ -169,7 +171,7 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
       {!accounts.length && <tr><td colSpan={canCreate ? 6 : 5} className="empty-table">No financial accounts configured.</td></tr>}
     </tbody></table></div>
 
-    {canCreate && <>
+    {canCreate && canView && <>
       <div className="panel-divider" />
       <div className="journal-section-heading"><div><h3>Reconciliation account mappings</h3><p>Choose the debit and credit accounts used when a classified bank reconciliation exception generates a draft adjustment.</p></div><span>4 CLASSIFICATIONS</span></div>
       <form className="form-stack journal-form" onSubmit={saveMapping}>
@@ -183,7 +185,7 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
       {!mappings.length && <tr><td colSpan={4} className="empty-table">No reconciliation account mappings configured.</td></tr>}
     </tbody></table></div>
 
-    {canCreate && <>
+    {canCreate && canView && <>
       <div className="panel-divider" />
       <div className="journal-section-heading"><div><h3>Manual journal entry</h3><p>Create a two-line balanced draft. Submission, approval and posting remain separate actions.</p></div><span>DRAFT ONLY</span></div>
       <form className="form-stack journal-form" onSubmit={createJournal}>
@@ -197,6 +199,8 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
       </form>
     </>}
 
+    {!canView && <div className="legacy-record-notice"><strong>VIEW PERMISSION REQUIRED</strong><span>Chart of accounts, mappings and journal registers require FINANCE_JOURNAL_VIEW. Account creation remains available to authorised creators.</span></div>}
+    {canView && <>
     <div className="panel-divider" />
     <div className="journal-section-heading"><div><h3>Journal register</h3><p>Filter journals by lifecycle status and inspect their debit and credit lines.</p></div><label className="journal-filter">STATUS<select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">All statuses</option>{["DRAFT","SUBMITTED","APPROVED","POSTED","REJECTED"].map(s => <option key={s} value={s}>{s}</option>)}</select></label></div>
     <div className="table-wrap"><table><thead><tr><th>JOURNAL</th><th>DATE</th><th>SCOPE</th><th>DESCRIPTION</th><th>STATUS</th><th>AMOUNT</th><th></th></tr></thead><tbody>
@@ -215,5 +219,6 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
       </div>
       <p className="panel-description">The API enforces separation of duties: the creator cannot approve or reject their own journal, and the creator and approver cannot post the same journal.</p>
     </section>}
+    </>}
   </section>;
 }
