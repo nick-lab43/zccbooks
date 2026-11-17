@@ -21,6 +21,42 @@ public class FinancialLedgerReportController {
         this.audit = audit;
     }
 
+    @GetMapping("/units")
+    public List<ReportUnit> units(@PathVariable UUID organisationId) {
+        authorization.requireOrganisationOrUnitPermission("FINANCE_JOURNAL_VIEW", organisationId);
+        String sql = """
+            SELECT id, level, code, name FROM organisational_units
+            WHERE organisation_id = ? AND active = TRUE
+            ORDER BY level, name
+            """;
+        if (!authorization.hasOrganisationWidePermission("FINANCE_JOURNAL_VIEW", organisationId)) {
+            sql = """
+                WITH RECURSIVE visible_units AS (
+                  SELECT a.scope_unit_id AS id
+                  FROM admin_role_assignments a
+                  JOIN admin_users u ON u.id = a.user_id
+                  JOIN admin_role_permissions rp ON rp.role_id = a.role_id
+                  WHERE a.scope_type = 'UNIT' AND a.organisation_id = ?
+                    AND a.revoked_at IS NULL AND LOWER(u.username) = LOWER(?)
+                    AND rp.permission_code = 'FINANCE_JOURNAL_VIEW'
+                  UNION
+                  SELECT child.id FROM organisational_units child
+                  JOIN visible_units parent ON child.parent_id = parent.id
+                  WHERE child.organisation_id = ?
+                )
+                SELECT ou.id, ou.level, ou.code, ou.name
+                FROM organisational_units ou JOIN visible_units v ON v.id = ou.id
+                WHERE ou.organisation_id = ? AND ou.active = TRUE
+                ORDER BY ou.level, ou.name
+                """;
+            return jdbc.query(sql, (rs,n) -> new ReportUnit(rs.getObject("id", UUID.class).toString(),
+                rs.getString("level"), rs.getString("code"), rs.getString("name")),
+                organisationId, authorization.currentUsername(), organisationId, organisationId);
+        }
+        return jdbc.query(sql, (rs,n) -> new ReportUnit(rs.getObject("id", UUID.class).toString(),
+            rs.getString("level"), rs.getString("code"), rs.getString("name")), organisationId);
+    }
+
     @GetMapping("/trial-balance")
     public TrialBalance trialBalance(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate asOf) {
@@ -79,7 +115,7 @@ public class FinancialLedgerReportController {
                 rs.getString("account_type"), rs.getString("currency")), accountId, organisationId)
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Financial account was not found in this organisation."));
 
-        Balance opening = jdbc.queryForObject("""
+        Balance openingTotals = jdbc.queryForObject("""
             WITH RECURSIVE report_units(id) AS (
               SELECT id FROM organisational_units WHERE id = ? AND organisation_id = ?
               UNION ALL
@@ -125,14 +161,14 @@ public class FinancialLedgerReportController {
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal periodCredit = entries.stream().map(AccountStatementLine::creditAmount)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal openingNet = opening.debitTotal().subtract(opening.creditTotal());
+        BigDecimal openingNet = openingTotals.debit().subtract(openingTotals.credit());
         BigDecimal closingNet = openingNet.add(periodDebit).subtract(periodCredit);
+        Balance opening = new Balance(openingNet.max(BigDecimal.ZERO), openingNet.negate().max(BigDecimal.ZERO));
         Balance closing = new Balance(closingNet.max(BigDecimal.ZERO), closingNet.negate().max(BigDecimal.ZERO));
         audit.record("FINANCIAL_ACCOUNT_STATEMENT_GENERATED", "FINANCIAL_LEDGER_REPORT", UUID.randomUUID(),
             Map.of("organisationId", organisationId.toString(), "scopeUnitId", scopeUnitId.toString(),
                 "accountId", accountId.toString(), "from", from.toString(), "to", to.toString()));
-        return new AccountStatement(scopeUnitId.toString(), account, from, to,
-            new Balance(openingNet.max(BigDecimal.ZERO), openingNet.negate().max(BigDecimal.ZERO)),
+        return new AccountStatement(scopeUnitId.toString(), account, from, to, opening,
             periodDebit, periodCredit, closing, entries);
     }
 
@@ -146,6 +182,7 @@ public class FinancialLedgerReportController {
         }
     }
 
+    public record ReportUnit(String id, String level, String code, String name) {}
     public record TrialBalance(String scopeUnitId, LocalDate asOf, List<TrialBalanceLine> lines) {}
     public record TrialBalanceLine(String accountId, String accountCode, String accountName,
         String accountType, String currency, BigDecimal totalDebits, BigDecimal totalCredits,
