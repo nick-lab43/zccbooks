@@ -22,11 +22,14 @@ public class DepositManagementController {
     private final JdbcTemplate jdbc;
     private final AuthorizationService authorization;
     private final AdminAuditService audit;
+    private final DepositSettlementLedgerJournalService settlementJournals;
 
-    public DepositManagementController(JdbcTemplate jdbc, AuthorizationService authorization, AdminAuditService audit) {
+    public DepositManagementController(JdbcTemplate jdbc, AuthorizationService authorization,
+            AdminAuditService audit, DepositSettlementLedgerJournalService settlementJournals) {
         this.jdbc = jdbc;
         this.authorization = authorization;
         this.audit = audit;
+        this.settlementJournals = settlementJournals;
     }
 
     @GetMapping("/organisations/{organisationId}/deposit-batches")
@@ -282,10 +285,13 @@ public class DepositManagementController {
         if (Math.abs(java.time.temporal.ChronoUnit.DAYS.between(depositDate, bankDate)) > 3) {
             throw new IllegalArgumentException("The bank transaction date must be within three days of the recorded deposit date.");
         }
+        UUID reconciliationId = UUID.randomUUID();
+        UUID reconciliationActor = actorId();
         jdbc.update("""
             INSERT INTO deposit_reconciliations (id, deposit_batch_id, statement_entry_id, matched_by, match_note)
             VALUES (?, ?, ?, ?, ?)
-            """, UUID.randomUUID(), batchId, request.statementEntryId(), actorId(), blankToNull(request.note()));
+            """, reconciliationId, batchId, request.statementEntryId(), reconciliationActor, blankToNull(request.note()));
+        settlementJournals.createDraftIfMapped(reconciliationId);
         BigDecimal newBankedAmount = bankedAmount.add(entry.amount());
         BigDecimal newOutstandingAmount = batch.expectedAmount().subtract(newBankedAmount);
         String newStatus = newOutstandingAmount.signum() == 0 ? "RECONCILED" : "PARTIALLY_RECONCILED";
