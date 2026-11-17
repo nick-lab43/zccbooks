@@ -1754,7 +1754,7 @@ class FinancialReportPostgresIntegrationTest {
             """, UUID.class, reversalId);
         assertEquals("DRAFT", financialJournals.journal(reversingJournalId).status());
         assertBalancedJournal(reversingJournalId, new BigDecimal("125.00"));
-        assertEquals(1, jdbc.queryForObject("""
+        assertEquals(2, jdbc.queryForObject("""
             SELECT COUNT(*) FROM finance_journal_lines reversing
             JOIN finance_journal_lines original ON original.journal_id = ?
                 AND original.account_id = reversing.account_id
