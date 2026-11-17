@@ -10,11 +10,18 @@ type Position = { currency: string; income: number; expenditure: number; netPosi
 type IncomeExpenditure = { context: { unitName: string; from: string; to: string }; positions: Position[] };
 type BudgetPerformance = { id: string; periodStart: string; periodEnd: string; unitName: string; categoryCode: string; categoryName: string; budgetAmount: number; actualAmount: number; remainingAmount: number; utilisationPercentage: number; currency: string };
 
+function toLocalDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function FinancialReports({ organisationId, authorizationHeader }: { organisationId: string; authorizationHeader: string }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [scopeUnitId, setScopeUnitId] = useState("");
-  const [from, setFrom] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10));
-  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const [from, setFrom] = useState(toLocalDateInputValue(new Date(new Date().getFullYear(), 0, 1)));
+  const [to, setTo] = useState(toLocalDateInputValue(new Date()));
   const [type, setType] = useState("CONTRIBUTION_SUMMARY");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [contributions, setContributions] = useState<Contribution[]>([]);
@@ -74,7 +81,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
   }
 
   async function download(format: "docx" | "pdf") {
-    if (!scopeUnitId || from > to) { setError("Select a valid scope and date range."); return; }
+    if (!scopeUnitId || !from || !to || from > to) { setError("Select a valid scope and date range."); return; }
     setBusy(true); setError("");
     try {
       const endpoint = format === "pdf" ? "export/pdf" : "export";
@@ -109,7 +116,7 @@ export default function FinancialReports({ organisationId, authorizationHeader }
           <option value="EXCEPTION_REGISTER">Reconciliation exceptions</option>
         </select></label>
         <label>Geographical scope<select value={scopeUnitId} onChange={e => setScopeUnitId(e.target.value)}><option value="">Select scope</option>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
-        <div className="field-pair"><label>From<input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div>
+        <div className="field-pair"><label>From<input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} /></label></div>
         {error && <div className="message error" role="alert">{error}</div>}
         <div className="field-pair"><button className="secondary-button" disabled={busy || !scopeUnitId} onClick={loadReport}>{busy ? "Working…" : "Preview report"}</button><button className="primary-button" disabled={busy || !scopeUnitId} onClick={() => download("docx")}>Download Word</button><button className="secondary-button" disabled={busy || !scopeUnitId} onClick={() => download("pdf")}>Download PDF</button></div>
       </div>
