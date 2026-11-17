@@ -68,4 +68,6 @@ V31 prevents business-header edits after submission and restricts submission, ap
 
 ## Accounting boundaries
 
-This API does not automatically create journals from exception classifications, change contribution receipts or reversals, modify deposit allocations or bank statement entries, or change existing financial reports. A journal is an independently approved accounting record. Existing source records remain unchanged.
+The Accounts & Journals workspace exposes account administration, reconciliation account mappings, balanced two-line manual draft creation, journal filtering and journal detail. The UI shows lifecycle actions only to users with the corresponding permissions; the API remains authoritative for scope and separation-of-duties enforcement.
+
+A reconciliation exception can create a linked DRAFT journal only through the explicit exception journal endpoint described above. Journal creation does not submit, approve or post the entry, resolve the exception, change contribution receipts or reversals, modify deposit allocations or bank statement entries, or alter existing financial reports. A journal is an independently approved accounting record. Existing source records remain unchanged.
