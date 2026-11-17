@@ -71,12 +71,13 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
 
   async function createAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     await run(async () => {
       await request(`/api/organisations/${organisationId}/finance-accounts`, { method: "POST", body: JSON.stringify({
         code: form.get("code"), name: form.get("name"), accountType: form.get("accountType"), currency: form.get("currency")
       }) });
-      event.currentTarget.reset();
+      formElement.reset();
     }, "Financial account created.");
   }
 
@@ -93,7 +94,8 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
 
   async function createJournal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const debit = Number(debitAmount), credit = Number(creditAmount);
     if (!Number.isFinite(debit) || !Number.isFinite(credit) || debit <= 0 || debit !== credit) {
       setError("Enter the same positive amount for the debit and credit lines.");
@@ -110,7 +112,7 @@ export default function FinancialJournals({ organisationId, authorizationHeader,
         ]
       }) });
       setDebitAmount(""); setCreditAmount("");
-      (event.currentTarget as HTMLFormElement).reset();
+      formElement.reset();
     }, "Draft journal created. It must be submitted, independently approved and posted.");
   }
 
