@@ -2665,7 +2665,9 @@ class FinancialReportPostgresIntegrationTest {
             expenseAccount, cashAccount, fixture.adminId());
 
         UUID contributionJournalId = contributionLedgerJournals.createDraftIfMapped(contributionId);
-        UUID reconciliationId = UUID.fromString(reconciliation.id());
+        UUID reconciliationId = jdbc.queryForObject(
+            "SELECT id FROM deposit_reconciliations WHERE deposit_batch_id = ?",
+            UUID.class, batchId);
         UUID depositJournalId = depositSettlementLedgerJournals.createDraftIfMapped(reconciliationId);
         UUID expenditureJournalId = expenditureLedgerJournals.createDraftIfMapped(expenseId);
         assertNotNull(contributionJournalId);
