@@ -1955,6 +1955,109 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(journalId.toString(), incomeStatement.entries().get(0).journalId());
     }
 
+
+    @Test
+    void postedContributionReversalOffsetsOriginalInTrialBalanceAndAccountStatements() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT DISTINCT a.role_id, p.permission_code
+            FROM admin_role_assignments a
+            CROSS JOIN (VALUES ('FINANCE_JOURNAL_VIEW'), ('FINANCE_JOURNAL_CREATE'),
+                               ('FINANCE_JOURNAL_APPROVE'), ('FINANCE_REVERSE'))
+                AS p(permission_code)
+            WHERE a.user_id = ?
+            ON CONFLICT DO NOTHING
+            """, fixture.adminId());
+
+        UUID cashAccount = UUID.randomUUID();
+        UUID incomeAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?),
+                   (?, ?, '4000', 'Contribution income', 'INCOME', 'ZAR', ?)
+            """, cashAccount, fixture.organisationId(), fixture.adminId(),
+            incomeAccount, fixture.organisationId(), fixture.adminId());
+        UUID contributionId = jdbc.queryForObject("""
+            SELECT id FROM contributions
+            WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'
+            """, UUID.class, fixture.organisationId());
+        UUID categoryId = jdbc.queryForObject(
+            "SELECT category_id FROM contributions WHERE id = ?", UUID.class, contributionId);
+        jdbc.update("""
+            INSERT INTO finance_contribution_account_mappings
+                (id, organisation_id, category_id, payment_method, currency,
+                 debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'CASH', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), categoryId,
+            cashAccount, incomeAccount, fixture.adminId());
+
+        authenticate(fixture);
+        UUID originalJournalId = contributionLedgerJournals.createDraftIfMapped(contributionId);
+        financialJournals.submit(originalJournalId);
+        String originalApprover = createScopedFinanceActor(fixture, "reversal.report.original.approver.");
+        authenticateAs(originalApprover);
+        financialJournals.approve(originalJournalId);
+        String originalPoster = createScopedFinanceActor(fixture, "reversal.report.original.poster.");
+        authenticateAs(originalPoster);
+        financialJournals.post(originalJournalId);
+
+        authenticate(fixture);
+        contributionController.reverseContribution(contributionId,
+            new ContributionController.ReverseContribution("Receipt was recorded incorrectly."));
+        UUID reversalId = jdbc.queryForObject(
+            "SELECT id FROM contribution_reversals WHERE contribution_id = ?", UUID.class, contributionId);
+        UUID reversingJournalId = jdbc.queryForObject("""
+            SELECT id FROM finance_journals
+            WHERE source_type = 'CONTRIBUTION_REVERSAL' AND source_id = ?
+            """, UUID.class, reversalId);
+        assertEquals("DRAFT", financialJournals.journal(reversingJournalId).status());
+
+        financialJournals.submit(reversingJournalId);
+        String reversalApprover = createScopedFinanceActor(fixture, "reversal.report.approver.");
+        authenticateAs(reversalApprover);
+        financialJournals.approve(reversingJournalId);
+        String reversalPoster = createScopedFinanceActor(fixture, "reversal.report.poster.");
+        authenticateAs(reversalPoster);
+        assertEquals("POSTED", financialJournals.post(reversingJournalId).status());
+
+        var trialBalance = ledgerReports.trialBalance(fixture.organisationId(), fixture.nyikaA(),
+            LocalDate.parse("2026-05-31"));
+        var cashLine = trialBalance.lines().stream()
+            .filter(line -> line.accountId().equals(cashAccount.toString())).findFirst().orElseThrow();
+        var incomeLine = trialBalance.lines().stream()
+            .filter(line -> line.accountId().equals(incomeAccount.toString())).findFirst().orElseThrow();
+        assertEquals(0, cashLine.totalDebits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, cashLine.totalCredits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, cashLine.balanceDebit().compareTo(BigDecimal.ZERO));
+        assertEquals(0, cashLine.balanceCredit().compareTo(BigDecimal.ZERO));
+        assertEquals(0, incomeLine.totalDebits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, incomeLine.totalCredits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, incomeLine.balanceDebit().compareTo(BigDecimal.ZERO));
+        assertEquals(0, incomeLine.balanceCredit().compareTo(BigDecimal.ZERO));
+
+        var cashStatement = ledgerReports.accountStatement(fixture.organisationId(), fixture.nyikaA(),
+            cashAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-05-31"));
+        assertEquals(0, cashStatement.periodDebits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, cashStatement.periodCredits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, cashStatement.closingBalance().debit().compareTo(BigDecimal.ZERO));
+        assertEquals(0, cashStatement.closingBalance().credit().compareTo(BigDecimal.ZERO));
+        assertEquals(2, cashStatement.entries().size());
+        assertTrue(cashStatement.entries().stream().anyMatch(entry -> entry.journalId().equals(originalJournalId.toString())));
+        assertTrue(cashStatement.entries().stream().anyMatch(entry -> entry.journalId().equals(reversingJournalId.toString())));
+
+        var incomeStatement = ledgerReports.accountStatement(fixture.organisationId(), fixture.nyikaA(),
+            incomeAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-05-31"));
+        assertEquals(0, incomeStatement.periodDebits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, incomeStatement.periodCredits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, incomeStatement.closingBalance().debit().compareTo(BigDecimal.ZERO));
+        assertEquals(0, incomeStatement.closingBalance().credit().compareTo(BigDecimal.ZERO));
+        assertEquals(2, incomeStatement.entries().size());
+        assertTrue(incomeStatement.entries().stream().anyMatch(entry -> entry.journalId().equals(originalJournalId.toString())));
+        assertTrue(incomeStatement.entries().stream().anyMatch(entry -> entry.journalId().equals(reversingJournalId.toString())));
+    }
+
     private String createScopedFinanceActor(Fixture fixture, String usernamePrefix) {
         UUID actorId = UUID.randomUUID();
         String username = usernamePrefix + actorId.toString().replace("-", "").substring(0, 12);
