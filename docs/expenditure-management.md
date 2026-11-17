@@ -21,10 +21,10 @@ Migration V17 grants capture to CENTRAL_ADMIN, NYIKA_ADMIN and FINANCIAL_OFFICER
 4. The original capturer can withdraw a draft with a mandatory reason. The record remains visible as VOIDED and is retained for audit.
 5. An administrator with approval permission reviews the submission.
 6. The creator cannot approve or reject their own expense. Rejection requires a reason.
-7. An approved expense can be marked paid by an authorised approver. A payment reference is mandatory.
+7. An approved expense can be marked paid by an authorised approver. A payment reference is mandatory. The paid transition attempts to create a balanced draft ledger journal when the organisation has an active mapping for the expenditure category.
 8. Rejected and withdrawn expenses remain in the register for audit purposes. Submitted or reviewed expenses cannot be withdrawn; they must follow the review process.
 
-The workflow records approval and payment references. It does not yet verify payment against a bank statement or payment provider.
+The workflow records approval and payment references. It does not yet verify payment against a bank statement or payment provider. A recorded payment is the source event for expenditure ledger recognition; approval alone never creates a journal.
 
 ## Financial reporting
 
@@ -50,7 +50,7 @@ The workflow records approval and payment references. It does not yet verify pay
 - Budget allocation and budget-versus-actual controls.
 - Recurring expenses, purchase orders and supplier account management.
 - Attachments for invoices, receipts or proof of payment.
-- Bank-statement matching for expense payments.
+- Bank-statement matching for expense payments. The generated expenditure journal is based on the authorised PAID transition and is not independently bank-verified.
 - Multi-stage approval thresholds, approval delegation and reversal/refund workflows.
 - Automated tax/VAT handling or foreign-exchange conversion.
 

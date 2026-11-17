@@ -31,14 +31,14 @@ The API validates that the category belongs to the organisation and is active, b
 
 Contribution and expenditure source records currently use ZAR, so this release only permits ZAR mappings.
 
-## No automatic posting in this release
+## Mapping configuration and posting controls
 
-Saving a mapping does not create a journal, change a contribution or expenditure status, settle a deposit, or affect a ledger balance.
+Saving a mapping does not itself create a journal, change an operational source status, settle a deposit, or affect a ledger balance. Source events may generate draft journals when the corresponding mapping exists.
 
 Subsequent source integration must define distinct accounting events:
 - Contribution receipt recognition, with the asset account determined by payment method.
 - Deposit settlement as a transfer between cash/clearing and bank accounts, not a second income recognition.
-- Expenditure payment recognition, without duplicating the expense when the payment is recorded.
+- Expenditure payment recognition, triggered only when an approved expenditure is recorded as PAID; approval alone is not an accounting event.
 - Reversals and refunds through explicit reversing entries linked to their original source records.
 
 Every generated journal must have a stable source identity and database-enforced idempotency. It must remain a draft until submitted, independently approved and posted through the existing journal lifecycle.
@@ -70,3 +70,17 @@ The journal uses the bank statement transaction date, the reconciled amount, the
 If a mapping is missing, bank reconciliation continues and the application records a `DEPOSIT_SETTLEMENT_LEDGER_MAPPING_MISSING` audit event. Saving the bank mapping retries journal generation for earlier reconciliations for that bank which do not yet have a settlement journal.
 
 Generated settlement journals remain `DRAFT` and require the existing independent submission, approval and posting workflow. The entry is an asset-to-asset transfer only: it does not debit or credit income and does not recognise contribution receipts a second time.
+
+
+## Expenditure payment journal generation
+
+When an authorised administrator marks an approved expenditure as paid, the same database transaction attempts to create one balanced draft journal using the organisation's expenditure category and currency mapping:
+
+- Debit the mapped expense account.
+- Credit the mapped asset account representing the cash or bank balance used for payment.
+
+The journal uses the expenditure's organisation and unit scope, amount and currency, the payment date, and the administrator who recorded payment. Its source type is `EXPENDITURE_PAYMENT` and its source ID is the expenditure ID. A partial unique index enforces at most one generated journal per expenditure payment event. The current expenditure workflow records a single full payment; partial payments are not supported by that workflow.
+
+An expenditure that is approved but not yet paid creates no journal. If the mapping is missing or either mapped account is no longer active, the payment workflow still completes and an `EXPENDITURE_LEDGER_MAPPING_MISSING` audit event is recorded. Saving or updating the category's expenditure mapping retries previously paid expenditures in that organisation/category/currency that do not yet have a journal.
+
+Generated expenditure journals remain `DRAFT`; they are not submitted, approved or posted automatically. This integration records the expense at payment time and must not be combined with a second expense-recognition entry for the same source event.
