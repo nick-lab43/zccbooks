@@ -1408,7 +1408,7 @@ class FinancialReportPostgresIntegrationTest {
             WHERE organisation_id = ? AND source_type = 'EXPENDITURE_PAYMENT' AND source_id = ?
             """, Integer.class, fixture.organisationId(), expenditureId));
 
-        assertEquals(1, jdbc.queryForObject("""
+        assertEquals(2, jdbc.queryForObject("""
             SELECT COUNT(*) FROM admin_audit_events
             WHERE target_type = 'FINANCE_JOURNAL'
               AND target_id IN (?, ?)
