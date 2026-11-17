@@ -60,6 +60,8 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired ExpenditureEvidenceController expenditureEvidence;
     @Autowired AdminController adminController;
     @Autowired FinancialJournalController financialJournals;
+    @Autowired FinancialExceptionJournalController financialExceptionJournals;
+    @Autowired ReconciliationExceptionController reconciliationExceptions;
 
     @AfterEach
     void clearAuthentication() {
@@ -1255,6 +1257,58 @@ class FinancialReportPostgresIntegrationTest {
                 'FINANCE_JOURNAL_SUBMITTED', 'FINANCE_JOURNAL_APPROVED', 'FINANCE_JOURNAL_POSTED')
             """, Integer.class, journalId);
         assertEquals(4, journalEvents);
+    }
+
+    @Test
+    void classifiedReconciliationExceptionCreatesOneMappedDraftJournal() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT DISTINCT a.role_id, p.permission_code
+            FROM admin_role_assignments a
+            CROSS JOIN (VALUES ('FINANCE_EXCEPTION'), ('FINANCE_JOURNAL_VIEW'),
+                               ('FINANCE_JOURNAL_CREATE')) AS p(permission_code)
+            WHERE a.user_id = ?
+            ON CONFLICT DO NOTHING
+            """, fixture.adminId());
+        authenticate(fixture);
+
+        UUID exceptionId = jdbc.queryForObject("""
+            SELECT id FROM reconciliation_exceptions
+            WHERE organisation_id = ? AND scope_unit_id = ?
+            ORDER BY created_at LIMIT 1
+            """, UUID.class, fixture.organisationId(), fixture.nyikaA());
+        reconciliationExceptions.updateException(exceptionId,
+            new ReconciliationExceptionController.UpdateException("UNDER_REVIEW",
+                "Bank statement confirms a bank service fee of R10.00.",
+                "BANK_FEE", new BigDecimal("10.00")));
+
+        var cash = financialJournals.createAccount(fixture.organisationId(),
+            new FinancialJournalController.CreateFinanceAccount("1000", "Cash at bank", "ASSET", "ZAR"));
+        var fees = financialJournals.createAccount(fixture.organisationId(),
+            new FinancialJournalController.CreateFinanceAccount("5100", "Bank charges", "EXPENSE", "ZAR"));
+        financialExceptionJournals.saveMapping(fixture.organisationId(),
+            new FinancialExceptionJournalController.SaveAccountMapping("BANK_FEE", "ZAR",
+                UUID.fromString(fees.getDebitAccountId()), UUID.fromString(cash.getBody().id())));
+
+        var created = financialExceptionJournals.createDraftJournal(exceptionId);
+        assertEquals(201, created.getStatusCode().value());
+        assertEquals("DRAFT", created.getBody().status());
+        assertEquals(exceptionId.toString(), created.getBody().exceptionId());
+        assertEquals(new BigDecimal("10.00"), created.getBody().amount());
+
+        var journal = financialJournals.journal(UUID.fromString(created.getBody().id()));
+        assertEquals("DRAFT", journal.status());
+        assertEquals(2, journal.lines().size());
+        assertEquals(new BigDecimal("10.00"), journal.lines().get(0).debitAmount());
+        assertEquals(new BigDecimal("10.00"), journal.lines().get(1).creditAmount());
+        assertThrows(ConflictException.class, () -> financialExceptionJournals.createDraftJournal(exceptionId));
+
+        Integer sourceLinks = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE source_type = 'RECONCILIATION_EXCEPTION' AND source_id = ?
+            """, Integer.class, exceptionId);
+        assertEquals(1, sourceLinks);
     }
 
     private void insertAuditEvent(UUID actorId, String action, String targetType,
