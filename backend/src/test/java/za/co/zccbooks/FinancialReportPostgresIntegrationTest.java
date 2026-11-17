@@ -60,6 +60,7 @@ class FinancialReportPostgresIntegrationTest {
     @Autowired ExpenditureEvidenceController expenditureEvidence;
     @Autowired AdminController adminController;
     @Autowired FinancialJournalController financialJournals;
+    @Autowired FinancialLedgerReportController ledgerReports;
     @Autowired FinancialExceptionJournalController financialExceptionJournals;
     @Autowired ReconciliationExceptionController reconciliationExceptions;
     @Autowired ContributionLedgerJournalService contributionLedgerJournals;
@@ -1568,6 +1569,102 @@ class FinancialReportPostgresIntegrationTest {
                 'CONTRIBUTION_DRAFT_JOURNAL_CREATED', 'FINANCE_JOURNAL_SUBMITTED',
                 'FINANCE_JOURNAL_APPROVED', 'FINANCE_JOURNAL_POSTED')
             """, Integer.class, journalId));
+    }
+
+    @Test
+    void postedContributionSourceJournalAppearsInTrialBalanceAndAccountStatements() {
+        Fixture fixture = fixture();
+        jdbc.update("""
+            INSERT INTO admin_role_permissions (role_id, permission_code)
+            SELECT DISTINCT a.role_id, p.permission_code
+            FROM admin_role_assignments a
+            CROSS JOIN (VALUES ('FINANCE_JOURNAL_VIEW'), ('FINANCE_JOURNAL_CREATE'),
+                               ('FINANCE_JOURNAL_APPROVE')) AS p(permission_code)
+            WHERE a.user_id = ?
+            ON CONFLICT DO NOTHING
+            """, fixture.adminId());
+
+        UUID cashAccount = UUID.randomUUID();
+        UUID incomeAccount = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO finance_accounts
+                (id, organisation_id, account_code, account_name, account_type, currency, created_by)
+            VALUES (?, ?, '1000', 'Cash on hand', 'ASSET', 'ZAR', ?),
+                   (?, ?, '4000', 'Contribution income', 'INCOME', 'ZAR', ?)
+            """, cashAccount, fixture.organisationId(), fixture.adminId(),
+            incomeAccount, fixture.organisationId(), fixture.adminId());
+        UUID contributionId = jdbc.queryForObject("""
+            SELECT id FROM contributions
+            WHERE organisation_id = ? AND receipt_number = 'RCP-A-1'
+            """, UUID.class, fixture.organisationId());
+        UUID categoryId = jdbc.queryForObject(
+            "SELECT category_id FROM contributions WHERE id = ?", UUID.class, contributionId);
+        jdbc.update("""
+            INSERT INTO finance_contribution_account_mappings
+                (id, organisation_id, category_id, payment_method, currency,
+                 debit_account_id, credit_account_id, created_by)
+            VALUES (?, ?, ?, 'CASH', 'ZAR', ?, ?, ?)
+            """, UUID.randomUUID(), fixture.organisationId(), categoryId,
+            cashAccount, incomeAccount, fixture.adminId());
+
+        authenticate(fixture);
+        UUID journalId = contributionLedgerJournals.createDraftIfMapped(contributionId);
+        assertNotNull(journalId);
+        financialJournals.submit(journalId);
+
+        String approverUsername = createScopedFinanceActor(fixture, "source.ledger.approver.");
+        authenticateAs(approverUsername);
+        financialJournals.approve(journalId);
+
+        String posterUsername = createScopedFinanceActor(fixture, "source.ledger.poster.");
+        authenticateAs(posterUsername);
+        assertEquals("POSTED", financialJournals.post(journalId).status());
+
+        var trialBalance = ledgerReports.trialBalance(fixture.organisationId(), fixture.nyikaA(),
+            LocalDate.parse("2026-05-31"));
+        var cashLine = trialBalance.lines().stream()
+            .filter(line -> line.accountId().equals(cashAccount.toString())).findFirst().orElseThrow();
+        var incomeLine = trialBalance.lines().stream()
+            .filter(line -> line.accountId().equals(incomeAccount.toString())).findFirst().orElseThrow();
+        assertEquals(0, cashLine.totalDebits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, cashLine.totalCredits().compareTo(BigDecimal.ZERO));
+        assertEquals(0, cashLine.balanceDebit().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, incomeLine.totalDebits().compareTo(BigDecimal.ZERO));
+        assertEquals(0, incomeLine.totalCredits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, incomeLine.balanceCredit().compareTo(new BigDecimal("125.00")));
+
+        var cashStatement = ledgerReports.accountStatement(fixture.organisationId(), fixture.nyikaA(),
+            cashAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-05-31"));
+        assertEquals(0, cashStatement.openingBalance().debit().compareTo(BigDecimal.ZERO));
+        assertEquals(0, cashStatement.periodDebits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, cashStatement.periodCredits().compareTo(BigDecimal.ZERO));
+        assertEquals(0, cashStatement.closingBalance().debit().compareTo(new BigDecimal("125.00")));
+        assertEquals(1, cashStatement.entries().size());
+        assertEquals(journalId.toString(), cashStatement.entries().get(0).journalId());
+
+        var incomeStatement = ledgerReports.accountStatement(fixture.organisationId(), fixture.nyikaA(),
+            incomeAccount, LocalDate.parse("2026-05-01"), LocalDate.parse("2026-05-31"));
+        assertEquals(0, incomeStatement.periodDebits().compareTo(BigDecimal.ZERO));
+        assertEquals(0, incomeStatement.periodCredits().compareTo(new BigDecimal("125.00")));
+        assertEquals(0, incomeStatement.closingBalance().credit().compareTo(new BigDecimal("125.00")));
+        assertEquals(1, incomeStatement.entries().size());
+        assertEquals(journalId.toString(), incomeStatement.entries().get(0).journalId());
+    }
+
+    private String createScopedFinanceActor(Fixture fixture, String usernamePrefix) {
+        UUID actorId = UUID.randomUUID();
+        String username = usernamePrefix + actorId.toString().replace("-", "").substring(0, 12);
+        jdbc.update("""
+            INSERT INTO admin_users (id, username, display_name, password_hash, enabled)
+            VALUES (?, ?, ?, 'not-used', TRUE)
+            """, actorId, username, usernamePrefix.contains("approver") ? "Ledger Report Approver" : "Ledger Report Poster");
+        jdbc.update("""
+            INSERT INTO admin_role_assignments (id, user_id, role_id, scope_type, organisation_id, scope_unit_id)
+            SELECT ?, ?, role_id, 'UNIT', ?, ?
+            FROM admin_role_assignments WHERE user_id = ? AND scope_unit_id = ? LIMIT 1
+            """, UUID.randomUUID(), actorId, fixture.organisationId(), fixture.nyikaA(),
+            fixture.adminId(), fixture.nyikaA());
+        return username;
     }
 
     private void assertBalancedJournal(UUID journalId, BigDecimal expectedTotal) {
