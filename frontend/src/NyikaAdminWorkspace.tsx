@@ -7,6 +7,8 @@ type Household = { id: string; code: string; name: string; cellId: string; cellN
 type HouseholdMember = { id: string; firstName: string; lastName: string; classificationId: string | null; classificationName: string | null; eliteNumber: string | null; zccAppNumber: string | null; active: boolean; relationshipLabel: string; joinedOn: string };
 type HouseholdProfile = { household: Household; members: HouseholdMember[] };
 type HouseholdCandidate = { id: string; firstName: string; lastName: string; classificationId: string | null; classificationName: string | null; eliteNumber: string | null; zccAppNumber: string | null };
+type ContributionCategory = { id: string; name: string; streamName: string; active: boolean; scopeLevels: string[] };
+type ContributionReceipt = { id: string; receiptNumber: string; memberId: string; memberName: string; categoryId: string; categoryName: string; streamName: string; scopeUnitId: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; note: string | null; capturedAt: string };
 type Member = {
   id: string; zccAppNumber: string | null; eliteNumber: string | null;
   firstName: string; lastName: string; classificationId: string | null;
@@ -29,6 +31,13 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   const [householdFilter, setHouseholdFilter] = useState("");
   const [householdFilterIds, setHouseholdFilterIds] = useState<string[] | null>(null);
   const [addHouseholdMemberIds, setAddHouseholdMemberIds] = useState<string[]>([]);
+  const [contributionCategories, setContributionCategories] = useState<ContributionCategory[]>([]);
+  const [contributions, setContributions] = useState<ContributionReceipt[]>([]);
+  const [contributionScopeId, setContributionScopeId] = useState("");
+  const [contributionMode, setContributionMode] = useState<"MEMBER" | "HOUSEHOLD">("MEMBER");
+  const [contributionMemberId, setContributionMemberId] = useState("");
+  const [contributionHouseholdId, setContributionHouseholdId] = useState("");
+  const [contributionReceipt, setContributionReceipt] = useState<ContributionReceipt | null>(null);
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [nyikaId, setNyikaId] = useState("");
   const [tabheraId, setTabheraId] = useState("");
@@ -57,14 +66,18 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
 
   async function reload() {
     if (!organisationId) return;
-    const [rows, configuredClassifications] = await Promise.all([
+    const [rows, configuredClassifications, configuredCategories] = await Promise.all([
       request<Unit[]>(`/api/organisations/${organisationId}/units`),
-      request<Classification[]>(`/api/organisations/${organisationId}/classifications`)
+      request<Classification[]>(`/api/organisations/${organisationId}/classifications`),
+      request<ContributionCategory[]>(`/api/organisations/${organisationId}/contribution-categories`)
     ]);
     const nyika = rows.find(unit => unit.level === "NYIKA" && unit.active);
     setUnits(rows);
     setClassifications(configuredClassifications.filter(item => item.active));
+    setContributionCategories(configuredCategories.filter(item => item.active));
     setNyikaId(nyika?.id ?? "");
+    setContributionScopeId(current => current && rows.some(unit => unit.id === current && unit.active)
+      ? current : (nyika?.id ?? ""));
     const tabs = rows.filter(unit => unit.level === "TABHERA" && unit.active && unit.parentId === nyika?.id);
     setTabheraId(current => tabs.some(tab => tab.id === current) ? current : tabs[0]?.id ?? "");
     if (nyika) {
@@ -75,16 +88,24 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       setMembers(memberRows);
       setHouseholds(householdRows);
     } else {
-      setMembers([]); setHouseholds([]);
+      setMembers([]); setHouseholds([]); setContributions([]);
     }
   }
 
   useEffect(() => {
     setUnits([]); setMembers([]); setClassifications([]); setSelectedIds([]); setSelectedMember(null);
     setHouseholds([]); setHouseholdProfile(null); setHouseholdCandidates([]); setHouseholdCandidateIds([]); setHouseholdFilter(""); setHouseholdFilterIds(null);
+    setContributionCategories([]); setContributions([]); setContributionScopeId(""); setContributionMemberId(""); setContributionHouseholdId(""); setContributionReceipt(null);
     setError(""); setNotice(""); setClassificationFilter(""); setCellFilter("");
     if (organisationId) reload().catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
+
+  useEffect(() => {
+    if (!organisationId || !contributionScopeId) { setContributions([]); return; }
+    request<ContributionReceipt[]>(
+      `/api/organisations/${organisationId}/contributions?scopeUnitId=${contributionScopeId}`
+    ).then(setContributions).catch((e: Error) => setError(e.message));
+  }, [organisationId, contributionScopeId, authorizationHeader]);
 
   const tabheras = units.filter(unit => unit.level === "TABHERA" && unit.active && unit.parentId === nyikaId);
   const cells = units.filter(unit => unit.level === "CELL" && unit.active);
@@ -271,6 +292,63 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     finally { setBusy(false); }
   }
 
+  function isWithinScope(cellId: string | null, scopeId: string) {
+    if (!cellId || !scopeId) return false;
+    let current = units.find(unit => unit.id === cellId);
+    while (current) {
+      if (current.id === scopeId) return true;
+      current = current.parentId ? units.find(unit => unit.id === current?.parentId) : undefined;
+    }
+    return false;
+  }
+
+  const selectedContributionScope = units.find(unit => unit.id === contributionScopeId);
+  const contributionScopeUnits = units.filter(unit => unit.active
+    && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)
+    && isWithinScope(unit.id, nyikaId));
+  const applicableContributionCategories = contributionCategories.filter(category =>
+    selectedContributionScope && category.scopeLevels.includes(selectedContributionScope.level));
+  const eligibleContributionMembers = members.filter(member => member.active
+    && isWithinScope(member.cellId, contributionScopeId));
+  const eligibleContributionHouseholds = households.filter(household =>
+    !!household.headMemberId && isWithinScope(household.cellId, contributionScopeId));
+
+  async function captureContribution(event: FormEvent<HTMLFormElement>) {
+    const form = event.currentTarget;
+    await submit(event, async data => {
+      if (!contributionScopeId) throw new Error("Select a financial scope.");
+      if (!applicableContributionCategories.length) throw new Error("Central Administration has not configured an active category for this financial level.");
+      const memberId = contributionMode === "MEMBER"
+        ? contributionMemberId
+        : (households.find(item => item.id === contributionHouseholdId)?.headMemberId ?? "");
+      if (!memberId) throw new Error(contributionMode === "HOUSEHOLD"
+        ? "Select a household with an active designated household head."
+        : "Select a member.");
+      const result = await request<ContributionReceipt>(`/api/organisations/${organisationId}/contributions`, {
+        method: "POST",
+        body: JSON.stringify({
+          memberId,
+          householdId: contributionMode === "HOUSEHOLD" ? contributionHouseholdId : null,
+          categoryId: data.get("categoryId"),
+          scopeUnitId: contributionScopeId,
+          amount: data.get("amount"),
+          contributionDate: data.get("contributionDate"),
+          paymentMethod: data.get("paymentMethod"),
+          paymentReference: data.get("paymentReference"),
+          note: data.get("note"),
+          idempotencyKey: crypto.randomUUID()
+        })
+      });
+      setContributionReceipt(result);
+      const rows = await request<ContributionReceipt[]>(
+        `/api/organisations/${organisationId}/contributions?scopeUnitId=${contributionScopeId}`
+      );
+      setContributions(rows);
+      setContributionMemberId(""); setContributionHouseholdId(""); form.reset();
+      setNotice(`Contribution recorded. Receipt ${result.receiptNumber} issued.`);
+    });
+  }
+
   async function changeHouseholdFilter(id: string) {
     setHouseholdFilter(id); setHouseholdFilterIds(null);
     if (!id) return;
@@ -392,8 +470,33 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       </section>}
     </section>
 
+
+    <section className="nyika-card nyika-contributions">
+      <div className="nyika-register-heading"><div><span className="nyika-eyebrow">FINANCIAL WORKSPACE</span><h3>Capture contributions</h3><p>Record a contribution for an individual member or a household. Only active categories configured by Central Administration are available.</p></div><span className="nyika-register-count">{contributions.length} RECENT RECORDS</span></div>
+      <form className="form-stack nyika-contribution-form" onSubmit={captureContribution}>
+        <label>Financial scope<select value={contributionScopeId} onChange={e => { setContributionScopeId(e.target.value); setContributionMemberId(""); setContributionHouseholdId(""); setContributionReceipt(null); }} required><option value="">Select authorised scope</option>{contributionScopeUnits.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
+        <div className="nyika-contribution-mode"><button type="button" className={contributionMode === "MEMBER" ? "primary-button" : "secondary-button"} onClick={() => { setContributionMode("MEMBER"); setContributionHouseholdId(""); }}>Individual member</button><button type="button" className={contributionMode === "HOUSEHOLD" ? "primary-button" : "secondary-button"} onClick={() => { setContributionMode("HOUSEHOLD"); setContributionMemberId(""); }}>Household</button></div>
+        {contributionMode === "MEMBER" ? <label>Member<select value={contributionMemberId} onChange={e => setContributionMemberId(e.target.value)} required disabled={!contributionScopeId}><option value="">Select active member</option>{eligibleContributionMembers.map(member => <option key={member.id} value={member.id}>{member.lastName}, {member.firstName}{member.eliteNumber ? ` · Elite ${member.eliteNumber}` : ""}</option>)}</select></label>
+          : <label>Household<select value={contributionHouseholdId} onChange={e => setContributionHouseholdId(e.target.value)} required disabled={!contributionScopeId}><option value="">Select household with designated head</option>{eligibleContributionHouseholds.map(household => <option key={household.id} value={household.id}>{household.name} · Head: {household.headMemberName}</option>)}</select><small className="nyika-form-hint">The designated household head is retained as the member attribution for the existing finance ledger. The receipt and contribution register identify the household.</small></label>}
+        <label>Contribution category<select name="categoryId" required defaultValue="" disabled={!applicableContributionCategories.length}><option value="">Select configured category</option>{applicableContributionCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {category.streamName}</option>)}</select></label>
+        <div className="field-pair"><label>Amount (ZAR)<input name="amount" type="number" min="0.01" step="0.01" required placeholder="0.00" /></label><label>Contribution date<input name="contributionDate" type="date" required defaultValue={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)} /></label></div>
+        <div className="field-pair"><label>Payment method<select name="paymentMethod" defaultValue="CASH"><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CARD">Card</option><option value="MOBILE_MONEY">Mobile money</option><option value="OTHER">Other</option></select></label><label>Payment reference<input name="paymentReference" maxLength={120} placeholder="Optional reference" /></label></div>
+        <label>Note <span className="nyika-optional">(optional)</span><input name="note" maxLength={500} placeholder="Additional information" /></label>
+        {!contributionCategories.length && <p className="nyika-form-hint">No contribution categories are configured. Central Administration must configure categories and scope levels first.</p>}
+        {contributionCategories.length > 0 && selectedContributionScope && !applicableContributionCategories.length && <p className="nyika-form-hint">No active categories are configured for the selected {selectedContributionScope.level.toLowerCase()} scope.</p>}
+        <button className="primary-button" disabled={busy || !contributionScopeId || !applicableContributionCategories.length || (contributionMode === "MEMBER" ? !contributionMemberId : !contributionHouseholdId)}>Post contribution and issue receipt</button>
+      </form>
+      {contributionReceipt && <div className="nyika-contribution-receipt" role="status"><div><span className="nyika-eyebrow">RECEIPT ISSUED</span><strong>{contributionReceipt.receiptNumber}</strong><span>{contributionReceipt.memberName} · {contributionReceipt.categoryName}</span><b>{contributionReceipt.currency} {Number(contributionReceipt.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b><small>{contributionReceipt.contributionDate} · {contributionReceipt.paymentMethod.replace(/_/g, " ")}</small></div><button className="secondary-button" type="button" onClick={() => window.print()}>Print receipt</button></div>}
+      <div className="nyika-contribution-history"><div className="nyika-register-heading"><div><h4>Contribution history</h4><p>Posted contributions in the selected financial scope. Reversed receipts are excluded from this active history.</p></div></div>
+        <div className="table-wrap"><table><thead><tr><th>RECEIPT / DATE</th><th>CONTRIBUTOR</th><th>CATEGORY</th><th>AMOUNT</th><th>PAYMENT</th></tr></thead><tbody>
+          {contributions.slice(0, 15).map(item => <tr key={item.id}><td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate}</small></td><td>{item.memberName}</td><td>{item.categoryName}</td><td>{item.currency} {Number(item.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td>{item.paymentMethod.replace(/_/g, " ")}</td></tr>)}
+          {!contributions.length && <tr><td colSpan={5} className="empty-table">No contributions have been recorded in this scope.</td></tr>}
+        </tbody></table></div>
+      </div>
+    </section>
+
     <section className="nyika-next-step">
-      <div><span className="nyika-eyebrow">NEXT IN YOUR WORKSPACE</span><h3>Households and contributions</h3><p>Household grouping, surname suggestions and member contribution capture are the next workflow milestones.</p></div>
+      <div><span className="nyika-eyebrow">NEXT IN YOUR WORKSPACE</span><h3>Financial reporting</h3><p>Contribution summaries by period, category, Cell and household are the next reporting milestone.</p></div>
       <span className="nyika-next-status">UP NEXT</span>
     </section>
   </div>;

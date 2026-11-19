@@ -57,7 +57,17 @@ public class ContributionController {
                    EXISTS (
                      SELECT 1 FROM contribution_category_scope_levels sl
                      WHERE sl.category_id = c.id AND sl.scope_level = u.level
-                   ) AS category_allows_scope
+                   ) AS category_allows_scope,
+                   (?::uuid IS NULL OR EXISTS (
+                     SELECT 1
+                     FROM households h
+                     JOIN member_household_memberships hm
+                       ON hm.household_id = h.id AND hm.organisation_id = h.organisation_id
+                     WHERE h.id = ?::uuid AND h.organisation_id = m.organisation_id
+                       AND h.cell_id = m.cell_id AND h.active = TRUE
+                       AND h.household_head_member_id = m.id
+                       AND hm.member_id = m.id AND hm.valid_to IS NULL
+                   )) AS household_matches
             FROM members m
             JOIN contribution_categories c ON c.id = ?
             JOIN financial_streams s ON s.id = c.stream_id AND s.organisation_id = c.organisation_id
@@ -70,9 +80,11 @@ public class ContributionController {
                 rs.getObject("category_id", UUID.class), rs.getObject("stream_id", UUID.class),
                 rs.getBoolean("category_active"), rs.getBoolean("stream_active"),
                 rs.getString("scope_level"), rs.getBoolean("scope_active"),
-                rs.getBoolean("scope_contains_member"), rs.getBoolean("category_allows_scope")),
+                rs.getBoolean("scope_contains_member"), rs.getBoolean("category_allows_scope"),
+                rs.getBoolean("household_matches")),
             request.scopeUnitId(), request.categoryId(), request.scopeUnitId(),
-            request.memberId(), organisationId, organisationId, organisationId, organisationId)
+            request.householdId(), request.householdId(), request.memberId(), organisationId,
+            organisationId, organisationId, organisationId)
             .stream().findFirst().orElseThrow(() ->
                 new ResourceNotFoundException("Member, category or geographical scope was not found in this organisation."));
 
@@ -82,6 +94,8 @@ public class ContributionController {
         if (!context.scopeActive()) throw new ConflictException("Contributions cannot be recorded against an inactive geographical unit.");
         if (!context.scopeContainsMember()) throw new IllegalArgumentException("The selected financial scope must contain the member's assigned Cell.");
         if (!context.categoryAllowsScope()) throw new IllegalArgumentException("The category is not configured for the selected geographical level.");
+        if (!context.householdMatches()) throw new IllegalArgumentException(
+            "Household contributions require an active household in this Cell and its active designated household head.");
 
         jdbc.update("""
             INSERT INTO financial_receipt_sequences (organisation_id, next_number)
@@ -93,12 +107,14 @@ public class ContributionController {
             """, Long.class, organisationId);
 
         ContributionDto existing = jdbc.query("""
-            SELECT c.id, c.receipt_number, c.member_id, m.first_name, m.last_name,
+            SELECT c.id, c.receipt_number, c.member_id,
+                   COALESCE(h.name, m.first_name || ' ' || m.last_name) AS contributor_name,
                    c.category_id, cat.name AS category_name, c.stream_id, fs.name AS stream_name,
                    c.scope_unit_id, u.name AS scope_name, c.amount, c.currency,
                    c.contribution_date, c.payment_method, c.payment_reference, c.note, c.captured_at
             FROM contributions c
             JOIN members m ON m.id = c.member_id
+            LEFT JOIN households h ON h.id = c.household_id AND h.organisation_id = c.organisation_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             JOIN financial_streams fs ON fs.id = c.stream_id
             JOIN organisational_units u ON u.id = c.scope_unit_id
@@ -126,14 +142,14 @@ public class ContributionController {
         UUID contributionId = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO contributions
-                (id, organisation_id, member_id, category_id, stream_id, scope_unit_id,
+                (id, organisation_id, member_id, household_id, category_id, stream_id, scope_unit_id,
                  receipt_number, receipt_sequence, amount, currency, contribution_date,
                  payment_method, payment_reference, note, idempotency_key, captured_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ZAR', ?, ?, ?, ?, ?, ?)
-            """, contributionId, organisationId, request.memberId(), request.categoryId(),
-            context.streamId(), request.scopeUnitId(), receiptNumber, sequence, request.amount(),
-            request.contributionDate(), request.paymentMethod(), blankToNull(request.paymentReference()),
-            blankToNull(request.note()), request.idempotencyKey(), actorId);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ZAR', ?, ?, ?, ?, ?, ?)
+            """, contributionId, organisationId, request.memberId(), request.householdId(),
+            request.categoryId(), context.streamId(), request.scopeUnitId(), receiptNumber,
+            sequence, request.amount(), request.contributionDate(), request.paymentMethod(),
+            blankToNull(request.paymentReference()), blankToNull(request.note()), request.idempotencyKey(), actorId);
         if ("CASH".equals(request.paymentMethod())) {
             jdbc.update("""
                 INSERT INTO contribution_deposit_followups (id, contribution_id)
@@ -143,6 +159,7 @@ public class ContributionController {
         ledgerJournals.createDraftIfMapped(contributionId);
         audit.record("CONTRIBUTION_POSTED", "CONTRIBUTION", contributionId,
             Map.of("organisationId", organisationId.toString(), "memberId", request.memberId().toString(),
+                "householdId", request.householdId() == null ? "" : request.householdId().toString(),
                 "categoryId", request.categoryId().toString(), "scopeUnitId", request.scopeUnitId().toString(),
                 "receiptNumber", receiptNumber, "amount", request.amount().toPlainString(),
                 "currency", "ZAR", "contributionDate", request.contributionDate().toString()));
@@ -328,12 +345,14 @@ public class ContributionController {
             throw new IllegalArgumentException("The end date cannot be before the start date.");
         }
         return jdbc.query("""
-            SELECT c.id, c.receipt_number, c.member_id, m.first_name, m.last_name,
+            SELECT c.id, c.receipt_number, c.member_id,
+                   COALESCE(h.name, m.first_name || ' ' || m.last_name) AS contributor_name,
                    c.category_id, cat.name AS category_name, c.stream_id, fs.name AS stream_name,
                    c.scope_unit_id, u.name AS scope_name, c.amount, c.currency,
                    c.contribution_date, c.payment_method, c.payment_reference, c.note, c.captured_at
             FROM contributions c
             JOIN members m ON m.id = c.member_id
+            LEFT JOIN households h ON h.id = c.household_id AND h.organisation_id = c.organisation_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             JOIN financial_streams fs ON fs.id = c.stream_id
             JOIN organisational_units u ON u.id = c.scope_unit_id
@@ -360,31 +379,34 @@ public class ContributionController {
             SELECT COUNT(*)
             FROM contributions c
             JOIN members m ON m.id = c.member_id
+            LEFT JOIN households h ON h.id = c.household_id AND h.organisation_id = c.organisation_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             WHERE c.organisation_id = ? AND c.scope_unit_id = ?
               AND (? = '' OR LOWER(c.receipt_number) LIKE ?
-                   OR LOWER(m.first_name || ' ' || m.last_name) LIKE ?
+                   OR LOWER(COALESCE(h.name, m.first_name || ' ' || m.last_name)) LIKE ?
                    OR LOWER(cat.name) LIKE ?)
             """, Long.class, organisationId, scopeUnitId, term, pattern, pattern, pattern);
         List<ContributionRegisterDto> rows = jdbc.query("""
-            SELECT c.id, c.receipt_number, m.first_name, m.last_name, cat.name AS category_name,
-                   c.amount, c.currency, c.contribution_date, c.payment_method, c.captured_at,
-                   r.id AS reversal_id, r.reason AS reversal_reason, r.reversed_at,
-                   au.display_name AS reversed_by
+            SELECT c.id, c.receipt_number,
+                   COALESCE(h.name, m.first_name || ' ' || m.last_name) AS contributor_name,
+                   cat.name AS category_name, c.amount, c.currency, c.contribution_date,
+                   c.payment_method, c.captured_at, r.id AS reversal_id,
+                   r.reason AS reversal_reason, r.reversed_at, au.display_name AS reversed_by
             FROM contributions c
             JOIN members m ON m.id = c.member_id
+            LEFT JOIN households h ON h.id = c.household_id AND h.organisation_id = c.organisation_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             LEFT JOIN contribution_reversals r ON r.contribution_id = c.id
             LEFT JOIN admin_users au ON au.id = r.reversed_by
             WHERE c.organisation_id = ? AND c.scope_unit_id = ?
               AND (? = '' OR LOWER(c.receipt_number) LIKE ?
-                   OR LOWER(m.first_name || ' ' || m.last_name) LIKE ?
+                   OR LOWER(COALESCE(h.name, m.first_name || ' ' || m.last_name)) LIKE ?
                    OR LOWER(cat.name) LIKE ?)
             ORDER BY c.contribution_date DESC, c.captured_at DESC, c.id DESC
             LIMIT ? OFFSET ?
             """, (rs, n) -> new ContributionRegisterDto(
                 rs.getObject("id", UUID.class).toString(), rs.getString("receipt_number"),
-                rs.getString("first_name") + " " + rs.getString("last_name"),
+                rs.getString("contributor_name"),
                 rs.getString("category_name"), rs.getBigDecimal("amount"), rs.getString("currency"),
                 rs.getDate("contribution_date").toLocalDate().toString(), rs.getString("payment_method"),
                 rs.getTimestamp("captured_at").toInstant().toString(),
@@ -402,12 +424,14 @@ public class ContributionController {
             @RequestParam UUID scopeUnitId) {
         authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
         return jdbc.query("""
-            SELECT c.id, c.receipt_number, c.member_id, m.first_name, m.last_name,
+            SELECT c.id, c.receipt_number, c.member_id,
+                   COALESCE(h.name, m.first_name || ' ' || m.last_name) AS contributor_name,
                    c.category_id, cat.name AS category_name, c.stream_id, fs.name AS stream_name,
                    c.scope_unit_id, u.name AS scope_name, c.amount, c.currency,
                    c.contribution_date, c.payment_method, c.payment_reference, c.note, c.captured_at
             FROM contributions c
             JOIN members m ON m.id = c.member_id
+            LEFT JOIN households h ON h.id = c.household_id AND h.organisation_id = c.organisation_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             JOIN financial_streams fs ON fs.id = c.stream_id
             JOIN organisational_units u ON u.id = c.scope_unit_id
@@ -495,11 +519,13 @@ public class ContributionController {
         authorization.requireUnitPermission("FINANCE_VIEW", scopeUnitId);
         return jdbc.query("""
             SELECT f.id, f.status, f.note, f.created_at, c.id AS contribution_id,
-                   c.receipt_number, m.first_name, m.last_name, cat.name AS category_name,
-                   c.amount, c.currency, c.contribution_date
+                   c.receipt_number,
+                   COALESCE(h.name, m.first_name || ' ' || m.last_name) AS contributor_name,
+                   cat.name AS category_name, c.amount, c.currency, c.contribution_date
             FROM contribution_deposit_followups f
             JOIN contributions c ON c.id = f.contribution_id
             JOIN members m ON m.id = c.member_id
+            LEFT JOIN households h ON h.id = c.household_id AND h.organisation_id = c.organisation_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             WHERE c.organisation_id = ? AND c.scope_unit_id = ?
               AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
@@ -508,7 +534,7 @@ public class ContributionController {
             """, (rs, n) -> new DepositFollowupDto(
                 rs.getObject("id", UUID.class).toString(), rs.getString("status"),
                 rs.getString("note"), rs.getString("receipt_number"),
-                rs.getString("first_name") + " " + rs.getString("last_name"),
+                rs.getString("contributor_name"),
                 rs.getString("category_name"), rs.getBigDecimal("amount"),
                 rs.getString("currency"), rs.getDate("contribution_date").toLocalDate().toString()),
             organisationId, scopeUnitId);
@@ -575,12 +601,14 @@ public class ContributionController {
 
     private ContributionDto requireContribution(UUID id) {
         return jdbc.query("""
-            SELECT c.id, c.receipt_number, c.member_id, m.first_name, m.last_name,
+            SELECT c.id, c.receipt_number, c.member_id,
+                   COALESCE(h.name, m.first_name || ' ' || m.last_name) AS contributor_name,
                    c.category_id, cat.name AS category_name, c.stream_id, fs.name AS stream_name,
                    c.scope_unit_id, u.name AS scope_name, c.amount, c.currency,
                    c.contribution_date, c.payment_method, c.payment_reference, c.note, c.captured_at
             FROM contributions c
             JOIN members m ON m.id = c.member_id
+            LEFT JOIN households h ON h.id = c.household_id AND h.organisation_id = c.organisation_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             JOIN financial_streams fs ON fs.id = c.stream_id
             JOIN organisational_units u ON u.id = c.scope_unit_id
@@ -592,7 +620,7 @@ public class ContributionController {
     private ContributionDto mapContribution(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new ContributionDto(rs.getObject("id", UUID.class).toString(),
             rs.getString("receipt_number"), rs.getObject("member_id", UUID.class).toString(),
-            rs.getString("first_name") + " " + rs.getString("last_name"),
+            rs.getString("contributor_name"),
             rs.getObject("category_id", UUID.class).toString(), rs.getString("category_name"),
             rs.getObject("stream_id", UUID.class).toString(), rs.getString("stream_name"),
             rs.getObject("scope_unit_id", UUID.class).toString(), rs.getString("scope_name"),
@@ -628,9 +656,9 @@ public class ContributionController {
         BigDecimal amount, String reason, String reversedBy, String reversedAt) {}
     private record ContributionForReversal(UUID id, UUID scopeUnitId, UUID organisationId,
         String receiptNumber, BigDecimal amount) {}
-    public record CaptureContribution(@NotNull UUID memberId, @NotNull UUID categoryId,
+    public record CaptureContribution(@NotNull UUID memberId, UUID householdId, @NotNull UUID categoryId,
         @NotNull UUID scopeUnitId, @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal amount,
-        @NotNull LocalDate contributionDate, @NotBlank String paymentMethod,
+        @NotNull LocalDate contributionDate, @NotBlank @Pattern(regexp = "CASH|BANK_TRANSFER|CARD|MOBILE_MONEY|OTHER") String paymentMethod,
         @Size(max = 120) String paymentReference, @Size(max = 500) String note,
         @NotBlank @Size(max = 100) String idempotencyKey) {}
     public record ContributionDto(String id, String receiptNumber, String memberId, String memberName,
@@ -642,5 +670,6 @@ public class ContributionController {
         BigDecimal percentageAchieved, String currency) {}
     private record ContributionContext(UUID memberId, UUID organisationId, UUID cellId, boolean memberActive,
         UUID categoryId, UUID streamId, boolean categoryActive, boolean streamActive,
-        String scopeLevel, boolean scopeActive, boolean scopeContainsMember, boolean categoryAllowsScope) {}
+        String scopeLevel, boolean scopeActive, boolean scopeContainsMember, boolean categoryAllowsScope,
+        boolean householdMatches) {}
 }
