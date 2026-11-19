@@ -891,3 +891,20 @@ input, select { border-radius: 5px !important; }
 .nyika-household-add-list > small { color: #7c8997; font-size: 10px; }
 @media(max-width:850px) { .nyika-household-grid { grid-template-columns: 1fr; } }
 @media(max-width:600px) { .nyika-household-head { align-items: stretch; flex-direction: column; } .nyika-household-head label { min-width: 0; } .nyika-household-row { align-items: flex-start; } }
+
+
+/* Nyika contribution capture */
+.nyika-contributions { display: grid; gap: 16px; }
+.nyika-contribution-form { max-width: 760px; padding: 16px; border: 1px solid #d1d9e1; background: #f0f3f6; }
+.nyika-contribution-mode { display: flex; flex-wrap: wrap; gap: 8px; }
+.nyika-contribution-mode button { min-width: 150px; }
+.nyika-form-hint { margin: 0; color: #6f7f90; font-size: 10px; line-height: 1.5; }
+.nyika-contribution-receipt { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px; border: 1px solid #b8c9d8; background: #eaf0f5; }
+.nyika-contribution-receipt > div { display: grid; gap: 5px; }
+.nyika-contribution-receipt strong { color: #29445f; font-size: 15px; letter-spacing: .04em; }
+.nyika-contribution-receipt span:not(.nyika-eyebrow) { color: #53677d; font-size: 11px; }
+.nyika-contribution-receipt b { color: #233d58; font-size: 18px; }
+.nyika-contribution-receipt small { color: #748294; font-size: 9px; }
+.nyika-contribution-history { display: grid; gap: 10px; }
+.nyika-contribution-history h4 { margin: 0; color: #29445f; font-size: 13px; }
+@media(max-width:600px) { .nyika-contribution-receipt { align-items: flex-start; flex-direction: column; } .nyika-contribution-mode button { flex: 1; min-width: 0; } }
