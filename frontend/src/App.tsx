@@ -267,10 +267,10 @@ function MainApp() {
         <div className="masthead-brand"><img className="brand-logo" src="/zcc-star-logo.png" alt="Zion Christian Church star" /><div><strong>ZCC BOOKS</strong><small>NYIKA ADMINISTRATION</small></div></div>
         <div className="masthead-right"><span>{currentAdmin?.displayName ?? "NYIKA ADMINISTRATOR"}</span><button className="logout-button" onClick={logout}>SIGN OUT</button><span className="system-state">SECURE SESSION</span></div>
       </header>
-      <main className="nyika-app-main">
+      <div className="nyika-app-main">
         <NyikaAdminWorkspace organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />
         <footer className="system-footer"><span>ZCC BOOKS · NYIKA WORKSPACE</span><span>ACCESS LIMITED TO YOUR ASSIGNED NYIKA</span></footer>
-      </main>
+      </div>
     </main>
   );
 
