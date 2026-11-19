@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import OrganisationalHierarchy from "./OrganisationalHierarchy";
+import NyikaAdminWorkspace from "./NyikaAdminWorkspace";
 import CellMembership from "./CellMembership";
 import MemberAppointments from "./MemberAppointments";
 import MembershipReports from "./MembershipReports";
@@ -252,6 +253,24 @@ function MainApp() {
         <form onSubmit={login} className="form-stack"><label>Username<input name="username" autoComplete="username" required /></label><label>Password<input name="password" type="password" autoComplete="current-password" required /></label><button className="primary-button">Sign in</button></form>
         <div className="login-footnote">Access is controlled by administrator roles and assigned geographical scope.</div>
       </section>
+    </main>
+  );
+
+  const isNyikaAdministrator = !!currentAdmin
+    && currentAdmin.permissions.includes("ORG_MANAGE")
+    && currentAdmin.permissions.includes("MEMBERS_VIEW")
+    && !currentAdmin.permissions.includes("ADMIN_MANAGE");
+
+  if (isNyikaAdministrator) return (
+    <main className="system">
+      <header className="masthead">
+        <div className="masthead-brand"><img className="brand-logo" src="/zcc-star-logo.png" alt="Zion Christian Church star" /><div><strong>ZCC BOOKS</strong><small>NYIKA ADMINISTRATION</small></div></div>
+        <div className="masthead-right"><span>{currentAdmin?.displayName ?? "NYIKA ADMINISTRATOR"}</span><button className="logout-button" onClick={logout}>SIGN OUT</button><span className="system-state">SECURE SESSION</span></div>
+      </header>
+      <div className="nyika-app-main">
+        <NyikaAdminWorkspace organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />
+        <footer className="system-footer"><span>ZCC BOOKS · NYIKA WORKSPACE</span><span>ACCESS LIMITED TO YOUR ASSIGNED NYIKA</span></footer>
+      </div>
     </main>
   );
 
