@@ -490,17 +490,18 @@ public class FinancialReportController {
     @GetMapping(value = "/export/pdf", produces = "application/pdf")
     public ResponseEntity<byte[]> exportPdf(@PathVariable UUID organisationId, @RequestParam UUID scopeUnitId,
             @RequestParam LocalDate from, @RequestParam LocalDate to,
-            @RequestParam(defaultValue = "CONTRIBUTION_SUMMARY") String type) throws IOException {
+            @RequestParam(defaultValue = "CONTRIBUTION_SUMMARY") String type,
+            @RequestParam(defaultValue = "CATEGORY") String groupBy) throws IOException {
         ReportContext context = context(organisationId, scopeUnitId, from, to);
         if (!List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER", "DEPOSIT_REGISTER",
-                "EXPENDITURE_REGISTER", "INCOME_EXPENDITURE", "BUDGET_PERFORMANCE", "EXCEPTION_REGISTER").contains(type))
+                "EXPENDITURE_REGISTER", "INCOME_EXPENDITURE", "BUDGET_PERFORMANCE", "EXCEPTION_REGISTER", "CONTRIBUTION_BREAKDOWN").contains(type))
             throw new IllegalArgumentException("Unsupported report type.");
 
         List<String> headers;
         List<String[]> rows = new java.util.ArrayList<>();
         if (type.equals("CONTRIBUTION_BREAKDOWN")) {
             headers = List.of("Group", "Transactions", "Currency", "Total");
-            for (ContributionBreakdownLine item : contributionBreakdown(organisationId, scopeUnitId, from, to, "CATEGORY"))
+            for (ContributionBreakdownLine item : contributionBreakdown(organisationId, scopeUnitId, from, to, groupBy))
                 rows.add(new String[] { item.groupName(), Long.toString(item.contributionCount()),
                     item.currency(), item.totalAmount().toPlainString() });
         } else if (type.equals("CONTRIBUTION_SUMMARY")) {
