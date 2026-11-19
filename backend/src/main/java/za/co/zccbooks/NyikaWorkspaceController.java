@@ -43,7 +43,7 @@ public class NyikaWorkspaceController {
             FROM members m
             LEFT JOIN organisational_units cell ON cell.id = m.cell_id
             WHERE m.organisation_id = ?
-              AND (m.nyika_id = ? OR m.cell_id IN (SELECT id FROM descendants))
+              AND ((m.cell_id IS NULL AND m.nyika_id = ?) OR m.cell_id IN (SELECT id FROM descendants))
               AND m.branch_id IS NULL
               AND (? = '' OR m.first_name ILIKE ? OR m.last_name ILIKE ?
                    OR COALESCE(m.zcc_app_number, '') ILIKE ?)
