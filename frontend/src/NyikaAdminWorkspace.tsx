@@ -37,6 +37,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   const [contributionMode, setContributionMode] = useState<"MEMBER" | "HOUSEHOLD">("MEMBER");
   const [contributionMemberId, setContributionMemberId] = useState("");
   const [contributionHouseholdId, setContributionHouseholdId] = useState("");
+  const [contributionCategoryId, setContributionCategoryId] = useState("");
   const [contributionReceipt, setContributionReceipt] = useState<ContributionReceipt | null>(null);
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [nyikaId, setNyikaId] = useState("");
@@ -95,7 +96,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   useEffect(() => {
     setUnits([]); setMembers([]); setClassifications([]); setSelectedIds([]); setSelectedMember(null);
     setHouseholds([]); setHouseholdProfile(null); setHouseholdCandidates([]); setHouseholdCandidateIds([]); setHouseholdFilter(""); setHouseholdFilterIds(null);
-    setContributionCategories([]); setContributions([]); setContributionScopeId(""); setContributionMemberId(""); setContributionHouseholdId(""); setContributionReceipt(null);
+    setContributionCategories([]); setContributions([]); setContributionScopeId(""); setContributionMemberId(""); setContributionHouseholdId(""); setContributionCategoryId(""); setContributionReceipt(null);
     setError(""); setNotice(""); setClassificationFilter(""); setCellFilter("");
     if (organisationId) reload().catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
@@ -297,7 +298,8 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     let current = units.find(unit => unit.id === cellId);
     while (current) {
       if (current.id === scopeId) return true;
-      current = current.parentId ? units.find(unit => unit.id === current?.parentId) : undefined;
+      const parentId = current.parentId;
+      current = parentId ? units.find(unit => unit.id === parentId) : undefined;
     }
     return false;
   }
@@ -329,7 +331,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         body: JSON.stringify({
           memberId,
           householdId: contributionMode === "HOUSEHOLD" ? contributionHouseholdId : null,
-          categoryId: data.get("categoryId"),
+          categoryId: contributionCategoryId,
           scopeUnitId: contributionScopeId,
           amount: data.get("amount"),
           contributionDate: data.get("contributionDate"),
@@ -478,13 +480,13 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         <div className="nyika-contribution-mode"><button type="button" className={contributionMode === "MEMBER" ? "primary-button" : "secondary-button"} onClick={() => { setContributionMode("MEMBER"); setContributionHouseholdId(""); }}>Individual member</button><button type="button" className={contributionMode === "HOUSEHOLD" ? "primary-button" : "secondary-button"} onClick={() => { setContributionMode("HOUSEHOLD"); setContributionMemberId(""); }}>Household</button></div>
         {contributionMode === "MEMBER" ? <label>Member<select value={contributionMemberId} onChange={e => setContributionMemberId(e.target.value)} required disabled={!contributionScopeId}><option value="">Select active member</option>{eligibleContributionMembers.map(member => <option key={member.id} value={member.id}>{member.lastName}, {member.firstName}{member.eliteNumber ? ` · Elite ${member.eliteNumber}` : ""}</option>)}</select></label>
           : <label>Household<select value={contributionHouseholdId} onChange={e => setContributionHouseholdId(e.target.value)} required disabled={!contributionScopeId}><option value="">Select household with designated head</option>{eligibleContributionHouseholds.map(household => <option key={household.id} value={household.id}>{household.name} · Head: {household.headMemberName}</option>)}</select><small className="nyika-form-hint">The designated household head is retained as the member attribution for the existing finance ledger. The receipt and contribution register identify the household.</small></label>}
-        <label>Contribution category<select name="categoryId" required defaultValue="" disabled={!applicableContributionCategories.length}><option value="">Select configured category</option>{applicableContributionCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {category.streamName}</option>)}</select></label>
+        <label>Contribution category<select name="categoryId" value={contributionCategoryId} onChange={e => setContributionCategoryId(e.target.value)} required disabled={!applicableContributionCategories.length}><option value="">Select configured category</option>{applicableContributionCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {category.streamName}</option>)}</select></label>
         <div className="field-pair"><label>Amount (ZAR)<input name="amount" type="number" min="0.01" step="0.01" required placeholder="0.00" /></label><label>Contribution date<input name="contributionDate" type="date" required defaultValue={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)} /></label></div>
         <div className="field-pair"><label>Payment method<select name="paymentMethod" defaultValue="CASH"><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CARD">Card</option><option value="MOBILE_MONEY">Mobile money</option><option value="OTHER">Other</option></select></label><label>Payment reference<input name="paymentReference" maxLength={120} placeholder="Optional reference" /></label></div>
         <label>Note <span className="nyika-optional">(optional)</span><input name="note" maxLength={500} placeholder="Additional information" /></label>
         {!contributionCategories.length && <p className="nyika-form-hint">No contribution categories are configured. Central Administration must configure categories and scope levels first.</p>}
         {contributionCategories.length > 0 && selectedContributionScope && !applicableContributionCategories.length && <p className="nyika-form-hint">No active categories are configured for the selected {selectedContributionScope.level.toLowerCase()} scope.</p>}
-        <button className="primary-button" disabled={busy || !contributionScopeId || !applicableContributionCategories.length || (contributionMode === "MEMBER" ? !contributionMemberId : !contributionHouseholdId)}>Post contribution and issue receipt</button>
+        <button className="primary-button" disabled={busy || !contributionScopeId || !applicableContributionCategories.length || !contributionCategoryId || (contributionMode === "MEMBER" ? !contributionMemberId : !contributionHouseholdId)}>Post contribution and issue receipt</button>
       </form>
       {contributionReceipt && <div className="nyika-contribution-receipt" role="status"><div><span className="nyika-eyebrow">RECEIPT ISSUED</span><strong>{contributionReceipt.receiptNumber}</strong><span>{contributionReceipt.memberName} · {contributionReceipt.categoryName}</span><b>{contributionReceipt.currency} {Number(contributionReceipt.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b><small>{contributionReceipt.contributionDate} · {contributionReceipt.paymentMethod.replace(/_/g, " ")}</small></div><button className="secondary-button" type="button" onClick={() => window.print()}>Print receipt</button></div>}
       <div className="nyika-contribution-history"><div className="nyika-register-heading"><div><h4>Contribution history</h4><p>Posted contributions in the selected financial scope. Reversed receipts are excluded from this active history.</p></div></div>
