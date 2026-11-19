@@ -300,6 +300,40 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void depositReportExcludesReversedBankReconciliationsFromBankedAndOutstandingTotals() {
+        Fixture fixture = fixture();
+        authenticate(fixture);
+        UUID batchId = jdbc.queryForObject("""
+            SELECT id FROM deposit_batches
+            WHERE organisation_id = ? AND bank_reference = 'BANK-A-1'
+            """, UUID.class, fixture.organisationId());
+        UUID statementId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO bank_statement_entries
+                (id, organisation_id, scope_unit_id, transaction_date, bank_reference,
+                 amount, description, recorded_by)
+            VALUES (?, ?, ?, DATE '2026-05-12', 'BANK-A-1', 125.00, 'Deposit received', ?)
+            """, statementId, fixture.organisationId(), fixture.nyikaA(), fixture.adminId());
+        UUID reconciliationId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_reconciliations
+                (id, deposit_batch_id, statement_entry_id, matched_by, match_note)
+            VALUES (?, ?, ?, ?, 'Original bank match')
+            """, reconciliationId, batchId, statementId, fixture.adminId());
+        jdbc.update("""
+            INSERT INTO deposit_reconciliation_reversals (id, reconciliation_id, reason, reversed_by)
+            VALUES (?, ?, 'Incorrect bank statement match', ?)
+            """, UUID.randomUUID(), reconciliationId, fixture.adminId());
+
+        var deposits = reports.deposits(fixture.organisationId(), fixture.nyikaA(),
+            LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31"));
+
+        assertEquals(1, deposits.size());
+        assertEquals(0, deposits.get(0).bankedAmount().compareTo(BigDecimal.ZERO));
+        assertEquals(0, deposits.get(0).outstandingAmount().compareTo(new BigDecimal("125.00")));
+    }
+
+    @Test
     void contributionBreakdownsGroupByConfiguredDimensionsAndExcludeOtherScopes() {
         Fixture fixture = fixture();
         authenticate(fixture);
