@@ -204,7 +204,7 @@ public class NyikaWorkspaceController {
     }
 
     public record CreateNyikaMember(@Size(max = 80) String zccAppNumber,
-            @Size(max = 80) String eliteNumber,
+            String eliteNumber,
             @NotBlank @Size(max = 100) String firstName,
             @NotBlank @Size(max = 100) String lastName,
             @NotNull UUID classificationId, UUID cellId) {}
