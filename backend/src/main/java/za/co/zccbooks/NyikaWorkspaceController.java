@@ -157,7 +157,7 @@ public class NyikaWorkspaceController {
             }
         }
 
-        jdbc.update("""
+        int updated = jdbc.update("""
             UPDATE members
             SET first_name = ?, last_name = ?, zcc_app_number = ?, elite_number = ?,
                 classification_id = ?, cell_id = ?, cell_level = 'CELL'
@@ -173,6 +173,7 @@ public class NyikaWorkspaceController {
             """, request.firstName().trim(), request.lastName().trim(), blankToNull(request.zccAppNumber()),
                 blankToNull(request.eliteNumber()), request.classificationId(), nextCellId,
                 memberId, nyika.organisationId(), nyika.id(), nyika.id());
+        if (updated != 1) throw new IllegalStateException("Member record changed during this update. Reload and retry.");
 
         audit.record("MEMBER_UPDATED", "MEMBER", memberId,
             Map.of("nyikaId", nyika.id().toString(),
@@ -193,10 +194,11 @@ public class NyikaWorkspaceController {
         Unit nyika = requireNyika(nyikaId);
         authorization.requireUnitPermission("MEMBERS_MANAGE", nyikaId);
         NyikaMemberDto current = memberProfile(nyikaId, memberId);
-        jdbc.update("""
+        int updated = jdbc.update("""
             UPDATE members SET active = ?
             WHERE id = ? AND organisation_id = ? AND branch_id IS NULL
             """, request.active(), memberId, nyika.organisationId());
+        if (updated != 1) throw new IllegalStateException("Member record changed during this operation. Reload and retry.");
         audit.record(request.active() ? "MEMBER_REACTIVATED" : "MEMBER_DEACTIVATED",
             "MEMBER", memberId, Map.of("nyikaId", nyika.id().toString()));
         return new NyikaMemberDto(current.id(), current.zccAppNumber(), current.eliteNumber(),
