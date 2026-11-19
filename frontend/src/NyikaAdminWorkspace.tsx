@@ -166,7 +166,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
           <div className="field-pair"><label>First name<input name="firstName" required maxLength={100} /></label><label>Last name<input name="lastName" required maxLength={100} /></label></div>
           <label>Classification<select name="classificationId" required defaultValue=""><option value="" disabled>Select classification</option>{classifications.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           {!classifications.length && <p className="nyika-inline-note">No active classifications are configured. Central Administration must configure classifications before members can be registered.</p>}
-          <label>Elite Number <span className="nyika-optional">(optional)</span><input name="eliteNumber" maxLength={80} /></label>
+          <label>Elite Number <span className="nyika-optional">(optional)</span><input name="eliteNumber" /></label>
           <label>ZCC application number <span className="nyika-optional">(optional)</span><input name="zccAppNumber" maxLength={80} /></label>
           <label>Assign to Cell now <span className="nyika-optional">(optional)</span><select name="cellId" value={memberCellId} onChange={e => setMemberCellId(e.target.value)}><option value="">Leave unassigned for now</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select></label>
           <button className="primary-button" disabled={busy || !nyikaId || !classifications.length}>Register member</button>
