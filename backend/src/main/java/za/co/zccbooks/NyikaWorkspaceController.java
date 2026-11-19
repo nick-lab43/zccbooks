@@ -116,6 +116,94 @@ public class NyikaWorkspaceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    @GetMapping("/nyikas/{nyikaId}/members/{memberId}")
+    public NyikaMemberDto memberProfile(@PathVariable UUID nyikaId, @PathVariable UUID memberId) {
+        authorization.requireUnitPermission("MEMBERS_VIEW", nyikaId);
+        return members(nyikaId, null, null, null).stream()
+            .filter(member -> member.id().equals(memberId.toString()))
+            .findFirst().orElseThrow(() -> new ResourceNotFoundException("Member not found in this Nyika."));
+    }
+
+    @PutMapping("/nyikas/{nyikaId}/members/{memberId}")
+    @Transactional
+    public NyikaMemberDto updateMember(@PathVariable UUID nyikaId, @PathVariable UUID memberId,
+            @Valid @RequestBody UpdateNyikaMember request) {
+        Unit nyika = requireNyika(nyikaId);
+        authorization.requireUnitPermission("MEMBERS_MANAGE", nyikaId);
+        NyikaMemberDto current = memberProfile(nyikaId, memberId);
+
+        String classificationName = jdbc.query("""
+            SELECT name FROM classifications
+            WHERE id = ? AND organisation_id = ? AND active = TRUE
+            """, (rs, n) -> rs.getString("name"), request.classificationId(), nyika.organisationId())
+            .stream().findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Select an active classification configured for this organisation."));
+
+        UUID nextCellId = request.cellId();
+        String nextCellName = null;
+        if (nextCellId != null) {
+            Cell cell = requireCellInNyika(nextCellId, nyika);
+            authorization.requireUnitPermission("MEMBERS_MANAGE", nextCellId);
+            nextCellName = cell.name();
+        }
+
+        if (!java.util.Objects.equals(current.cellId(), nextCellId == null ? null : nextCellId.toString())) {
+            Integer householdMemberships = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM member_household_memberships
+                WHERE member_id = ? AND organisation_id = ? AND valid_to IS NULL
+                """, Integer.class, memberId, nyika.organisationId());
+            if (householdMemberships != null && householdMemberships > 0) {
+                throw new IllegalArgumentException("Remove this member from their active household before changing their Cell.");
+            }
+        }
+
+        jdbc.update("""
+            UPDATE members
+            SET first_name = ?, last_name = ?, zcc_app_number = ?, elite_number = ?,
+                classification_id = ?, cell_id = ?, cell_level = 'CELL'
+            WHERE id = ? AND organisation_id = ? AND branch_id IS NULL
+              AND ((cell_id IS NULL AND nyika_id = ?) OR cell_id IN (
+                  WITH RECURSIVE descendants AS (
+                      SELECT id FROM organisational_units WHERE id = ?
+                      UNION ALL
+                      SELECT child.id FROM organisational_units child
+                      JOIN descendants parent ON child.parent_id = parent.id
+                  ) SELECT id FROM descendants
+              ))
+            """, request.firstName().trim(), request.lastName().trim(), blankToNull(request.zccAppNumber()),
+                blankToNull(request.eliteNumber()), request.classificationId(), nextCellId,
+                memberId, nyika.organisationId(), nyika.id(), nyika.id());
+
+        audit.record("MEMBER_UPDATED", "MEMBER", memberId,
+            Map.of("nyikaId", nyika.id().toString(),
+                "classificationId", request.classificationId().toString(),
+                "cellId", nextCellId == null ? "" : nextCellId.toString(),
+                "eliteNumber", blankToNull(request.eliteNumber()) == null ? "" : blankToNull(request.eliteNumber())));
+
+        return new NyikaMemberDto(memberId.toString(), blankToNull(request.zccAppNumber()),
+            blankToNull(request.eliteNumber()), request.firstName().trim(), request.lastName().trim(),
+            request.classificationId().toString(), classificationName, current.active(),
+            nextCellId == null ? null : nextCellId.toString(), nextCellName);
+    }
+
+    @PostMapping("/nyikas/{nyikaId}/members/{memberId}/status")
+    @Transactional
+    public NyikaMemberDto setMemberStatus(@PathVariable UUID nyikaId, @PathVariable UUID memberId,
+            @Valid @RequestBody SetMemberStatus request) {
+        Unit nyika = requireNyika(nyikaId);
+        authorization.requireUnitPermission("MEMBERS_MANAGE", nyikaId);
+        NyikaMemberDto current = memberProfile(nyikaId, memberId);
+        jdbc.update("""
+            UPDATE members SET active = ?
+            WHERE id = ? AND organisation_id = ? AND branch_id IS NULL
+            """, request.active(), memberId, nyika.organisationId());
+        audit.record(request.active() ? "MEMBER_REACTIVATED" : "MEMBER_DEACTIVATED",
+            "MEMBER", memberId, Map.of("nyikaId", nyika.id().toString()));
+        return new NyikaMemberDto(current.id(), current.zccAppNumber(), current.eliteNumber(),
+            current.firstName(), current.lastName(), current.classificationId(), current.classificationName(),
+            request.active(), current.cellId(), current.cellName());
+    }
+
     @PostMapping("/units/{cellId}/members/bulk-assign")
     @Transactional
     public ResponseEntity<BulkAssignmentResult> bulkAssign(@PathVariable UUID cellId,
@@ -208,6 +296,10 @@ public class NyikaWorkspaceController {
             @NotBlank @Size(max = 100) String firstName,
             @NotBlank @Size(max = 100) String lastName,
             @NotNull UUID classificationId, UUID cellId) {}
+    public record UpdateNyikaMember(@NotBlank @Size(max = 100) String firstName,
+            @NotBlank @Size(max = 100) String lastName, @Size(max = 80) String zccAppNumber,
+            String eliteNumber, @NotNull UUID classificationId, UUID cellId) {}
+    public record SetMemberStatus(@NotNull Boolean active) {}
     public record BulkAssignMembers(@jakarta.validation.constraints.NotEmpty @Size(max = 500) List<UUID> memberIds) {}
     public record BulkAssignmentResult(int assignedCount, String cellId) {}
     public record NyikaMemberDto(String id, String zccAppNumber, String eliteNumber,
