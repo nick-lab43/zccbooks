@@ -194,11 +194,13 @@ public class FinancialReportController {
                    COUNT(a.id) AS allocation_count,
                    COALESCE((SELECT SUM(e.amount) FROM deposit_reconciliations r
                        JOIN bank_statement_entries e ON e.id = r.statement_entry_id
-                       WHERE r.deposit_batch_id = d.id), 0) AS banked_amount,
+                       WHERE r.deposit_batch_id = d.id
+                         AND NOT EXISTS (SELECT 1 FROM deposit_reconciliation_reversals x WHERE x.reconciliation_id = r.id)), 0) AS banked_amount,
                    GREATEST(d.expected_amount - COALESCE((SELECT SUM(e.amount)
                        FROM deposit_reconciliations r
                        JOIN bank_statement_entries e ON e.id = r.statement_entry_id
-                       WHERE r.deposit_batch_id = d.id), 0), 0) AS outstanding_amount
+                       WHERE r.deposit_batch_id = d.id
+                         AND NOT EXISTS (SELECT 1 FROM deposit_reconciliation_reversals x WHERE x.reconciliation_id = r.id)), 0), 0) AS outstanding_amount
             FROM deposit_batches d
             JOIN visible_units vu ON vu.id = d.scope_unit_id
             JOIN organisational_units u ON u.id = d.scope_unit_id
