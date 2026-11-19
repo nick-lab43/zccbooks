@@ -802,3 +802,40 @@ input, select { border-radius: 5px !important; }
   .journal-filter { width: 100%; }
   .financial-journals { padding: 12px; }
 }
+
+
+/* Guided Nyika administration workspace */
+.nyika-app-main { max-width: 1480px; margin: 0 auto; padding: 28px 24px 0; }
+.nyika-workspace { display: grid; gap: 18px; }
+.nyika-welcome { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 24px 26px; color: #fff; background: linear-gradient(115deg, #1c3654 0%, #365675 100%); border-left: 5px solid #b59a62; box-shadow: 0 3px 8px #172d4820; }
+.nyika-eyebrow { color: #a58a54; font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.nyika-welcome .nyika-eyebrow { color: #ddc99e; }
+.nyika-welcome h2 { margin: 7px 0 5px; font-size: 25px; }
+.nyika-welcome p { margin: 0; color: #d5deea; font-size: 12px; }
+.nyika-context { display: grid; gap: 5px; min-width: 190px; padding: 12px 15px; border: 1px solid #ffffff38; background: #ffffff0d; }
+.nyika-context span { color: #d5c49e; font-size: 8px; font-weight: 700; letter-spacing: .13em; }
+.nyika-context strong { color: #fff; font-size: 14px; }
+.nyika-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.nyika-stat-grid article { display: grid; gap: 5px; padding: 15px 17px; border: 1px solid #b8c3ce; background: #f6f8fa; box-shadow: inset 0 1px #fff; }
+.nyika-stat-grid article span { color: #728093; font-size: 8px; font-weight: 800; letter-spacing: .1em; }
+.nyika-stat-grid article strong { color: #203b59; font-size: 25px; }
+.nyika-workflow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.nyika-card { min-width: 0; padding: 19px; border: 1px solid #b5c0cc; background: #f8f9fa; box-shadow: inset 0 1px #fff, 0 1px 3px #172d4810; }
+.nyika-card-heading { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 17px; }
+.nyika-card-heading > span { display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 auto; color: #fff; background: #526b86; font-size: 11px; font-weight: 800; }
+.nyika-card-heading h3, .nyika-register-heading h3, .nyika-next-step h3 { margin: 0 0 4px; color: #203b59; font-size: 15px; }
+.nyika-card-heading p, .nyika-register-heading p, .nyika-next-step p { margin: 0; color: #718092; font-size: 11px; line-height: 1.5; }
+.nyika-optional { color: #8995a2; font-size: 9px; font-weight: 400; }
+.nyika-inline-note { margin: 12px 0 0; padding: 9px 11px; border-left: 3px solid #b59a62; color: #667587; background: #eef1f4; font-size: 10px; line-height: 1.5; }
+.nyika-register-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 15px; margin-bottom: 15px; }
+.nyika-register-heading h3 { margin-top: 5px; font-size: 18px; }
+.nyika-register-count, .nyika-next-status { padding: 6px 9px; color: #52677e; background: #e8edf2; border: 1px solid #c3ccd6; font-size: 8px; font-weight: 800; letter-spacing: .09em; white-space: nowrap; }
+.nyika-register-tools { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(190px, .8fr) auto; gap: 9px; margin-bottom: 12px; }
+.nyika-register-tools input, .nyika-register-tools select { min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #aab6c3; background: #fff; color: #263343; font-size: 11px; }
+.nyika-register td:first-child, .nyika-register th:first-child { width: 34px; text-align: center; }
+.nyika-register input[type="checkbox"] { width: 15px; height: 15px; accent-color: #304d6d; }
+.nyika-unassigned { color: #98733b; font-weight: 700; }
+.nyika-next-step { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 17px 19px; border: 1px dashed #aab7c5; background: #e9edf1; }
+.nyika-next-step h3 { margin-top: 5px; }
+@media (max-width: 850px) { .nyika-workflow-grid { grid-template-columns: 1fr; } .nyika-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .nyika-app-main { padding: 16px 12px 0; } .nyika-welcome { align-items: flex-start; flex-direction: column; padding: 18px; } .nyika-context { width: 100%; } .nyika-register-tools { grid-template-columns: 1fr; } .nyika-register-heading { align-items: flex-start; flex-direction: column; } .nyika-next-step { align-items: flex-start; flex-direction: column; } }
