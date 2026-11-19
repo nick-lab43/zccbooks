@@ -166,11 +166,10 @@ public class NyikaHouseholdController {
         Unit nyika = requireNyika(nyikaId);
         authorization.requireUnitPermission("MEMBERS_MANAGE", nyikaId);
         findHouseholdForUpdate(householdId, nyika);
-        UUID headId = jdbc.query("""
+        UUID headId = jdbc.queryForObject("""
             SELECT household_head_member_id FROM households
             WHERE id = ? AND organisation_id = ? FOR UPDATE
-            """, (rs, n) -> rs.getObject("household_head_member_id", UUID.class),
-            householdId, nyika.organisationId()).stream().findFirst().orElse(null);
+            """, UUID.class, householdId, nyika.organisationId());
         if (memberId.equals(headId)) {
             throw new IllegalArgumentException("Assign a different household head or clear the current head before removing this member.");
         }
