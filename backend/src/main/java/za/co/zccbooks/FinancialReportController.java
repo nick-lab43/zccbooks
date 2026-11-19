@@ -108,12 +108,18 @@ public class FinancialReportController {
               JOIN visible_units parent ON child.parent_id = parent.id
               WHERE child.organisation_id = ?
             )
-            SELECT c.receipt_number, c.contribution_date, m.first_name, m.last_name,
+            SELECT c.receipt_number, c.contribution_date,
+                   COALESCE(h.name, m.first_name || ' ' || m.last_name) AS contributor_name,
+                   CASE WHEN c.household_id IS NOT NULL THEN 'HOUSEHOLD' ELSE 'INDIVIDUAL' END AS contributor_type,
+                   classification.name AS classification_name, m.elite_number,
                    cat.name AS category_name, fs.name AS stream_name, u.name AS recorded_unit,
                    c.payment_method, c.amount, c.currency
             FROM contributions c
             JOIN visible_units vu ON vu.id = c.scope_unit_id
             JOIN members m ON m.id = c.member_id
+            LEFT JOIN households h ON h.id = c.household_id AND h.organisation_id = c.organisation_id
+            LEFT JOIN classifications classification
+              ON classification.id = m.classification_id AND classification.organisation_id = m.organisation_id
             JOIN contribution_categories cat ON cat.id = c.category_id
             JOIN financial_streams fs ON fs.id = c.stream_id
             JOIN organisational_units u ON u.id = c.scope_unit_id
@@ -121,10 +127,10 @@ public class FinancialReportController {
               AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
             ORDER BY c.contribution_date, c.receipt_sequence
             """, (rs,n) -> new ContributionLine(rs.getString("receipt_number"),
-                rs.getDate("contribution_date").toLocalDate(), rs.getString("first_name"),
-                rs.getString("last_name"), rs.getString("category_name"), rs.getString("stream_name"),
-                rs.getString("recorded_unit"), rs.getString("payment_method"),
-                rs.getBigDecimal("amount"), rs.getString("currency")),
+                rs.getDate("contribution_date").toLocalDate(), rs.getString("contributor_name"),
+                rs.getString("contributor_type"), rs.getString("classification_name"), rs.getString("elite_number"),
+                rs.getString("category_name"), rs.getString("stream_name"), rs.getString("recorded_unit"),
+                rs.getString("payment_method"), rs.getBigDecimal("amount"), rs.getString("currency")),
             scopeUnitId, organisationId, organisationId, organisationId, from, to);
     }
 
@@ -361,12 +367,14 @@ public class FinancialReportController {
                 XWPFParagraph countParagraph = document.createParagraph();
                 countParagraph.createRun().setText("Transactions: " + report.contributionCount());
             } else if (type.equals("CONTRIBUTION_REGISTER")) {
-                XWPFTable table = document.createTable(1, 8);
-                setRow(table.getRow(0), "Date", "Receipt", "Contributor", "Category", "Stream", "Payment", "Currency", "Amount");
+                XWPFTable table = document.createTable(1, 10);
+                setRow(table.getRow(0), "Date", "Receipt", "Contributor", "Type", "Classification",
+                    "Elite Number", "Category", "Stream", "Currency", "Amount");
                 for (ContributionLine item : contributions(organisationId, scopeUnitId, from, to)) {
                     setRow(table.createRow(), item.contributionDate().toString(), item.receiptNumber(),
-                        item.firstName() + " " + item.lastName(), item.categoryName(), item.streamName(),
-                        item.paymentMethod(), item.currency(), item.amount().toPlainString());
+                        item.contributorName(), item.contributorType(), item.classificationName(),
+                        item.eliteNumber(), item.categoryName(), item.streamName(), item.currency(),
+                        item.amount().toPlainString());
                 }
             } else if (type.equals("DEPOSIT_REGISTER")) {
                 XWPFTable table = document.createTable(1, 9);
@@ -449,11 +457,12 @@ public class FinancialReportController {
                 rows.add(new String[] { "TOTAL CONTRIBUTIONS", "", "", total.currency(), total.totalAmount().toPlainString() });
             rows.add(new String[] { "TRANSACTIONS", Long.toString(report.contributionCount()), "", "", "" });
         } else if (type.equals("CONTRIBUTION_REGISTER")) {
-            headers = List.of("Date", "Receipt", "Contributor", "Category", "Stream", "Payment", "Currency", "Amount");
+            headers = List.of("Date", "Receipt", "Contributor", "Type", "Classification", "Elite Number",
+                "Category", "Stream", "Currency", "Amount");
             for (ContributionLine item : contributions(organisationId, scopeUnitId, from, to))
                 rows.add(new String[] { item.contributionDate().toString(), item.receiptNumber(),
-                    item.firstName() + " " + item.lastName(), item.categoryName(), item.streamName(),
-                    item.paymentMethod(), item.currency(), item.amount().toPlainString() });
+                    item.contributorName(), item.contributorType(), item.classificationName(), item.eliteNumber(),
+                    item.categoryName(), item.streamName(), item.currency(), item.amount().toPlainString() });
         } else if (type.equals("DEPOSIT_REGISTER")) {
             headers = List.of("Date", "Unit", "Bank", "Reference", "Expected", "Allocated", "Banked", "Outstanding", "Status");
             for (DepositLine item : deposits(organisationId, scopeUnitId, from, to))
@@ -542,9 +551,9 @@ public class FinancialReportController {
     public record CurrencyTotal(String currency, BigDecimal totalAmount) {}
     public record ContributionSummary(ReportContext context, long contributionCount,
         List<CurrencyTotal> currencyTotals, List<ContributionGroup> groups) {}
-    public record ContributionLine(String receiptNumber, LocalDate contributionDate, String firstName,
-        String lastName, String categoryName, String streamName, String recordedUnit, String paymentMethod,
-        BigDecimal amount, String currency) {}
+    public record ContributionLine(String receiptNumber, LocalDate contributionDate, String contributorName,
+        String contributorType, String classificationName, String eliteNumber, String categoryName,
+        String streamName, String recordedUnit, String paymentMethod, BigDecimal amount, String currency) {}
     public record DepositLine(String id, LocalDate depositDate, String unitName, String bankName,
         String bankReference, BigDecimal expectedAmount, String status, BigDecimal allocatedAmount,
         long allocationCount, BigDecimal bankedAmount, BigDecimal outstandingAmount) {}
