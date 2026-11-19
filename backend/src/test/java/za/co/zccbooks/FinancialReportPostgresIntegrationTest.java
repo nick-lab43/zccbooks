@@ -300,6 +300,34 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void contributionBreakdownsGroupByConfiguredDimensionsAndExcludeOtherScopes() {
+        Fixture fixture = fixture();
+        authenticate(fixture);
+        LocalDate from = LocalDate.parse("2026-01-01");
+        LocalDate to = LocalDate.parse("2026-12-31");
+
+        var byCategory = reports.contributionBreakdown(fixture.organisationId(), fixture.nyikaA(), from, to, "CATEGORY");
+        assertEquals(1, byCategory.size());
+        assertEquals("Tithing", byCategory.get(0).groupName());
+        assertEquals(1, byCategory.get(0).contributionCount());
+        assertEquals(new BigDecimal("125.00"), byCategory.get(0).totalAmount());
+        assertEquals("ZAR", byCategory.get(0).currency());
+
+        var byHousehold = reports.contributionBreakdown(fixture.organisationId(), fixture.nyikaA(), from, to, "HOUSEHOLD");
+        assertEquals(1, byHousehold.size());
+        assertEquals("Individual — TestA Member", byHousehold.get(0).groupName());
+
+        var byCell = reports.contributionBreakdown(fixture.organisationId(), fixture.nyikaA(), from, to, "CELL");
+        assertEquals(1, byCell.size());
+        assertEquals("Cell A", byCell.get(0).groupName());
+
+        assertThrows(IllegalArgumentException.class, () ->
+            reports.contributionBreakdown(fixture.organisationId(), fixture.nyikaA(), from, to, "UNSAFE"));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class, () ->
+            reports.contributionBreakdown(fixture.organisationId(), fixture.nyikaB(), from, to, "CATEGORY"));
+    }
+
+    @Test
     void userCannotRequestAnotherNyikasReports() {
         Fixture fixture = fixture();
         authenticate(fixture);
