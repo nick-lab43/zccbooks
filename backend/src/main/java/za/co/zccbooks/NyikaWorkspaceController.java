@@ -43,7 +43,7 @@ public class NyikaWorkspaceController {
             FROM members m
             LEFT JOIN organisational_units cell ON cell.id = m.cell_id
             WHERE m.organisation_id = ?
-              AND (m.cell_id IS NULL OR m.cell_id IN (SELECT id FROM descendants))
+              AND (m.nyika_id = ? OR m.cell_id IN (SELECT id FROM descendants))
               AND m.branch_id IS NULL
               AND (? = '' OR m.first_name ILIKE ? OR m.last_name ILIKE ?
                    OR COALESCE(m.zcc_app_number, '') ILIKE ?)
@@ -53,7 +53,7 @@ public class NyikaWorkspaceController {
                 rs.getString("first_name"), rs.getString("last_name"), rs.getBoolean("active"),
                 rs.getObject("cell_id") == null ? null : rs.getObject("cell_id", UUID.class).toString(),
                 rs.getString("cell_name")
-            ), nyika.id(), nyika.organisationId(), term, pattern, pattern, pattern);
+            ), nyika.id(), nyika.organisationId(), nyika.id(), term, pattern, pattern, pattern);
     }
 
     @PostMapping("/nyikas/{nyikaId}/members")
@@ -73,16 +73,16 @@ public class NyikaWorkspaceController {
         UUID id = UUID.randomUUID();
         NyikaMemberDto created = jdbc.queryForObject("""
             INSERT INTO members
-                (id, branch_id, organisation_id, cell_id, cell_level, zcc_app_number,
+                (id, branch_id, organisation_id, nyika_id, cell_id, cell_level, zcc_app_number,
                  first_name, last_name)
-            VALUES (?, NULL, ?, ?, 'CELL', ?, ?, ?)
+            VALUES (?, NULL, ?, ?, ?, 'CELL', ?, ?, ?)
             RETURNING id, zcc_app_number, first_name, last_name, active, cell_id
             """, (rs, n) -> new NyikaMemberDto(
                 rs.getObject("id", UUID.class).toString(), rs.getString("zcc_app_number"),
                 rs.getString("first_name"), rs.getString("last_name"), rs.getBoolean("active"),
                 rs.getObject("cell_id") == null ? null : rs.getObject("cell_id", UUID.class).toString(),
                 resolvedCellName
-            ), id, nyika.organisationId(), cellId, blankToNull(request.zccAppNumber()),
+            ), id, nyika.organisationId(), nyika.id(), cellId, blankToNull(request.zccAppNumber()),
                 request.firstName().trim(), request.lastName().trim());
         audit.record("MEMBER_REGISTERED", "MEMBER", id,
             Map.of("organisationId", nyika.organisationId().toString(), "nyikaId", nyika.id().toString(),
