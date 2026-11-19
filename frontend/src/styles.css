@@ -845,3 +845,16 @@ input, select { border-radius: 5px !important; }
 .nyika-cell-list > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 2px; border-bottom: 1px solid #e2e7ec; color: #2d435b; font-size: 11px; }
 .nyika-cell-list small { color: #7c8997; font-size: 9px; }
 .nyika-cell-list p { margin: 4px 0; color: #8793a0; font-size: 10px; }
+
+
+/* Nyika member profile and maintenance */
+.nyika-member-profile { border-left: 4px solid #9b8252; }
+.nyika-profile-facts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0 0 16px; }
+.nyika-profile-facts > div { display: grid; gap: 5px; min-width: 0; padding: 10px; border: 1px solid #d1d9e1; background: #edf1f4; }
+.nyika-profile-facts span { color: #788697; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
+.nyika-profile-facts strong { overflow-wrap: anywhere; color: #2c4560; font-size: 11px; }
+.nyika-edit-form { max-width: 780px; }
+.nyika-profile-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.nyika-row-action { min-height: 26px; padding: 4px 7px; font-size: 8px; white-space: nowrap; }
+@media (max-width: 850px) { .nyika-profile-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .nyika-profile-facts { grid-template-columns: 1fr 1fr; } .nyika-profile-actions { display: grid; } }
