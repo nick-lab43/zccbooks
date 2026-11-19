@@ -96,6 +96,49 @@ public class FinancialReportController {
         return new ContributionSummary(context, count, currencyTotals, groups);
     }
 
+    @GetMapping("/contribution-breakdown")
+    public List<ContributionBreakdownLine> contributionBreakdown(@PathVariable UUID organisationId,
+            @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to,
+            @RequestParam(defaultValue = "CATEGORY") String groupBy) {
+        context(organisationId, scopeUnitId, from, to);
+        if (!List.of("HOUSEHOLD", "MEMBER", "CLASSIFICATION", "CELL", "CATEGORY").contains(groupBy)) {
+            throw new IllegalArgumentException("Unsupported contribution breakdown grouping.");
+        }
+        return jdbc.query("""
+            WITH RECURSIVE visible_units AS (
+              SELECT id FROM organisational_units WHERE id = ? AND organisation_id = ?
+              UNION ALL
+              SELECT child.id FROM organisational_units child
+              JOIN visible_units parent ON child.parent_id = parent.id
+              WHERE child.organisation_id = ?
+            )
+            SELECT CASE
+                     WHEN ? = 'HOUSEHOLD' THEN CASE WHEN c.household_id IS NULL
+                       THEN 'Individual — ' || m.first_name || ' ' || m.last_name ELSE h.name END
+                     WHEN ? = 'MEMBER' THEN m.first_name || ' ' || m.last_name
+                     WHEN ? = 'CLASSIFICATION' THEN COALESCE(classification.name, 'Unclassified')
+                     WHEN ? = 'CELL' THEN COALESCE(cell.name, 'Unassigned')
+                     ELSE cat.name
+                   END AS group_name,
+                   c.currency, COUNT(*) AS contribution_count, SUM(c.amount) AS total_amount
+            FROM contributions c
+            JOIN visible_units vu ON vu.id = c.scope_unit_id
+            JOIN members m ON m.id = c.member_id
+            LEFT JOIN households h ON h.id = c.household_id AND h.organisation_id = c.organisation_id
+            LEFT JOIN classifications classification
+              ON classification.id = m.classification_id AND classification.organisation_id = m.organisation_id
+            LEFT JOIN organisational_units cell ON cell.id = m.cell_id AND cell.organisation_id = m.organisation_id
+            JOIN contribution_categories cat ON cat.id = c.category_id
+            WHERE c.organisation_id = ? AND c.contribution_date BETWEEN ? AND ?
+              AND NOT EXISTS (SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id)
+            GROUP BY group_name, c.currency
+            ORDER BY group_name, c.currency
+            """, (rs,n) -> new ContributionBreakdownLine(rs.getString("group_name"),
+                rs.getLong("contribution_count"), rs.getBigDecimal("total_amount"), rs.getString("currency")),
+            scopeUnitId, organisationId, organisationId, groupBy, groupBy, groupBy, groupBy,
+            organisationId, from, to);
+    }
+
     @GetMapping("/contributions")
     public List<ContributionLine> contributions(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to) {
@@ -330,7 +373,7 @@ public class FinancialReportController {
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to,
             @RequestParam(defaultValue = "CONTRIBUTION_SUMMARY") String type) throws IOException {
         ReportContext context = context(organisationId, scopeUnitId, from, to);
-        if (!List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER", "DEPOSIT_REGISTER", "EXPENDITURE_REGISTER", "INCOME_EXPENDITURE", "BUDGET_PERFORMANCE", "EXCEPTION_REGISTER").contains(type)) {
+        if (!List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER", "DEPOSIT_REGISTER", "EXPENDITURE_REGISTER", "INCOME_EXPENDITURE", "BUDGET_PERFORMANCE", "EXCEPTION_REGISTER", "CONTRIBUTION_BREAKDOWN").contains(type)) {
             throw new IllegalArgumentException("Unsupported report type.");
         }
         try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
@@ -350,7 +393,14 @@ public class FinancialReportController {
             document.createParagraph().createRun().setText("CONFIDENTIAL — FOR AUTHORISED CHURCH ADMINISTRATION");
             document.createParagraph();
 
-            if (type.equals("CONTRIBUTION_SUMMARY")) {
+            if (type.equals("CONTRIBUTION_BREAKDOWN")) {
+                XWPFTable table = document.createTable(1, 4);
+                setRow(table.getRow(0), "Group", "Transactions", "Currency", "Total");
+                for (ContributionBreakdownLine item : contributionBreakdown(organisationId, scopeUnitId, from, to, "CATEGORY")) {
+                    setRow(table.createRow(), item.groupName(), Long.toString(item.contributionCount()),
+                        item.currency(), item.totalAmount().toPlainString());
+                }
+            } else if (type.equals("CONTRIBUTION_SUMMARY")) {
                 ContributionSummary report = summary(organisationId, scopeUnitId, from, to);
                 XWPFTable table = document.createTable(1, 5);
                 setRow(table.getRow(0), "Financial stream", "Category", "Transactions", "Currency", "Total");
@@ -447,7 +497,12 @@ public class FinancialReportController {
 
         List<String> headers;
         List<String[]> rows = new java.util.ArrayList<>();
-        if (type.equals("CONTRIBUTION_SUMMARY")) {
+        if (type.equals("CONTRIBUTION_BREAKDOWN")) {
+            headers = List.of("Group", "Transactions", "Currency", "Total");
+            for (ContributionBreakdownLine item : contributionBreakdown(organisationId, scopeUnitId, from, to, "CATEGORY"))
+                rows.add(new String[] { item.groupName(), Long.toString(item.contributionCount()),
+                    item.currency(), item.totalAmount().toPlainString() });
+        } else if (type.equals("CONTRIBUTION_SUMMARY")) {
             headers = List.of("Financial stream", "Category", "Transactions", "Currency", "Total");
             ContributionSummary report = summary(organisationId, scopeUnitId, from, to);
             for (ContributionGroup item : report.groups())
@@ -528,6 +583,7 @@ public class FinancialReportController {
     private static String reportTitle(String type) {
         return switch (type) {
             case "CONTRIBUTION_REGISTER" -> "CONTRIBUTION REGISTER";
+            case "CONTRIBUTION_BREAKDOWN" -> "CONTRIBUTION BREAKDOWN";
             case "DEPOSIT_REGISTER" -> "DEPOSIT REGISTER";
             case "EXPENDITURE_REGISTER" -> "EXPENDITURE REGISTER";
             case "INCOME_EXPENDITURE" -> "INCOME AND EXPENDITURE SUMMARY";
@@ -551,6 +607,7 @@ public class FinancialReportController {
     public record CurrencyTotal(String currency, BigDecimal totalAmount) {}
     public record ContributionSummary(ReportContext context, long contributionCount,
         List<CurrencyTotal> currencyTotals, List<ContributionGroup> groups) {}
+    public record ContributionBreakdownLine(String groupName, long contributionCount, BigDecimal totalAmount, String currency) {}
     public record ContributionLine(String receiptNumber, LocalDate contributionDate, String contributorName,
         String contributorType, String classificationName, String eliteNumber, String categoryName,
         String streamName, String recordedUnit, String paymentMethod, BigDecimal amount, String currency) {}
