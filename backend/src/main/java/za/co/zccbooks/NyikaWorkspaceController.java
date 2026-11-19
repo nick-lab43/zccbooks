@@ -118,10 +118,37 @@ public class NyikaWorkspaceController {
 
     @GetMapping("/nyikas/{nyikaId}/members/{memberId}")
     public NyikaMemberDto memberProfile(@PathVariable UUID nyikaId, @PathVariable UUID memberId) {
+        Unit nyika = requireNyika(nyikaId);
         authorization.requireUnitPermission("MEMBERS_VIEW", nyikaId);
-        return members(nyikaId, null, null, null).stream()
-            .filter(member -> member.id().equals(memberId.toString()))
-            .findFirst().orElseThrow(() -> new ResourceNotFoundException("Member not found in this Nyika."));
+        return findMemberInNyika(memberId, nyika);
+    }
+
+    private NyikaMemberDto findMemberInNyika(UUID memberId, Unit nyika) {
+        return jdbc.query("""
+            WITH RECURSIVE descendants AS (
+                SELECT id FROM organisational_units WHERE id = ?
+                UNION ALL
+                SELECT child.id FROM organisational_units child
+                JOIN descendants parent ON child.parent_id = parent.id
+            )
+            SELECT m.id, m.zcc_app_number, m.elite_number, m.first_name, m.last_name,
+                   m.classification_id, c.name AS classification_name, m.active,
+                   m.cell_id, cell.name AS cell_name
+            FROM members m
+            LEFT JOIN classifications c ON c.id = m.classification_id
+                AND c.organisation_id = m.organisation_id
+            LEFT JOIN organisational_units cell ON cell.id = m.cell_id
+            WHERE m.id = ? AND m.organisation_id = ? AND m.branch_id IS NULL
+              AND ((m.cell_id IS NULL AND m.nyika_id = ?) OR m.cell_id IN (SELECT id FROM descendants))
+            """, (rs, n) -> new NyikaMemberDto(
+                rs.getObject("id", UUID.class).toString(), rs.getString("zcc_app_number"),
+                rs.getString("elite_number"), rs.getString("first_name"), rs.getString("last_name"),
+                rs.getObject("classification_id") == null ? null : rs.getObject("classification_id", UUID.class).toString(),
+                rs.getString("classification_name"), rs.getBoolean("active"),
+                rs.getObject("cell_id") == null ? null : rs.getObject("cell_id", UUID.class).toString(),
+                rs.getString("cell_name")
+            ), nyika.id(), memberId, nyika.organisationId(), nyika.id())
+            .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Member not found in this Nyika."));
     }
 
     @PutMapping("/nyikas/{nyikaId}/members/{memberId}")
@@ -130,7 +157,7 @@ public class NyikaWorkspaceController {
             @Valid @RequestBody UpdateNyikaMember request) {
         Unit nyika = requireNyika(nyikaId);
         authorization.requireUnitPermission("MEMBERS_MANAGE", nyikaId);
-        NyikaMemberDto current = memberProfile(nyikaId, memberId);
+        NyikaMemberDto current = findMemberInNyika(memberId, nyika);
 
         String classificationName = jdbc.query("""
             SELECT name FROM classifications
