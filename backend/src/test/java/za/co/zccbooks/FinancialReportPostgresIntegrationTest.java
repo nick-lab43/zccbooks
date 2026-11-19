@@ -494,8 +494,9 @@ class FinancialReportPostgresIntegrationTest {
         LocalDate to = LocalDate.parse("2026-12-31");
 
         assertExportTable(fixture, from, to, "CONTRIBUTION_REGISTER",
-            List.of("Date", "Receipt", "Contributor", "Category", "Stream", "Payment", "Currency", "Amount"),
-            List.of("RCP-A-1", "TestA Member", "Tithing", "Main", "CASH", "ZAR", "125.00"));
+            List.of("Date", "Receipt", "Contributor", "Type", "Classification", "Elite Number",
+                "Category", "Stream", "Payment", "Currency", "Amount"),
+            List.of("RCP-A-1", "TestA Member", "INDIVIDUAL", "Tithing", "Main", "CASH", "ZAR", "125.00"));
 
         assertExportTable(fixture, from, to, "DEPOSIT_REGISTER",
             List.of("Date", "Unit", "Bank", "Reference", "Expected", "Allocated", "Banked", "Outstanding", "Status"),
