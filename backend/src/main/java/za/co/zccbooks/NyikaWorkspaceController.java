@@ -2,6 +2,7 @@ package za.co.zccbooks;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +27,10 @@ public class NyikaWorkspaceController {
     }
 
     @GetMapping("/nyikas/{nyikaId}/members")
-    public List<NyikaMemberDto> members(@PathVariable UUID nyikaId, @RequestParam(required = false) String search) {
+    public List<NyikaMemberDto> members(@PathVariable UUID nyikaId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID classificationId,
+            @RequestParam(required = false) UUID cellId) {
         Unit nyika = requireNyika(nyikaId);
         authorization.requireUnitPermission("MEMBERS_VIEW", nyikaId);
         String term = search == null ? "" : search.trim();
@@ -38,22 +42,31 @@ public class NyikaWorkspaceController {
                 SELECT child.id FROM organisational_units child
                 JOIN descendants parent ON child.parent_id = parent.id
             )
-            SELECT m.id, m.zcc_app_number, m.first_name, m.last_name, m.active,
-                   m.cell_id, cell.name AS cell_name
+            SELECT m.id, m.zcc_app_number, m.elite_number, m.first_name, m.last_name,
+                   m.classification_id, classification.name AS classification_name,
+                   m.active, m.cell_id, cell.name AS cell_name
             FROM members m
+            LEFT JOIN classifications classification ON classification.id = m.classification_id
+                AND classification.organisation_id = m.organisation_id
             LEFT JOIN organisational_units cell ON cell.id = m.cell_id
             WHERE m.organisation_id = ?
               AND ((m.cell_id IS NULL AND m.nyika_id = ?) OR m.cell_id IN (SELECT id FROM descendants))
               AND m.branch_id IS NULL
               AND (? = '' OR m.first_name ILIKE ? OR m.last_name ILIKE ?
-                   OR COALESCE(m.zcc_app_number, '') ILIKE ?)
+                   OR COALESCE(m.zcc_app_number, '') ILIKE ?
+                   OR COALESCE(m.elite_number, '') ILIKE ?)
+              AND (?::uuid IS NULL OR m.classification_id = ?::uuid)
+              AND (?::uuid IS NULL OR m.cell_id = ?::uuid)
             ORDER BY m.last_name, m.first_name
             """, (rs, n) -> new NyikaMemberDto(
                 rs.getObject("id", UUID.class).toString(), rs.getString("zcc_app_number"),
-                rs.getString("first_name"), rs.getString("last_name"), rs.getBoolean("active"),
+                rs.getString("elite_number"), rs.getString("first_name"), rs.getString("last_name"),
+                rs.getObject("classification_id") == null ? null : rs.getObject("classification_id", UUID.class).toString(),
+                rs.getString("classification_name"), rs.getBoolean("active"),
                 rs.getObject("cell_id") == null ? null : rs.getObject("cell_id", UUID.class).toString(),
                 rs.getString("cell_name")
-            ), nyika.id(), nyika.organisationId(), nyika.id(), term, pattern, pattern, pattern);
+            ), nyika.id(), nyika.organisationId(), nyika.id(), term, pattern, pattern, pattern, pattern,
+                classificationId, classificationId, cellId, cellId);
     }
 
     @PostMapping("/nyikas/{nyikaId}/members")
@@ -62,6 +75,15 @@ public class NyikaWorkspaceController {
             @Valid @RequestBody CreateNyikaMember request) {
         Unit nyika = requireNyika(nyikaId);
         authorization.requireUnitPermission("MEMBERS_MANAGE", nyikaId);
+
+        String classificationName = jdbc.query("""
+            SELECT name FROM classifications
+            WHERE id = ? AND organisation_id = ? AND active = TRUE
+            """, (rs, n) -> rs.getString("name"), request.classificationId(), nyika.organisationId())
+            .stream().findFirst()
+            .orElseThrow(() -> new IllegalArgumentException(
+                "Select an active classification configured for this organisation by Central Administration."));
+
         UUID cellId = request.cellId();
         String cellName = null;
         if (cellId != null) {
@@ -69,24 +91,28 @@ public class NyikaWorkspaceController {
             authorization.requireUnitPermission("MEMBERS_MANAGE", cellId);
             cellName = cell.name();
         }
-        final String resolvedCellName = cellName;
+
         UUID id = UUID.randomUUID();
-        NyikaMemberDto created = jdbc.queryForObject("""
+        jdbc.update("""
             INSERT INTO members
-                (id, branch_id, organisation_id, nyika_id, cell_id, cell_level, zcc_app_number,
-                 first_name, last_name)
-            VALUES (?, NULL, ?, ?, ?, 'CELL', ?, ?, ?)
-            RETURNING id, zcc_app_number, first_name, last_name, active, cell_id
-            """, (rs, n) -> new NyikaMemberDto(
-                rs.getObject("id", UUID.class).toString(), rs.getString("zcc_app_number"),
-                rs.getString("first_name"), rs.getString("last_name"), rs.getBoolean("active"),
-                rs.getObject("cell_id") == null ? null : rs.getObject("cell_id", UUID.class).toString(),
-                resolvedCellName
-            ), id, nyika.organisationId(), nyika.id(), cellId, blankToNull(request.zccAppNumber()),
-                request.firstName().trim(), request.lastName().trim());
+                (id, branch_id, organisation_id, nyika_id, cell_id, cell_level,
+                 zcc_app_number, elite_number, first_name, last_name, classification_id)
+            VALUES (?, NULL, ?, ?, ?, 'CELL', ?, ?, ?, ?, ?)
+            """, id, nyika.organisationId(), nyika.id(), cellId, blankToNull(request.zccAppNumber()),
+                blankToNull(request.eliteNumber()), request.firstName().trim(), request.lastName().trim(),
+                request.classificationId());
+
         audit.record("MEMBER_REGISTERED", "MEMBER", id,
-            Map.of("organisationId", nyika.organisationId().toString(), "nyikaId", nyika.id().toString(),
-                "cellId", cellId == null ? "" : cellId.toString()));
+            Map.of("organisationId", nyika.organisationId().toString(),
+                "nyikaId", nyika.id().toString(),
+                "cellId", cellId == null ? "" : cellId.toString(),
+                "classificationId", request.classificationId().toString(),
+                "eliteNumber", blankToNull(request.eliteNumber()) == null ? "" : blankToNull(request.eliteNumber())));
+
+        NyikaMemberDto created = new NyikaMemberDto(id.toString(), blankToNull(request.zccAppNumber()),
+            blankToNull(request.eliteNumber()), request.firstName().trim(), request.lastName().trim(),
+            request.classificationId().toString(), classificationName, true,
+            cellId == null ? null : cellId.toString(), cellName);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -178,11 +204,14 @@ public class NyikaWorkspaceController {
     }
 
     public record CreateNyikaMember(@Size(max = 80) String zccAppNumber,
+            @Size(max = 80) String eliteNumber,
             @NotBlank @Size(max = 100) String firstName,
-            @NotBlank @Size(max = 100) String lastName, UUID cellId) {}
+            @NotBlank @Size(max = 100) String lastName,
+            @NotNull UUID classificationId, UUID cellId) {}
     public record BulkAssignMembers(@jakarta.validation.constraints.NotEmpty @Size(max = 500) List<UUID> memberIds) {}
     public record BulkAssignmentResult(int assignedCount, String cellId) {}
-    public record NyikaMemberDto(String id, String zccAppNumber, String firstName, String lastName,
+    public record NyikaMemberDto(String id, String zccAppNumber, String eliteNumber,
+            String firstName, String lastName, String classificationId, String classificationName,
             boolean active, String cellId, String cellName) {}
     private record Unit(UUID id, UUID organisationId, String level, String name) {}
     private record Cell(UUID id, UUID organisationId, String level, String name) {}
