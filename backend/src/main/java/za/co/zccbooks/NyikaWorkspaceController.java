@@ -69,6 +69,7 @@ public class NyikaWorkspaceController {
             authorization.requireUnitPermission("MEMBERS_MANAGE", cellId);
             cellName = cell.name();
         }
+        final String resolvedCellName = cellName;
         UUID id = UUID.randomUUID();
         NyikaMemberDto created = jdbc.queryForObject("""
             INSERT INTO members
@@ -80,7 +81,7 @@ public class NyikaWorkspaceController {
                 rs.getObject("id", UUID.class).toString(), rs.getString("zcc_app_number"),
                 rs.getString("first_name"), rs.getString("last_name"), rs.getBoolean("active"),
                 rs.getObject("cell_id") == null ? null : rs.getObject("cell_id", UUID.class).toString(),
-                cellName
+                resolvedCellName
             ), id, nyika.organisationId(), cellId, blankToNull(request.zccAppNumber()),
                 request.firstName().trim(), request.lastName().trim());
         audit.record("MEMBER_REGISTERED", "MEMBER", id,
