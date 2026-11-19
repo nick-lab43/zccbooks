@@ -367,13 +367,13 @@ public class FinancialReportController {
                 XWPFParagraph countParagraph = document.createParagraph();
                 countParagraph.createRun().setText("Transactions: " + report.contributionCount());
             } else if (type.equals("CONTRIBUTION_REGISTER")) {
-                XWPFTable table = document.createTable(1, 10);
+                XWPFTable table = document.createTable(1, 11);
                 setRow(table.getRow(0), "Date", "Receipt", "Contributor", "Type", "Classification",
-                    "Elite Number", "Category", "Stream", "Currency", "Amount");
+                    "Elite Number", "Category", "Stream", "Payment", "Currency", "Amount");
                 for (ContributionLine item : contributions(organisationId, scopeUnitId, from, to)) {
                     setRow(table.createRow(), item.contributionDate().toString(), item.receiptNumber(),
                         item.contributorName(), item.contributorType(), item.classificationName(),
-                        item.eliteNumber(), item.categoryName(), item.streamName(), item.currency(),
+                        item.eliteNumber(), item.categoryName(), item.streamName(), item.paymentMethod(), item.currency(),
                         item.amount().toPlainString());
                 }
             } else if (type.equals("DEPOSIT_REGISTER")) {
@@ -458,11 +458,11 @@ public class FinancialReportController {
             rows.add(new String[] { "TRANSACTIONS", Long.toString(report.contributionCount()), "", "", "" });
         } else if (type.equals("CONTRIBUTION_REGISTER")) {
             headers = List.of("Date", "Receipt", "Contributor", "Type", "Classification", "Elite Number",
-                "Category", "Stream", "Currency", "Amount");
+                "Category", "Stream", "Payment", "Currency", "Amount");
             for (ContributionLine item : contributions(organisationId, scopeUnitId, from, to))
                 rows.add(new String[] { item.contributionDate().toString(), item.receiptNumber(),
                     item.contributorName(), item.contributorType(), item.classificationName(), item.eliteNumber(),
-                    item.categoryName(), item.streamName(), item.currency(), item.amount().toPlainString() });
+                    item.categoryName(), item.streamName(), item.paymentMethod(), item.currency(), item.amount().toPlainString() });
         } else if (type.equals("DEPOSIT_REGISTER")) {
             headers = List.of("Date", "Unit", "Bank", "Reference", "Expected", "Allocated", "Banked", "Outstanding", "Status");
             for (DepositLine item : deposits(organisationId, scopeUnitId, from, to))
