@@ -858,3 +858,36 @@ input, select { border-radius: 5px !important; }
 .nyika-row-action { min-height: 26px; padding: 4px 7px; font-size: 8px; white-space: nowrap; }
 @media (max-width: 850px) { .nyika-profile-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .nyika-profile-facts { grid-template-columns: 1fr 1fr; } .nyika-profile-actions { display: grid; } }
+
+
+/* Nyika household creation, membership and profile */
+.nyika-households { display: grid; gap: 16px; }
+.nyika-household-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr); gap: 18px; align-items: start; }
+.nyika-household-create { padding: 15px; border: 1px solid #d0d8e1; background: #f0f3f6; }
+.nyika-household-create h4, .nyika-household-list h4 { margin: 0 0 8px; color: #29445f; font-size: 13px; }
+.nyika-household-candidates { display: grid; gap: 0; max-height: 300px; overflow: auto; border: 1px solid #d1d9e1; background: #fff; }
+.nyika-household-candidates > strong { padding: 10px; color: #53677d; background: #eef1f4; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.nyika-household-candidate { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-top: 1px solid #e5e9ed; cursor: pointer; }
+.nyika-household-candidate input, .nyika-household-add-list input { flex: 0 0 auto; width: 15px; height: 15px; accent-color: #304d6d; }
+.nyika-household-candidate span { display: grid; gap: 3px; }
+.nyika-household-candidate b { color: #2b4058; font-size: 11px; }
+.nyika-household-candidate small { color: #7c8997; font-size: 9px; }
+.nyika-household-candidates > p { margin: 0; padding: 12px; color: #7b8794; font-size: 10px; }
+.nyika-household-list { display: grid; gap: 8px; }
+.nyika-household-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px; border: 1px solid #d2dae2; background: #fff; }
+.nyika-household-row > div { display: grid; gap: 4px; min-width: 0; }
+.nyika-household-row strong { color: #29445f; font-size: 12px; }
+.nyika-household-row small { color: #788697; font-size: 9px; }
+.nyika-household-profile { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid #d4dce4; }
+.nyika-household-head { display: flex; align-items: end; justify-content: space-between; gap: 14px; }
+.nyika-household-head label { display: grid; gap: 5px; min-width: min(320px, 100%); color: #53677d; font-size: 10px; font-weight: 700; }
+.nyika-household-head select { min-height: 36px; padding: 7px; border: 1px solid #bac5d0; background: #fff; color: #263343; }
+.nyika-household-head > span { color: #748294; font-size: 10px; }
+.nyika-household-head-label { display: block; margin-top: 3px; color: #98733b; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
+.nyika-household-add { display: grid; gap: 10px; padding: 13px; border: 1px solid #d1d9e1; background: #f0f3f6; }
+.nyika-household-add > strong { color: #40566f; font-size: 11px; }
+.nyika-household-add-list { display: flex; flex-wrap: wrap; gap: 7px 12px; }
+.nyika-household-add-list label { display: flex; align-items: center; gap: 6px; color: #4c5e72; font-size: 10px; }
+.nyika-household-add-list > small { color: #7c8997; font-size: 10px; }
+@media(max-width:850px) { .nyika-household-grid { grid-template-columns: 1fr; } }
+@media(max-width:600px) { .nyika-household-head { align-items: stretch; flex-direction: column; } .nyika-household-head label { min-width: 0; } .nyika-household-row { align-items: flex-start; } }

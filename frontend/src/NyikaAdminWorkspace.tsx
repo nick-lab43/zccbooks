@@ -3,6 +3,10 @@ import type { FormEvent } from "react";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Classification = { id: string; code: string; name: string; active: boolean };
+type Household = { id: string; code: string; name: string; cellId: string; cellName: string; headMemberId: string | null; headMemberName: string | null; memberCount: number };
+type HouseholdMember = { id: string; firstName: string; lastName: string; classificationId: string | null; classificationName: string | null; eliteNumber: string | null; zccAppNumber: string | null; active: boolean; relationshipLabel: string; joinedOn: string };
+type HouseholdProfile = { household: Household; members: HouseholdMember[] };
+type HouseholdCandidate = { id: string; firstName: string; lastName: string; classificationId: string | null; classificationName: string | null; eliteNumber: string | null; zccAppNumber: string | null };
 type Member = {
   id: string; zccAppNumber: string | null; eliteNumber: string | null;
   firstName: string; lastName: string; classificationId: string | null;
@@ -15,6 +19,16 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   const [units, setUnits] = useState<Unit[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [households, setHouseholds] = useState<Household[]>([]);
+  const [householdProfile, setHouseholdProfile] = useState<HouseholdProfile | null>(null);
+  const [householdCellId, setHouseholdCellId] = useState("");
+  const [householdCandidates, setHouseholdCandidates] = useState<HouseholdCandidate[]>([]);
+  const [householdCandidateIds, setHouseholdCandidateIds] = useState<string[]>([]);
+  const [householdHeadId, setHouseholdHeadId] = useState("");
+  const [householdName, setHouseholdName] = useState("");
+  const [householdFilter, setHouseholdFilter] = useState("");
+  const [householdFilterIds, setHouseholdFilterIds] = useState<string[] | null>(null);
+  const [addHouseholdMemberIds, setAddHouseholdMemberIds] = useState<string[]>([]);
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [nyikaId, setNyikaId] = useState("");
   const [tabheraId, setTabheraId] = useState("");
@@ -54,15 +68,20 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     const tabs = rows.filter(unit => unit.level === "TABHERA" && unit.active && unit.parentId === nyika?.id);
     setTabheraId(current => tabs.some(tab => tab.id === current) ? current : tabs[0]?.id ?? "");
     if (nyika) {
-      const memberRows = await request<Member[]>(`/api/nyikas/${nyika.id}/members`);
+      const [memberRows, householdRows] = await Promise.all([
+        request<Member[]>(`/api/nyikas/${nyika.id}/members`),
+        request<Household[]>(`/api/nyikas/${nyika.id}/households`)
+      ]);
       setMembers(memberRows);
+      setHouseholds(householdRows);
     } else {
-      setMembers([]);
+      setMembers([]); setHouseholds([]);
     }
   }
 
   useEffect(() => {
     setUnits([]); setMembers([]); setClassifications([]); setSelectedIds([]); setSelectedMember(null);
+    setHouseholds([]); setHouseholdProfile(null); setHouseholdCandidates([]); setHouseholdCandidateIds([]); setHouseholdFilter(""); setHouseholdFilterIds(null);
     setError(""); setNotice(""); setClassificationFilter(""); setCellFilter("");
     if (organisationId) reload().catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
@@ -74,7 +93,8 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     const matchesSearch = !term || `${member.firstName} ${member.lastName} ${member.zccAppNumber ?? ""} ${member.eliteNumber ?? ""}`.toLowerCase().includes(term);
     return matchesSearch
       && (!classificationFilter || member.classificationId === classificationFilter)
-      && (!cellFilter || member.cellId === cellFilter);
+      && (!cellFilter || member.cellId === cellFilter)
+      && (householdFilterIds === null || householdFilterIds.includes(member.id));
   });
   const unassignedCount = members.filter(member => !member.cellId).length;
   const assignedCount = members.length - unassignedCount;
@@ -164,6 +184,102 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     finally { setBusy(false); }
   }
 
+
+  useEffect(() => {
+    setHouseholdCandidateIds([]);
+    if (!nyikaId || !householdCellId) { setHouseholdCandidates([]); return; }
+    request<HouseholdCandidate[]>(`/api/nyikas/${nyikaId}/household-candidates?cellId=${householdCellId}`)
+      .then(setHouseholdCandidates).catch((e: Error) => setError(e.message));
+  }, [nyikaId, householdCellId, authorizationHeader]);
+
+  function toggleHouseholdCandidate(id: string, checked: boolean) {
+    const next = checked ? [...householdCandidateIds, id] : householdCandidateIds.filter(value => value !== id);
+    setHouseholdCandidateIds(next);
+    const selected = householdCandidates.filter(candidate => next.includes(candidate.id));
+    const surnames = [...new Set(selected.map(candidate => candidate.lastName.trim().toLocaleLowerCase()))];
+    if (selected.length && surnames.length === 1) setHouseholdName(`${selected[0].lastName.trim()} household`);
+    else setHouseholdName("");
+    setHouseholdHeadId(current => next.includes(current) ? current : "");
+  }
+
+  async function refreshHouseholdCandidates(cellId: string) {
+    if (!cellId) { setHouseholdCandidates([]); return; }
+    const rows = await request<HouseholdCandidate[]>(`/api/nyikas/${nyikaId}/household-candidates?cellId=${cellId}`);
+    setHouseholdCandidates(rows);
+  }
+
+  async function createHousehold(event: FormEvent<HTMLFormElement>) {
+    const form = event.currentTarget;
+    await submit(event, async data => {
+      if (!householdCellId || !householdCandidateIds.length) throw new Error("Select a Cell and at least one available member.");
+      if (!householdName.trim()) throw new Error("Enter a household name.");
+      const created = await request<HouseholdProfile>(`/api/nyikas/${nyikaId}/households`, {
+        method: "POST", body: JSON.stringify({
+          cellId: householdCellId, code: data.get("householdCode"), name: householdName.trim(),
+          headMemberId: householdHeadId || null,
+          members: householdCandidateIds.map(memberId => ({ memberId, relationshipLabel: "Member" }))
+        })
+      });
+      await reload(); setHouseholdProfile(created); setHouseholdCandidateIds([]);
+      setHouseholdHeadId(""); setHouseholdName(""); setHouseholdCellId(created.household.cellId); await refreshHouseholdCandidates(created.household.cellId); form.reset();
+      setNotice("Household created. Member links are recorded in the membership history.");
+    });
+  }
+
+  async function openHousehold(id: string) {
+    setError(""); setNotice("");
+    try {
+      const profile = await request<HouseholdProfile>(`/api/nyikas/${nyikaId}/households/${id}`);
+      setHouseholdProfile(profile); setAddHouseholdMemberIds([]); setHouseholdCellId(profile.household.cellId);
+    } catch (e) { setError(e instanceof Error ? e.message : "Household could not be loaded."); }
+  }
+
+  async function addMembersToHousehold() {
+    if (!householdProfile || !addHouseholdMemberIds.length) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const updated = await request<HouseholdProfile>(`/api/nyikas/${nyikaId}/households/${householdProfile.household.id}/members`, {
+        method: "POST", body: JSON.stringify({ members: addHouseholdMemberIds.map(memberId => ({ memberId, relationshipLabel: "Member" })) })
+      });
+      setHouseholdProfile(updated); setAddHouseholdMemberIds([]); await reload(); await refreshHouseholdCandidates(updated.household.cellId);
+      setNotice("Members added to the household.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Members could not be added."); }
+    finally { setBusy(false); }
+  }
+
+  async function removeHouseholdMember(memberId: string) {
+    if (!householdProfile) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const updated = await request<HouseholdProfile>(`/api/nyikas/${nyikaId}/households/${householdProfile.household.id}/members/${memberId}`, { method: "DELETE" });
+      setHouseholdProfile(updated); await reload(); await refreshHouseholdCandidates(updated.household.cellId);
+      setNotice("Membership ended. The historical membership record is retained.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Member could not be removed."); }
+    finally { setBusy(false); }
+  }
+
+  async function changeHouseholdHead(memberId: string) {
+    if (!householdProfile) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const updated = await request<HouseholdProfile>(`/api/nyikas/${nyikaId}/households/${householdProfile.household.id}/head`, {
+        method: "PUT", body: JSON.stringify({ memberId: memberId || null })
+      });
+      setHouseholdProfile(updated); await reload();
+      setNotice(memberId ? "Household head updated." : "Household head designation cleared.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Household head could not be changed."); }
+    finally { setBusy(false); }
+  }
+
+  async function changeHouseholdFilter(id: string) {
+    setHouseholdFilter(id); setHouseholdFilterIds(null);
+    if (!id) return;
+    try {
+      const profile = await request<HouseholdProfile>(`/api/nyikas/${nyikaId}/households/${id}`);
+      setHouseholdFilterIds(profile.members.map(member => member.id));
+    } catch (e) { setError(e instanceof Error ? e.message : "Household filter could not be loaded."); }
+  }
+
   function toggleMember(id: string, checked: boolean) {
     setSelectedIds(current => checked ? [...current, id] : current.filter(value => value !== id));
   }
@@ -219,6 +335,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         <input aria-label="Search members" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, ZCC number or Elite Number" />
         <select aria-label="Filter by classification" value={classificationFilter} onChange={e => setClassificationFilter(e.target.value)}><option value="">All classifications</option>{classifications.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <select aria-label="Filter by Cell" value={cellFilter} onChange={e => setCellFilter(e.target.value)}><option value="">All Cells</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select>
+        <select aria-label="Filter by household" value={householdFilter} onChange={e => changeHouseholdFilter(e.target.value)}><option value="">All households</option>{households.map(household => <option key={household.id} value={household.id}>{household.name}</option>)}</select>
         <select aria-label="Destination Cell" value={cellId} onChange={e => setCellId(e.target.value)}><option value="">Choose destination Cell</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select>
         <button className="primary-button" type="button" disabled={busy || !cellId || !selectedIds.length} onClick={assignSelected}>Assign selected ({selectedIds.length})</button>
       </div>
@@ -243,6 +360,36 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         {visibleMembers.map(member => <tr key={member.id}><td><input type="checkbox" aria-label={`Select ${member.firstName} ${member.lastName}`} checked={selectedIds.includes(member.id)} disabled={!!member.cellId || !member.active} onChange={e => toggleMember(member.id, e.target.checked)} /></td><td><strong>{member.lastName}, {member.firstName}</strong></td><td>{member.classificationName || "—"}</td><td>{member.eliteNumber || "—"}</td><td>{member.zccAppNumber || "—"}</td><td>{member.cellName || <span className="nyika-unassigned">Awaiting assignment</span>}</td><td>{member.active ? "Active" : "Inactive"}</td><td><button className="secondary-button nyika-row-action" type="button" onClick={() => openMemberProfile(member.id)}>Open profile</button></td></tr>)}
         {!visibleMembers.length && <tr><td colSpan={8} className="empty-table">No members match these filters.</td></tr>}
       </tbody></table></div>
+    </section>
+
+
+    <section className="nyika-card nyika-households">
+      <div className="nyika-register-heading"><div><span className="nyika-eyebrow">HOUSEHOLD MANAGEMENT</span><h3>Build and maintain households</h3><p>Households belong to a Cell. Select members deliberately; matching surnames only provide a suggested title.</p></div><span className="nyika-register-count">{households.length} HOUSEHOLDS</span></div>
+      <div className="nyika-household-grid">
+        <form className="form-stack nyika-household-create" onSubmit={createHousehold}>
+          <h4>Create a household</h4>
+          <label>Cell<select value={householdCellId} onChange={e => { setHouseholdCellId(e.target.value); setHouseholdCandidateIds([]); setHouseholdHeadId(""); }} required><option value="">Select Cell</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select></label>
+          <label>Household code<input name="householdCode" required maxLength={60} placeholder="Enter a unique code" /></label>
+          <label>Household name<input value={householdName} onChange={e => setHouseholdName(e.target.value)} required maxLength={160} placeholder="Enter household name" /></label>
+          {householdCandidateIds.length > 0 && <label>Household head<select value={householdHeadId} onChange={e => setHouseholdHeadId(e.target.value)}><option value="">No head designated yet</option>{householdCandidates.filter(candidate => householdCandidateIds.includes(candidate.id)).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.lastName}, {candidate.firstName}</option>)}</select></label>}
+          <div className="nyika-household-candidates"><strong>Available members in this Cell</strong>{householdCandidates.map(candidate => <label key={candidate.id} className="nyika-household-candidate"><input type="checkbox" checked={householdCandidateIds.includes(candidate.id)} onChange={e => toggleHouseholdCandidate(candidate.id, e.target.checked)} /><span><b>{candidate.lastName}, {candidate.firstName}</b><small>{candidate.classificationName || "No classification"} · {candidate.eliteNumber || "No Elite Number"}</small></span></label>)}{householdCellId && !householdCandidates.length && <p>No available active members in this Cell. Members already in another household are excluded.</p>}{!householdCellId && <p>Select a Cell to load available members.</p>}</div>
+          <button className="primary-button" disabled={busy || !householdCellId || !householdCandidateIds.length}>Create household ({householdCandidateIds.length})</button>
+        </form>
+        <div className="nyika-household-list">
+          <h4>Existing households</h4>
+          {households.map(household => <article key={household.id} className="nyika-household-row"><div><strong>{household.name}</strong><small>{household.code} · {household.cellName}</small><small>{household.memberCount} member(s) · Head: {household.headMemberName || "Not assigned"}</small></div><button className="secondary-button nyika-row-action" type="button" onClick={() => openHousehold(household.id)}>Open</button></article>)}
+          {!households.length && <p>No households have been created in this Nyika.</p>}
+        </div>
+      </div>
+      {householdProfile && <section className="nyika-household-profile">
+        <div className="nyika-register-heading"><div><span className="nyika-eyebrow">HOUSEHOLD PROFILE</span><h3>{householdProfile.household.name}</h3><p>{householdProfile.household.code} · {householdProfile.household.cellName}</p></div><button className="secondary-button" type="button" onClick={() => setHouseholdProfile(null)}>Close</button></div>
+        <div className="nyika-household-head"><label>Household head<select value={householdProfile.household.headMemberId ?? ""} onChange={e => changeHouseholdHead(e.target.value)} disabled={busy}><option value="">No head designated</option>{householdProfile.members.filter(member => member.active).map(member => <option key={member.id} value={member.id}>{member.lastName}, {member.firstName}</option>)}</select></label><span>{householdProfile.members.length} active membership(s)</span></div>
+        <div className="table-wrap"><table><thead><tr><th>MEMBER</th><th>CLASSIFICATION</th><th>ELITE NUMBER</th><th>ZCC NUMBER</th><th>RELATIONSHIP</th><th>JOINED</th><th>ACTION</th></tr></thead><tbody>
+          {householdProfile.members.map(member => <tr key={member.id}><td><strong>{member.lastName}, {member.firstName}</strong>{householdProfile.household.headMemberId === member.id && <small className="nyika-household-head-label">HOUSEHOLD HEAD</small>}</td><td>{member.classificationName || "—"}</td><td>{member.eliteNumber || "—"}</td><td>{member.zccAppNumber || "—"}</td><td>{member.relationshipLabel}</td><td>{member.joinedOn}</td><td><button className="secondary-button nyika-row-action" type="button" disabled={busy || householdProfile.household.headMemberId === member.id} onClick={() => removeHouseholdMember(member.id)}>End membership</button></td></tr>)}
+          {!householdProfile.members.length && <tr><td colSpan={7} className="empty-table">No active members in this household.</td></tr>}
+        </tbody></table></div>
+        <div className="nyika-household-add"><strong>Add available members from {householdProfile.household.cellName}</strong><div className="nyika-household-add-list">{householdCandidates.map(candidate => <label key={candidate.id}><input type="checkbox" checked={addHouseholdMemberIds.includes(candidate.id)} onChange={e => setAddHouseholdMemberIds(current => e.target.checked ? [...current, candidate.id] : current.filter(id => id !== candidate.id))} /><span>{candidate.lastName}, {candidate.firstName}</span></label>)}{!householdCandidates.length && <small>No unassigned active members are available in this Cell.</small>}</div><button className="primary-button" type="button" disabled={busy || !addHouseholdMemberIds.length} onClick={addMembersToHousehold}>Add selected members ({addHouseholdMemberIds.length})</button></div>
+      </section>}
     </section>
 
     <section className="nyika-next-step">
