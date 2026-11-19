@@ -14,6 +14,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
 }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [nyikaId, setNyikaId] = useState("");
   const [tabheraId, setTabheraId] = useState("");
@@ -61,7 +62,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   }
 
   useEffect(() => {
-    setUnits([]); setMembers([]); setClassifications([]); setSelectedIds([]);
+    setUnits([]); setMembers([]); setClassifications([]); setSelectedIds([]); setSelectedMember(null);
     setError(""); setNotice(""); setClassificationFilter(""); setCellFilter("");
     if (organisationId) reload().catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
@@ -125,6 +126,44 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     finally { setBusy(false); }
   }
 
+  async function openMemberProfile(memberId: string) {
+    setError(""); setNotice("");
+    try {
+      const profile = await request<Member>(`/api/nyikas/${nyikaId}/members/${memberId}`);
+      setSelectedMember(profile);
+    } catch (e) { setError(e instanceof Error ? e.message : "Member profile could not be loaded."); }
+  }
+
+  async function saveMember(event: FormEvent<HTMLFormElement>) {
+    const form = event.currentTarget;
+    await submit(event, async data => {
+      if (!selectedMember) return;
+      const updated = await request<Member>(`/api/nyikas/${nyikaId}/members/${selectedMember.id}`, {
+        method: "PUT", body: JSON.stringify({
+          firstName: data.get("firstName"), lastName: data.get("lastName"),
+          zccAppNumber: data.get("zccAppNumber"), eliteNumber: data.get("eliteNumber"),
+          classificationId: data.get("classificationId"), cellId: data.get("cellId") || null
+        })
+      });
+      await reload(); setSelectedMember(updated);
+      setNotice("Member record updated. Changes have been recorded in the audit history.");
+      form.reset();
+    });
+  }
+
+  async function toggleMemberStatus(member: Member) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const updated = await request<Member>(`/api/nyikas/${nyikaId}/members/${member.id}/status`, {
+        method: "POST", body: JSON.stringify({ active: !member.active })
+      });
+      await reload();
+      setSelectedMember(current => current?.id === member.id ? updated : current);
+      setNotice(member.active ? "Member deactivated. Their historical records are retained." : "Member reactivated.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Member status could not be changed."); }
+    finally { setBusy(false); }
+  }
+
   function toggleMember(id: string, checked: boolean) {
     setSelectedIds(current => checked ? [...current, id] : current.filter(value => value !== id));
   }
@@ -183,9 +222,26 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         <select aria-label="Destination Cell" value={cellId} onChange={e => setCellId(e.target.value)}><option value="">Choose destination Cell</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select>
         <button className="primary-button" type="button" disabled={busy || !cellId || !selectedIds.length} onClick={assignSelected}>Assign selected ({selectedIds.length})</button>
       </div>
-      <div className="table-wrap"><table><thead><tr><th><input type="checkbox" aria-label="Select all visible unassigned members" checked={allVisibleSelected} onChange={e => setSelectedIds(current => e.target.checked ? [...new Set([...current, ...selectableVisibleMembers.map(member => member.id)])] : current.filter(id => !visibleMembers.some(member => member.id === id)))} /></th><th>MEMBER</th><th>CLASSIFICATION</th><th>ELITE NUMBER</th><th>ZCC NUMBER</th><th>CELL</th><th>STATUS</th></tr></thead><tbody>
-        {visibleMembers.map(member => <tr key={member.id}><td><input type="checkbox" aria-label={`Select ${member.firstName} ${member.lastName}`} checked={selectedIds.includes(member.id)} disabled={!!member.cellId || !member.active} onChange={e => toggleMember(member.id, e.target.checked)} /></td><td><strong>{member.lastName}, {member.firstName}</strong></td><td>{member.classificationName || "—"}</td><td>{member.eliteNumber || "—"}</td><td>{member.zccAppNumber || "—"}</td><td>{member.cellName || <span className="nyika-unassigned">Awaiting assignment</span>}</td><td>{member.active ? "Active" : "Inactive"}</td></tr>)}
-        {!visibleMembers.length && <tr><td colSpan={7} className="empty-table">No members match these filters.</td></tr>}
+      {selectedMember && <section className="nyika-card nyika-member-profile">
+        <div className="nyika-register-heading"><div><span className="nyika-eyebrow">MEMBER PROFILE</span><h3>{selectedMember.lastName}, {selectedMember.firstName}</h3><p>Review and maintain the member's details within your Nyika.</p></div><button className="secondary-button" type="button" onClick={() => setSelectedMember(null)}>Close profile</button></div>
+        <div className="nyika-profile-facts">
+          <div><span>MEMBER STATUS</span><strong>{selectedMember.active ? "Active" : "Inactive"}</strong></div>
+          <div><span>CLASSIFICATION</span><strong>{selectedMember.classificationName || "Not assigned"}</strong></div>
+          <div><span>ELITE NUMBER</span><strong>{selectedMember.eliteNumber || "Not recorded"}</strong></div>
+          <div><span>ZCC APPLICATION NO.</span><strong>{selectedMember.zccAppNumber || "Not recorded"}</strong></div>
+          <div><span>CELL</span><strong>{selectedMember.cellName || "Awaiting assignment"}</strong></div>
+        </div>
+        <form className="form-stack nyika-edit-form" key={selectedMember.id} onSubmit={saveMember}>
+          <div className="field-pair"><label>First name<input name="firstName" defaultValue={selectedMember.firstName} required maxLength={100} /></label><label>Last name<input name="lastName" defaultValue={selectedMember.lastName} required maxLength={100} /></label></div>
+          <label>Classification<select name="classificationId" defaultValue={selectedMember.classificationId ?? ""} required>{classifications.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <div className="field-pair"><label>Elite Number<input name="eliteNumber" defaultValue={selectedMember.eliteNumber ?? ""} /></label><label>ZCC application number<input name="zccAppNumber" defaultValue={selectedMember.zccAppNumber ?? ""} maxLength={80} /></label></div>
+          <label>Cell assignment<select name="cellId" defaultValue={selectedMember.cellId ?? ""}><option value="">Unassigned</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select></label>
+          <div className="nyika-profile-actions"><button className="primary-button" disabled={busy}>Save member details</button><button className="secondary-button" type="button" disabled={busy} onClick={() => toggleMemberStatus(selectedMember)}>{selectedMember.active ? "Deactivate member" : "Reactivate member"}</button></div>
+        </form>
+      </section>}
+      <div className="table-wrap"><table><thead><tr><th><input type="checkbox" aria-label="Select all visible unassigned members" checked={allVisibleSelected} onChange={e => setSelectedIds(current => e.target.checked ? [...new Set([...current, ...selectableVisibleMembers.map(member => member.id)])] : current.filter(id => !visibleMembers.some(member => member.id === id)))} /></th><th>MEMBER</th><th>CLASSIFICATION</th><th>ELITE NUMBER</th><th>ZCC NUMBER</th><th>CELL</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>
+        {visibleMembers.map(member => <tr key={member.id}><td><input type="checkbox" aria-label={`Select ${member.firstName} ${member.lastName}`} checked={selectedIds.includes(member.id)} disabled={!!member.cellId || !member.active} onChange={e => toggleMember(member.id, e.target.checked)} /></td><td><strong>{member.lastName}, {member.firstName}</strong></td><td>{member.classificationName || "—"}</td><td>{member.eliteNumber || "—"}</td><td>{member.zccAppNumber || "—"}</td><td>{member.cellName || <span className="nyika-unassigned">Awaiting assignment</span>}</td><td>{member.active ? "Active" : "Inactive"}</td><td><button className="secondary-button nyika-row-action" type="button" onClick={() => openMemberProfile(member.id)}>Open profile</button></td></tr>)}
+        {!visibleMembers.length && <tr><td colSpan={8} className="empty-table">No members match these filters.</td></tr>}
       </tbody></table></div>
     </section>
 

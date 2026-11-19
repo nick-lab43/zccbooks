@@ -116,6 +116,123 @@ public class NyikaWorkspaceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    @GetMapping("/nyikas/{nyikaId}/members/{memberId}")
+    public NyikaMemberDto memberProfile(@PathVariable UUID nyikaId, @PathVariable UUID memberId) {
+        Unit nyika = requireNyika(nyikaId);
+        authorization.requireUnitPermission("MEMBERS_VIEW", nyikaId);
+        return findMemberInNyika(memberId, nyika);
+    }
+
+    private NyikaMemberDto findMemberInNyika(UUID memberId, Unit nyika) {
+        return jdbc.query("""
+            WITH RECURSIVE descendants AS (
+                SELECT id FROM organisational_units WHERE id = ?
+                UNION ALL
+                SELECT child.id FROM organisational_units child
+                JOIN descendants parent ON child.parent_id = parent.id
+            )
+            SELECT m.id, m.zcc_app_number, m.elite_number, m.first_name, m.last_name,
+                   m.classification_id, c.name AS classification_name, m.active,
+                   m.cell_id, cell.name AS cell_name
+            FROM members m
+            LEFT JOIN classifications c ON c.id = m.classification_id
+                AND c.organisation_id = m.organisation_id
+            LEFT JOIN organisational_units cell ON cell.id = m.cell_id
+            WHERE m.id = ? AND m.organisation_id = ? AND m.branch_id IS NULL
+              AND ((m.cell_id IS NULL AND m.nyika_id = ?) OR m.cell_id IN (SELECT id FROM descendants))
+            """, (rs, n) -> new NyikaMemberDto(
+                rs.getObject("id", UUID.class).toString(), rs.getString("zcc_app_number"),
+                rs.getString("elite_number"), rs.getString("first_name"), rs.getString("last_name"),
+                rs.getObject("classification_id") == null ? null : rs.getObject("classification_id", UUID.class).toString(),
+                rs.getString("classification_name"), rs.getBoolean("active"),
+                rs.getObject("cell_id") == null ? null : rs.getObject("cell_id", UUID.class).toString(),
+                rs.getString("cell_name")
+            ), nyika.id(), memberId, nyika.organisationId(), nyika.id())
+            .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Member not found in this Nyika."));
+    }
+
+    @PutMapping("/nyikas/{nyikaId}/members/{memberId}")
+    @Transactional
+    public NyikaMemberDto updateMember(@PathVariable UUID nyikaId, @PathVariable UUID memberId,
+            @Valid @RequestBody UpdateNyikaMember request) {
+        Unit nyika = requireNyika(nyikaId);
+        authorization.requireUnitPermission("MEMBERS_MANAGE", nyikaId);
+        NyikaMemberDto current = findMemberInNyika(memberId, nyika);
+
+        String classificationName = jdbc.query("""
+            SELECT name FROM classifications
+            WHERE id = ? AND organisation_id = ? AND active = TRUE
+            """, (rs, n) -> rs.getString("name"), request.classificationId(), nyika.organisationId())
+            .stream().findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Select an active classification configured for this organisation."));
+
+        UUID nextCellId = request.cellId();
+        String nextCellName = null;
+        if (nextCellId != null) {
+            Cell cell = requireCellInNyika(nextCellId, nyika);
+            authorization.requireUnitPermission("MEMBERS_MANAGE", nextCellId);
+            nextCellName = cell.name();
+        }
+
+        if (!java.util.Objects.equals(current.cellId(), nextCellId == null ? null : nextCellId.toString())) {
+            Integer householdMemberships = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM member_household_memberships
+                WHERE member_id = ? AND organisation_id = ? AND valid_to IS NULL
+                """, Integer.class, memberId, nyika.organisationId());
+            if (householdMemberships != null && householdMemberships > 0) {
+                throw new IllegalArgumentException("Remove this member from their active household before changing their Cell.");
+            }
+        }
+
+        int updated = jdbc.update("""
+            UPDATE members
+            SET first_name = ?, last_name = ?, zcc_app_number = ?, elite_number = ?,
+                classification_id = ?, cell_id = ?, cell_level = 'CELL'
+            WHERE id = ? AND organisation_id = ? AND branch_id IS NULL
+              AND ((cell_id IS NULL AND nyika_id = ?) OR cell_id IN (
+                  WITH RECURSIVE descendants AS (
+                      SELECT id FROM organisational_units WHERE id = ?
+                      UNION ALL
+                      SELECT child.id FROM organisational_units child
+                      JOIN descendants parent ON child.parent_id = parent.id
+                  ) SELECT id FROM descendants
+              ))
+            """, request.firstName().trim(), request.lastName().trim(), blankToNull(request.zccAppNumber()),
+                blankToNull(request.eliteNumber()), request.classificationId(), nextCellId,
+                memberId, nyika.organisationId(), nyika.id(), nyika.id());
+        if (updated != 1) throw new IllegalStateException("Member record changed during this update. Reload and retry.");
+
+        audit.record("MEMBER_UPDATED", "MEMBER", memberId,
+            Map.of("nyikaId", nyika.id().toString(),
+                "classificationId", request.classificationId().toString(),
+                "cellId", nextCellId == null ? "" : nextCellId.toString(),
+                "eliteNumber", blankToNull(request.eliteNumber()) == null ? "" : blankToNull(request.eliteNumber())));
+
+        return new NyikaMemberDto(memberId.toString(), blankToNull(request.zccAppNumber()),
+            blankToNull(request.eliteNumber()), request.firstName().trim(), request.lastName().trim(),
+            request.classificationId().toString(), classificationName, current.active(),
+            nextCellId == null ? null : nextCellId.toString(), nextCellName);
+    }
+
+    @PostMapping("/nyikas/{nyikaId}/members/{memberId}/status")
+    @Transactional
+    public NyikaMemberDto setMemberStatus(@PathVariable UUID nyikaId, @PathVariable UUID memberId,
+            @Valid @RequestBody SetMemberStatus request) {
+        Unit nyika = requireNyika(nyikaId);
+        authorization.requireUnitPermission("MEMBERS_MANAGE", nyikaId);
+        NyikaMemberDto current = memberProfile(nyikaId, memberId);
+        int updated = jdbc.update("""
+            UPDATE members SET active = ?
+            WHERE id = ? AND organisation_id = ? AND branch_id IS NULL
+            """, request.active(), memberId, nyika.organisationId());
+        if (updated != 1) throw new IllegalStateException("Member record changed during this operation. Reload and retry.");
+        audit.record(request.active() ? "MEMBER_REACTIVATED" : "MEMBER_DEACTIVATED",
+            "MEMBER", memberId, Map.of("nyikaId", nyika.id().toString()));
+        return new NyikaMemberDto(current.id(), current.zccAppNumber(), current.eliteNumber(),
+            current.firstName(), current.lastName(), current.classificationId(), current.classificationName(),
+            request.active(), current.cellId(), current.cellName());
+    }
+
     @PostMapping("/units/{cellId}/members/bulk-assign")
     @Transactional
     public ResponseEntity<BulkAssignmentResult> bulkAssign(@PathVariable UUID cellId,
@@ -208,6 +325,10 @@ public class NyikaWorkspaceController {
             @NotBlank @Size(max = 100) String firstName,
             @NotBlank @Size(max = 100) String lastName,
             @NotNull UUID classificationId, UUID cellId) {}
+    public record UpdateNyikaMember(@NotBlank @Size(max = 100) String firstName,
+            @NotBlank @Size(max = 100) String lastName, @Size(max = 80) String zccAppNumber,
+            String eliteNumber, @NotNull UUID classificationId, UUID cellId) {}
+    public record SetMemberStatus(@NotNull Boolean active) {}
     public record BulkAssignMembers(@jakarta.validation.constraints.NotEmpty @Size(max = 500) List<UUID> memberIds) {}
     public record BulkAssignmentResult(int assignedCount, String cellId) {}
     public record NyikaMemberDto(String id, String zccAppNumber, String eliteNumber,
