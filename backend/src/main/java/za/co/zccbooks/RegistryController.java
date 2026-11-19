@@ -94,7 +94,7 @@ public class RegistryController {
     public ResponseEntity<ClassificationDto> createClassification(@PathVariable UUID organisationId,
             @Valid @RequestBody CreateClassification request) {
         requireOrganisation(organisationId);
-        authorization.requireOrganisationPermission("MEMBERS_MANAGE", organisationId);
+        authorization.requireCentralAdministrator();
         UUID id = UUID.randomUUID();
         return ResponseEntity.status(HttpStatus.CREATED).body(jdbc.queryForObject(
             "INSERT INTO classifications (id, organisation_id, code, name) VALUES (?, ?, ?, ?) RETURNING id, code, name, active",
