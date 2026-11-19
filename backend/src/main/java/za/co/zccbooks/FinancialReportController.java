@@ -371,7 +371,8 @@ public class FinancialReportController {
     @GetMapping(value = "/export", produces = "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     public ResponseEntity<byte[]> export(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to,
-            @RequestParam(defaultValue = "CONTRIBUTION_SUMMARY") String type) throws IOException {
+            @RequestParam(defaultValue = "CONTRIBUTION_SUMMARY") String type,
+            @RequestParam(defaultValue = "CATEGORY") String groupBy) throws IOException {
         ReportContext context = context(organisationId, scopeUnitId, from, to);
         if (!List.of("CONTRIBUTION_SUMMARY", "CONTRIBUTION_REGISTER", "DEPOSIT_REGISTER", "EXPENDITURE_REGISTER", "INCOME_EXPENDITURE", "BUDGET_PERFORMANCE", "EXCEPTION_REGISTER", "CONTRIBUTION_BREAKDOWN").contains(type)) {
             throw new IllegalArgumentException("Unsupported report type.");
@@ -396,7 +397,7 @@ public class FinancialReportController {
             if (type.equals("CONTRIBUTION_BREAKDOWN")) {
                 XWPFTable table = document.createTable(1, 4);
                 setRow(table.getRow(0), "Group", "Transactions", "Currency", "Total");
-                for (ContributionBreakdownLine item : contributionBreakdown(organisationId, scopeUnitId, from, to, "CATEGORY")) {
+                for (ContributionBreakdownLine item : contributionBreakdown(organisationId, scopeUnitId, from, to, groupBy)) {
                     setRow(table.createRow(), item.groupName(), Long.toString(item.contributionCount()),
                         item.currency(), item.totalAmount().toPlainString());
                 }
