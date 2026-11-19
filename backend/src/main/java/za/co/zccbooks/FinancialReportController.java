@@ -368,6 +368,11 @@ public class FinancialReportController {
             scopeUnitId, organisationId, organisationId, organisationId, from, to);
     }
 
+    public ResponseEntity<byte[]> export(UUID organisationId, UUID scopeUnitId,
+            LocalDate from, LocalDate to, String type) throws IOException {
+        return export(organisationId, scopeUnitId, from, to, type, "CATEGORY");
+    }
+
     @GetMapping(value = "/export", produces = "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     public ResponseEntity<byte[]> export(@PathVariable UUID organisationId,
             @RequestParam UUID scopeUnitId, @RequestParam LocalDate from, @RequestParam LocalDate to,
