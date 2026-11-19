@@ -112,7 +112,8 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     setSelectedIds(current => checked ? [...current, id] : current.filter(value => value !== id));
   }
 
-  const allVisibleSelected = visibleMembers.length > 0 && visibleMembers.every(member => selectedIds.includes(member.id));
+  const selectableVisibleMembers = visibleMembers.filter(member => !member.cellId && member.active);
+  const allVisibleSelected = selectableVisibleMembers.length > 0 && selectableVisibleMembers.every(member => selectedIds.includes(member.id));
 
   return <div className="nyika-workspace">
     <section className="nyika-welcome">
@@ -138,6 +139,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
           <label>Cell code<input name="code" required maxLength={60} placeholder="Enter a unique code" /></label>
           <button className="primary-button" disabled={busy || !tabheraId}>Create Cell</button>
         </form>
+        {tabheraId && <div className="nyika-cell-list"><strong>Cells in this Tabhera</strong>{cells.filter(cell => cell.parentId === tabheraId).map(cell => <div key={cell.id}><span>{cell.name}</span><small>{cell.code}</small></div>)}{!cells.some(cell => cell.parentId === tabheraId) && <p>No Cells created in this Tabhera yet.</p>}</div>}
         {!tabheras.length && <p className="nyika-inline-note">No active Tabheras are available. Ask Central Administration to configure the Nyika's Tabheras.</p>}
       </article>
 
