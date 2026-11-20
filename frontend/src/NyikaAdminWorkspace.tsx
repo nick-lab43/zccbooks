@@ -381,8 +381,14 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       <article><span>ASSIGNED TO CELLS</span><strong>{assignedCount}</strong></article>
       <article><span>AWAITING CELL</span><strong>{unassignedCount}</strong></article>
     </section>
+    <nav className="nyika-workflow-nav" aria-label="Nyika workspace sections">
+      <a href="#nyika-setup"><span>01</span> Setup</a>
+      <a href="#nyika-members"><span>02</span> Members <b>{members.length}</b></a>
+      <a href="#nyika-households"><span>03</span> Households <b>{households.length}</b></a>
+      <a href="#nyika-contributions"><span>04</span> Contributions</a>
+    </nav>
 
-    <section className="nyika-workflow-grid">
+    <section id="nyika-setup" className="nyika-workflow-grid">
       <article className="nyika-card">
         <div className="nyika-card-heading"><span>01</span><div><h3>Create a Cell</h3><p>Set up the Cell before or after registering members.</p></div></div>
         <form className="form-stack" onSubmit={createCell}>
@@ -409,7 +415,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       </article>
     </section>
 
-    <section className="nyika-card nyika-register">
+    <section id="nyika-members" className="nyika-card nyika-register">
       <div className="nyika-register-heading"><div><span className="nyika-eyebrow">MEMBERSHIP REGISTER</span><h3>Members in your Nyika</h3><p>Search and filter members, or select multiple unassigned members to place them in a Cell.</p></div><span className="nyika-register-count">{visibleMembers.length} MEMBERS</span></div>
       <div className="nyika-register-tools">
         <input aria-label="Search members" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, ZCC number or Elite Number" />
@@ -443,7 +449,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     </section>
 
 
-    <section className="nyika-card nyika-households">
+    <section id="nyika-households" className="nyika-card nyika-households">
       <div className="nyika-register-heading"><div><span className="nyika-eyebrow">HOUSEHOLD MANAGEMENT</span><h3>Build and maintain households</h3><p>Households belong to a Cell. Select members deliberately; matching surnames only provide a suggested title.</p></div><span className="nyika-register-count">{households.length} HOUSEHOLDS</span></div>
       <div className="nyika-household-grid">
         <form className="form-stack nyika-household-create" onSubmit={createHousehold}>
@@ -473,7 +479,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     </section>
 
 
-    <section className="nyika-card nyika-contributions">
+    <section id="nyika-contributions" className="nyika-card nyika-contributions">
       <div className="nyika-register-heading"><div><span className="nyika-eyebrow">FINANCIAL WORKSPACE</span><h3>Capture contributions</h3><p>Record a contribution for an individual member or a household. Only active categories configured by Central Administration are available.</p></div><span className="nyika-register-count">{contributions.length} RECENT RECORDS</span></div>
       <form className="form-stack nyika-contribution-form" onSubmit={captureContribution}>
         <label>Financial scope<select value={contributionScopeId} onChange={e => { setContributionScopeId(e.target.value); setContributionMemberId(""); setContributionHouseholdId(""); setContributionReceipt(null); }} required><option value="">Select authorised scope</option>{contributionScopeUnits.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
