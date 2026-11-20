@@ -170,6 +170,29 @@ public class DepositManagementController {
         if (totals.allocatedAmount().compareTo(batch.expectedAmount()) != 0) {
             throw new IllegalArgumentException("The allocated receipt total must equal the declared deposit amount.");
         }
+        Integer evidenceCount = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM deposit_evidence WHERE deposit_batch_id = ?
+            """, Integer.class, batchId);
+        if (evidenceCount == null || evidenceCount == 0) {
+            throw new ConflictException("A deposit slip or supporting bank deposit document must be captured and uploaded before this collection can be submitted to Central Financial Administration.");
+        }
+        Integer unallocatedCashReceipts = jdbc.queryForObject("""
+            SELECT COUNT(*)
+            FROM contributions c
+            WHERE c.organisation_id = ?
+              AND c.scope_unit_id = ?
+              AND c.payment_method = 'CASH'
+              AND NOT EXISTS (
+                  SELECT 1 FROM deposit_allocations a WHERE a.contribution_id = c.id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM contribution_reversals r WHERE r.contribution_id = c.id
+              )
+            """, Integer.class, batch.organisationId(), batch.scopeUnitId());
+        if (unallocatedCashReceipts != null && unallocatedCashReceipts > 0) {
+            throw new ConflictException("All issued cash receipts in this financial scope must be accounted for in a deposit batch before submission. "
+                + unallocatedCashReceipts + " cash receipt(s) remain unallocated.");
+        }
         jdbc.update("""
             UPDATE deposit_batches
             SET status = 'SUBMITTED', submitted_at = CURRENT_TIMESTAMP, review_status = 'PENDING_REVIEW'
