@@ -516,7 +516,24 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         {contributionCategories.length > 0 && selectedContributionScope && !applicableContributionCategories.length && <p className="nyika-form-hint">No active categories are configured for the selected {selectedContributionScope.level.toLowerCase()} scope.</p>}
         <button className="primary-button" disabled={busy || !contributionScopeId || !applicableContributionCategories.length || !contributionCategoryId || (contributionMode === "MEMBER" ? !contributionMemberId : !contributionHouseholdId)}>Post contribution and issue receipt</button>
       </form>
-      {contributionReceipt && <div className="nyika-contribution-receipt" role="status"><div><span className="nyika-eyebrow">RECEIPT ISSUED</span><strong>{contributionReceipt.receiptNumber}</strong><span>{contributionReceipt.memberName} · {contributionReceipt.categoryName}</span><b>{contributionReceipt.currency} {Number(contributionReceipt.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b><small>{contributionReceipt.contributionDate} · {contributionReceipt.paymentMethod.replace(/_/g, " ")}</small></div><button className="secondary-button" type="button" onClick={() => window.print()}>Print receipt</button></div>}
+      {contributionReceipt && <div id="nyika-print-receipt" className="nyika-contribution-receipt" role="status">
+        <div className="nyika-receipt-paper">
+          <span className="nyika-eyebrow">ZCCBOOKS · CONTRIBUTION RECEIPT</span>
+          <strong className="nyika-receipt-number">{contributionReceipt.receiptNumber}</strong>
+          <span className="nyika-receipt-contributor">{contributionReceipt.memberName}</span>
+          <dl className="nyika-receipt-details">
+            <div><dt>Contribution category</dt><dd>{contributionReceipt.categoryName}</dd></div>
+            <div><dt>Financial scope</dt><dd>{contributionReceipt.scopeName}</dd></div>
+            <div><dt>Date received</dt><dd>{contributionReceipt.contributionDate}</dd></div>
+            <div><dt>Payment method</dt><dd>{contributionReceipt.paymentMethod.replace(/_/g, " ")}</dd></div>
+            {contributionReceipt.paymentReference && <div><dt>Payment reference</dt><dd>{contributionReceipt.paymentReference}</dd></div>}
+            {contributionReceipt.note && <div><dt>Note</dt><dd>{contributionReceipt.note}</dd></div>}
+          </dl>
+          <b className="nyika-receipt-amount">{contributionReceipt.currency} {Number(contributionReceipt.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+          <small>Keep this receipt for your records.</small>
+        </div>
+        <button className="secondary-button nyika-receipt-print-action" type="button" onClick={() => window.print()}>Print receipt</button>
+      </div>}
       <div className="nyika-contribution-history"><div className="nyika-register-heading"><div><h4>Contribution history</h4><p>Posted contributions in the selected financial scope. Reversed receipts are excluded from this active history.</p></div></div>
         <div className="table-wrap"><table><thead><tr><th>RECEIPT / DATE</th><th>CONTRIBUTOR</th><th>CATEGORY</th><th>AMOUNT</th><th>PAYMENT</th></tr></thead><tbody>
           {contributions.slice(0, 15).map(item => <tr key={item.id}><td><strong>{item.receiptNumber}</strong><small className="table-subtext">{item.contributionDate}</small></td><td>{item.memberName}</td><td>{item.categoryName}</td><td>{item.currency} {Number(item.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td>{item.paymentMethod.replace(/_/g, " ")}</td></tr>)}
