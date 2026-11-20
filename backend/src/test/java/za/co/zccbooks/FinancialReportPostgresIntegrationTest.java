@@ -105,6 +105,46 @@ class FinancialReportPostgresIntegrationTest {
     }
 
     @Test
+    void reversedDepositReconciliationCannotCreateOrRetrySettlementJournal() {
+        Fixture fixture = fixture();
+        UUID batchId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_batches
+                (id, organisation_id, scope_unit_id, deposit_date, bank_name, bank_reference,
+                 expected_amount, status, created_by)
+            VALUES (?, ?, ?, DATE '2026-05-10', 'Retry Test Bank', ?, 125.00, 'SUBMITTED', ?)
+            """, batchId, fixture.organisationId(), fixture.nyikaA(),
+            "REVERSED-RETRY-" + batchId, fixture.adminId());
+        UUID statementEntryId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO bank_statement_entries
+                (id, organisation_id, scope_unit_id, transaction_date, bank_reference,
+                 amount, description, recorded_by)
+            VALUES (?, ?, ?, DATE '2026-05-12', ?, 125.00, 'Deposit received', ?)
+            """, statementEntryId, fixture.organisationId(), fixture.nyikaA(),
+            "REVERSED-RETRY-" + batchId, fixture.adminId());
+        UUID reconciliationId = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO deposit_reconciliations
+                (id, deposit_batch_id, statement_entry_id, matched_by, match_note)
+            VALUES (?, ?, ?, ?, 'Reversed test reconciliation')
+            """, reconciliationId, batchId, statementEntryId, fixture.adminId());
+        jdbc.update("""
+            INSERT INTO deposit_reconciliation_reversals
+                (id, reconciliation_id, reason, reversed_by)
+            VALUES (?, ?, 'Incorrect bank match', ?)
+            """, UUID.randomUUID(), reconciliationId, fixture.adminId());
+
+        assertNull(depositSettlementLedgerJournals.createDraftIfMapped(reconciliationId));
+        assertEquals(0, depositSettlementLedgerJournals.retryForBankMapping(
+            fixture.organisationId(), "Retry Test Bank"));
+        assertEquals(0, jdbc.queryForObject("""
+            SELECT COUNT(*) FROM finance_journals
+            WHERE source_type = 'DEPOSIT_SETTLEMENT' AND source_id = ?
+            """, Integer.class, reconciliationId));
+    }
+
+    @Test
     void reversalEndpointsRejectActorsOutsideTheSourceNyika() {
         Fixture fixture = fixture();
         jdbc.update("""
