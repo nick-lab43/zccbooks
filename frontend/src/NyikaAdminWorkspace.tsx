@@ -31,6 +31,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   const [householdFilter, setHouseholdFilter] = useState("");
   const [householdFilterIds, setHouseholdFilterIds] = useState<string[] | null>(null);
   const [addHouseholdMemberIds, setAddHouseholdMemberIds] = useState<string[]>([]);
+  const [householdMemberSearch, setHouseholdMemberSearch] = useState("");
   const [contributionCategories, setContributionCategories] = useState<ContributionCategory[]>([]);
   const [contributions, setContributions] = useState<ContributionReceipt[]>([]);
   const [contributionScopeId, setContributionScopeId] = useState("");
@@ -254,7 +255,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     setError(""); setNotice("");
     try {
       const profile = await request<HouseholdProfile>(`/api/nyikas/${nyikaId}/households/${id}`);
-      setHouseholdProfile(profile); setAddHouseholdMemberIds([]); setHouseholdCellId(profile.household.cellId);
+      setHouseholdProfile(profile); setAddHouseholdMemberIds([]); setHouseholdMemberSearch(""); setHouseholdCellId(profile.household.cellId);
     } catch (e) { setError(e instanceof Error ? e.message : "Household could not be loaded."); }
   }
 
@@ -306,6 +307,11 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     return false;
   }
 
+  const householdProfileMembers = (householdProfile?.members ?? []).filter(member => {
+    const term = householdMemberSearch.trim().toLocaleLowerCase();
+    return !term || `${member.firstName} ${member.lastName} ${member.classificationName ?? ""} ${member.eliteNumber ?? ""} ${member.zccAppNumber ?? ""}`.toLocaleLowerCase().includes(term);
+  });
+  const activeHouseholdMemberCount = (householdProfile?.members ?? []).filter(member => member.active).length;
   const selectedContributionScope = units.find(unit => unit.id === contributionScopeId);
   const contributionScopeUnits = units.filter(unit => unit.active
     && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)
@@ -479,10 +485,16 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       </div>
       {householdProfile && <section className="nyika-household-profile">
         <div className="nyika-register-heading"><div><span className="nyika-eyebrow">HOUSEHOLD PROFILE</span><h3>{householdProfile.household.name}</h3><p>{householdProfile.household.code} · {householdProfile.household.cellName}</p></div><button className="secondary-button" type="button" onClick={() => setHouseholdProfile(null)}>Close</button></div>
-        <div className="nyika-household-head"><label>Household head<select value={householdProfile.household.headMemberId ?? ""} onChange={e => changeHouseholdHead(e.target.value)} disabled={busy}><option value="">No head designated</option>{householdProfile.members.filter(member => member.active).map(member => <option key={member.id} value={member.id}>{member.lastName}, {member.firstName}</option>)}</select></label><span>{householdProfile.members.length} active membership(s)</span></div>
-        <div className="table-wrap"><table><thead><tr><th>MEMBER</th><th>CLASSIFICATION</th><th>ELITE NUMBER</th><th>ZCC NUMBER</th><th>RELATIONSHIP</th><th>JOINED</th><th>ACTION</th></tr></thead><tbody>
-          {householdProfile.members.map(member => <tr key={member.id}><td><strong>{member.lastName}, {member.firstName}</strong>{householdProfile.household.headMemberId === member.id && <small className="nyika-household-head-label">HOUSEHOLD HEAD</small>}</td><td>{member.classificationName || "—"}</td><td>{member.eliteNumber || "—"}</td><td>{member.zccAppNumber || "—"}</td><td>{member.relationshipLabel}</td><td>{member.joinedOn}</td><td><button className="secondary-button nyika-row-action" type="button" disabled={busy || householdProfile.household.headMemberId === member.id} onClick={() => removeHouseholdMember(member.id)}>End membership</button></td></tr>)}
-          {!householdProfile.members.length && <tr><td colSpan={7} className="empty-table">No active members in this household.</td></tr>}
+        <div className="nyika-household-summary" aria-label="Household summary">
+          <article><span>ACTIVE MEMBERS</span><strong>{activeHouseholdMemberCount}</strong></article>
+          <article><span>MEMBERSHIP RECORDS</span><strong>{householdProfile.members.length}</strong></article>
+          <article><span>HOUSEHOLD HEAD</span><strong>{householdProfile.household.headMemberName || "Not designated"}</strong></article>
+        </div>
+        <label className="nyika-household-search">Find a household member<input value={householdMemberSearch} onChange={e => setHouseholdMemberSearch(e.target.value)} placeholder="Search name, classification or number" /></label>
+        <div className="table-wrap"><table><thead><tr><th>MEMBER</th><th>CLASSIFICATION</th><th>ELITE NUMBER</th><th>ZCC NUMBER</th><th>RELATIONSHIP</th><th>JOINED</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>
+          {householdProfileMembers.map(member => <tr key={member.id}><td><strong>{member.lastName}, {member.firstName}</strong>{householdProfile.household.headMemberId === member.id && <small className="nyika-household-head-label">HOUSEHOLD HEAD</small>}</td><td>{member.classificationName || "—"}</td><td>{member.eliteNumber || "—"}</td><td>{member.zccAppNumber || "—"}</td><td>{member.relationshipLabel}</td><td>{member.joinedOn}</td><td>{member.active ? "Active" : "Inactive"}</td><td><button className="secondary-button nyika-row-action" type="button" disabled={busy || householdProfile.household.headMemberId === member.id || !member.active} onClick={() => removeHouseholdMember(member.id)}>End membership</button></td></tr>)}
+          {!householdProfile.members.length && <tr><td colSpan={8} className="empty-table">No members are currently linked to this household.</td></tr>}
+          {!!householdProfile.members.length && !householdProfileMembers.length && <tr><td colSpan={8} className="empty-table">No household members match this search.</td></tr>}
         </tbody></table></div>
         <div className="nyika-household-add"><strong>Add available members from {householdProfile.household.cellName}</strong><div className="nyika-household-add-list">{householdCandidates.map(candidate => <label key={candidate.id}><input type="checkbox" checked={addHouseholdMemberIds.includes(candidate.id)} onChange={e => setAddHouseholdMemberIds(current => e.target.checked ? [...current, candidate.id] : current.filter(id => id !== candidate.id))} /><span>{candidate.lastName}, {candidate.firstName}</span></label>)}{!householdCandidates.length && <small>No unassigned active members are available in this Cell.</small>}</div><button className="primary-button" type="button" disabled={busy || !addHouseholdMemberIds.length} onClick={addMembersToHousehold}>Add selected members ({addHouseholdMemberIds.length})</button></div>
       </section>}
