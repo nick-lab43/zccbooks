@@ -835,7 +835,7 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(1, reviewDetails.allocations().size());
         assertEquals("RCP-A-1", reviewDetails.allocations().get(0).receiptNumber());
         assertEquals("125.00", reviewDetails.allocations().get(0).allocatedAmount().toPlainString());
-        assertTrue(reviewDetails.evidence().isEmpty());
+        assertEquals(1, reviewDetails.evidence().size());
         assertTrue(reviewDetails.documents().isEmpty());
         assertEquals("SUBMITTED", jdbc.queryForObject(
             "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
