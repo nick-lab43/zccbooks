@@ -401,6 +401,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       <a href="#nyika-members"><span>02</span> Members <b>{members.length}</b></a>
       <a href="#nyika-households"><span>03</span> Households <b>{households.length}</b></a>
       <a href="#nyika-contributions"><span>04</span> Contributions</a>
+      <a href="#nyika-cash-collections"><span>05</span> Cash collections</a>
     </nav>
 
     <section id="nyika-setup" className="nyika-workflow-grid">
