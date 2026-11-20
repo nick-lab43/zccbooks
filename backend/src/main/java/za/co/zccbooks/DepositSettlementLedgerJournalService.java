@@ -38,6 +38,12 @@ public class DepositSettlementLedgerJournalService {
             .stream().findFirst().orElseThrow(() ->
                 new ResourceNotFoundException("Deposit reconciliation not found."));
 
+        Integer reversed = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM deposit_reconciliation_reversals
+            WHERE reconciliation_id = ?
+            """, Integer.class, reconciliationId);
+        if (reversed != null && reversed > 0) return null;
+
         UUID existing = jdbc.query("""
             SELECT id FROM finance_journals
             WHERE organisation_id = ? AND source_type = 'DEPOSIT_SETTLEMENT' AND source_id = ?
@@ -110,6 +116,10 @@ public class DepositSettlementLedgerJournalService {
             SELECT r.id FROM deposit_reconciliations r
             JOIN deposit_batches b ON b.id = r.deposit_batch_id
             WHERE b.organisation_id = ? AND LOWER(b.bank_name) = LOWER(?)
+              AND NOT EXISTS (
+                  SELECT 1 FROM deposit_reconciliation_reversals x
+                  WHERE x.reconciliation_id = r.id
+              )
               AND NOT EXISTS (
                   SELECT 1 FROM finance_journals j
                   WHERE j.organisation_id = b.organisation_id
