@@ -48,6 +48,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   const [search, setSearch] = useState("");
   const [classificationFilter, setClassificationFilter] = useState("");
   const [cellFilter, setCellFilter] = useState("");
+  const [memberStatusFilter, setMemberStatusFilter] = useState("ALL");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -97,7 +98,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     setUnits([]); setMembers([]); setClassifications([]); setSelectedIds([]); setSelectedMember(null);
     setHouseholds([]); setHouseholdProfile(null); setHouseholdCandidates([]); setHouseholdCandidateIds([]); setHouseholdFilter(""); setHouseholdFilterIds(null);
     setContributionCategories([]); setContributions([]); setContributionScopeId(""); setContributionMemberId(""); setContributionHouseholdId(""); setContributionCategoryId(""); setContributionReceipt(null);
-    setError(""); setNotice(""); setClassificationFilter(""); setCellFilter("");
+    setError(""); setNotice(""); setClassificationFilter(""); setCellFilter(""); setMemberStatusFilter("ALL");
     if (organisationId) reload().catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
 
@@ -116,6 +117,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     return matchesSearch
       && (!classificationFilter || member.classificationId === classificationFilter)
       && (!cellFilter || member.cellId === cellFilter)
+      && (memberStatusFilter === "ALL" || (memberStatusFilter === "ACTIVE" ? member.active : !member.active))
       && (householdFilterIds === null || householdFilterIds.includes(member.id));
   });
   const unassignedCount = members.filter(member => !member.cellId).length;
@@ -366,6 +368,11 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
 
   const selectableVisibleMembers = visibleMembers.filter(member => !member.cellId && member.active);
   const allVisibleSelected = selectableVisibleMembers.length > 0 && selectableVisibleMembers.every(member => selectedIds.includes(member.id));
+  const hasMemberFilters = !!search.trim() || !!classificationFilter || !!cellFilter || !!householdFilter || memberStatusFilter !== "ALL";
+  function clearMemberFilters() {
+    setSearch(""); setClassificationFilter(""); setCellFilter(""); setHouseholdFilter("");
+    setHouseholdFilterIds(null); setMemberStatusFilter("ALL");
+  }
 
   return <div className="nyika-workspace">
     <section className="nyika-welcome">
@@ -416,15 +423,18 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     </section>
 
     <section id="nyika-members" className="nyika-card nyika-register">
-      <div className="nyika-register-heading"><div><span className="nyika-eyebrow">MEMBERSHIP REGISTER</span><h3>Members in your Nyika</h3><p>Search and filter members, or select multiple unassigned members to place them in a Cell.</p></div><span className="nyika-register-count">{visibleMembers.length} MEMBERS</span></div>
+      <div className="nyika-register-heading"><div><span className="nyika-eyebrow">MEMBERSHIP REGISTER</span><h3>Members in your Nyika</h3><p>Find a member, review their record, or assign unassigned members to a Cell.</p></div><span className="nyika-register-count">{visibleMembers.length} OF {members.length} MEMBERS</span></div>
       <div className="nyika-register-tools">
         <input aria-label="Search members" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, ZCC number or Elite Number" />
         <select aria-label="Filter by classification" value={classificationFilter} onChange={e => setClassificationFilter(e.target.value)}><option value="">All classifications</option>{classifications.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <select aria-label="Filter by Cell" value={cellFilter} onChange={e => setCellFilter(e.target.value)}><option value="">All Cells</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select>
         <select aria-label="Filter by household" value={householdFilter} onChange={e => changeHouseholdFilter(e.target.value)}><option value="">All households</option>{households.map(household => <option key={household.id} value={household.id}>{household.name}</option>)}</select>
+        <select aria-label="Filter by member status" value={memberStatusFilter} onChange={e => setMemberStatusFilter(e.target.value)}><option value="ALL">All statuses</option><option value="ACTIVE">Active members</option><option value="INACTIVE">Inactive members</option></select>
+        <button className="secondary-button nyika-clear-filters" type="button" disabled={!hasMemberFilters} onClick={clearMemberFilters}>Clear filters</button>
         <select aria-label="Destination Cell" value={cellId} onChange={e => setCellId(e.target.value)}><option value="">Choose destination Cell</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select>
         <button className="primary-button" type="button" disabled={busy || !cellId || !selectedIds.length} onClick={assignSelected}>Assign selected ({selectedIds.length})</button>
       </div>
+      <div className="nyika-selection-bar" aria-live="polite"><span><strong>{selectedIds.filter(id => selectableVisibleMembers.some(member => member.id === id)).length}</strong> eligible unassigned member(s) selected</span><small>Only active members awaiting Cell assignment can be selected.</small></div>
       {selectedMember && <section className="nyika-card nyika-member-profile">
         <div className="nyika-register-heading"><div><span className="nyika-eyebrow">MEMBER PROFILE</span><h3>{selectedMember.lastName}, {selectedMember.firstName}</h3><p>Review and maintain the member's details within your Nyika.</p></div><button className="secondary-button" type="button" onClick={() => setSelectedMember(null)}>Close profile</button></div>
         <div className="nyika-profile-facts">
