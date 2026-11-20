@@ -535,7 +535,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         </div>
         <div className="nyika-receipt-actions">
           <label className="nyika-receipt-email">Email receipt to<input type="email" value={receiptRecipientEmail} onChange={e => setReceiptRecipientEmail(e.target.value)} placeholder="recipient@example.com" autoComplete="email" /></label>
-          <button className="secondary-button nyika-receipt-email-action" type="button" disabled={!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(receiptRecipientEmail.trim())} onClick={() => {
+          <button className="secondary-button nyika-receipt-email-action" type="button" disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiptRecipientEmail.trim())} onClick={() => {
             const amount = `${contributionReceipt.currency} ${Number(contributionReceipt.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             const body = [
               "ZCCBooks contribution receipt",
@@ -550,7 +550,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
               contributionReceipt.note ? `Note: ${contributionReceipt.note}` : "",
               "",
               "Keep this email for your records."
-            ].filter(Boolean).join("\\n");
+            ].filter(Boolean).join("\n");
             const subject = `ZCCBooks contribution receipt ${contributionReceipt.receiptNumber}`;
             window.location.href = `mailto:${encodeURIComponent(receiptRecipientEmail.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
           }}>Email receipt</button>
