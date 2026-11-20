@@ -826,6 +826,7 @@ class FinancialReportPostgresIntegrationTest {
             "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
         depositManagement.allocate(UUID.fromString(batch.id()),
             new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00")));
+        attachTestDepositEvidence(UUID.fromString(batch.id()), fixture);
 
         var submitted = depositManagement.submit(UUID.fromString(batch.id()));
         assertEquals("SUBMITTED", submitted.status());
@@ -834,7 +835,7 @@ class FinancialReportPostgresIntegrationTest {
         assertEquals(1, reviewDetails.allocations().size());
         assertEquals("RCP-A-1", reviewDetails.allocations().get(0).receiptNumber());
         assertEquals("125.00", reviewDetails.allocations().get(0).allocatedAmount().toPlainString());
-        assertTrue(reviewDetails.evidence().isEmpty());
+        assertEquals(1, reviewDetails.evidence().size());
         assertTrue(reviewDetails.documents().isEmpty());
         assertEquals("SUBMITTED", jdbc.queryForObject(
             "SELECT status FROM contribution_deposit_followups WHERE id = ?", String.class, followupId));
@@ -900,6 +901,7 @@ class FinancialReportPostgresIntegrationTest {
         var allocated = depositManagement.allocate(UUID.fromString(batch.id()),
             new DepositManagementController.AllocateReceipt(receiptId, new BigDecimal("125.00")));
         assertEquals(new BigDecimal("125.00"), allocated.allocatedAmount());
+        attachTestDepositEvidence(UUID.fromString(batch.id()), fixture);
         var submitted = depositManagement.submit(UUID.fromString(batch.id()));
         assertEquals("SUBMITTED", submitted.status());
         depositReview.review(UUID.fromString(batch.id()), new DepositReviewController.ReviewDecision("ACCEPT", null));
@@ -2684,6 +2686,7 @@ class FinancialReportPostgresIntegrationTest {
         UUID batchId = UUID.fromString(batch.id());
         depositManagement.allocate(batchId,
             new DepositManagementController.AllocateReceipt(contributionId, new BigDecimal("125.00")));
+        attachTestDepositEvidence(batchId, fixture);
         assertEquals("SUBMITTED", depositManagement.submit(batchId).status());
         depositReview.review(batchId, new DepositReviewController.ReviewDecision("ACCEPT", null));
         var statement = depositManagement.recordStatementEntry(fixture.organisationId(),
@@ -2795,6 +2798,18 @@ class FinancialReportPostgresIntegrationTest {
             SELECT COUNT(*) FROM finance_journals
             WHERE id IN (?, ?, ?) AND status = 'DRAFT'
             """, Integer.class, contributionJournalId, depositJournalId, expenditureJournalId));
+    }
+
+    private void attachTestDepositEvidence(UUID batchId, Fixture fixture) {
+        byte[] evidenceBytes = new byte[] {
+            (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
+        };
+        String digest = "a".repeat(64);
+        jdbc.update("""
+            INSERT INTO deposit_evidence
+                (id, deposit_batch_id, original_filename, content_type, file_size, sha256, file_data, uploaded_by)
+            VALUES (?, ?, 'test-deposit-slip.png', 'image/png', ?, ?, ?, ?)
+            """, UUID.randomUUID(), batchId, evidenceBytes.length, digest, evidenceBytes, fixture.adminId());
     }
 
     private void assertDuplicateReversalConstraints(String reversalTable, String sourceColumn,
