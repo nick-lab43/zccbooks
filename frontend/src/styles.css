@@ -1032,3 +1032,25 @@ input, select { border-radius: 5px !important; }
 .nyika-household-search{display:grid;gap:6px;max-width:420px;color:#53677d;font-size:10px;font-weight:700}
 .nyika-household-search input{min-height:35px;padding:7px 9px;border:1px solid #bac5d0;background:#fff;color:#263343;font-size:11px}
 @media(max-width:600px){.nyika-household-summary{grid-template-columns:1fr 1fr}.nyika-household-summary article:last-child{grid-column:1/-1}}
+
+
+/* Dedicated Nyika contribution receipt and print layout */
+.nyika-contribution-receipt{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:18px 0;padding:16px;border:1px solid #b8c9d8;background:#f3f7fa}
+.nyika-receipt-paper{display:grid;gap:9px;max-width:520px;width:100%;padding:20px;border:1px solid #d3dce4;background:#fff;color:#24364a}
+.nyika-receipt-number{font-size:21px;letter-spacing:.04em}
+.nyika-receipt-contributor{font-size:15px;font-weight:700}
+.nyika-receipt-details{display:grid;gap:8px;margin:6px 0}
+.nyika-receipt-details div{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid #e5eaf0;padding-bottom:6px}
+.nyika-receipt-details dt{color:#65778a;font-size:11px}
+.nyika-receipt-details dd{margin:0;text-align:right;font-size:11px;font-weight:600;overflow-wrap:anywhere}
+.nyika-receipt-amount{font-size:22px;color:#1d4d70}
+.nyika-receipt-paper>small{color:#65778a}
+@media print{
+  @page{size:auto;margin:14mm}
+  body *{visibility:hidden!important}
+  #nyika-print-receipt,#nyika-print-receipt *{visibility:visible!important}
+  #nyika-print-receipt{position:absolute!important;inset:0 auto auto 0!important;display:block!important;width:100%!important;margin:0!important;padding:0!important;border:0!important;background:#fff!important}
+  #nyika-print-receipt .nyika-receipt-paper{max-width:none;width:100%;padding:0;border:0}
+  #nyika-print-receipt .nyika-receipt-print-action{display:none!important}
+}
+@media(max-width:600px){.nyika-contribution-receipt{flex-direction:column}.nyika-receipt-paper{box-sizing:border-box}}
