@@ -2804,8 +2804,7 @@ class FinancialReportPostgresIntegrationTest {
         byte[] evidenceBytes = new byte[] {
             (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
         };
-        String digest = java.util.HexFormat.of().formatHex(
-            java.security.MessageDigest.getInstance("SHA-256").digest(evidenceBytes));
+        String digest = "a".repeat(64);
         jdbc.update("""
             INSERT INTO deposit_evidence
                 (id, deposit_batch_id, original_filename, content_type, file_size, sha256, file_data, uploaded_by)
