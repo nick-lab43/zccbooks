@@ -970,3 +970,55 @@ input, select { border-radius: 5px !important; }
 .nyika-selection-bar small{color:#788697;font-size:9px}
 @media(max-width:1100px){.nyika-register-tools{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.nyika-register-tools{grid-template-columns:1fr}.nyika-selection-bar{align-items:flex-start;flex-direction:column;gap:4px}}
+
+
+/* Contribution reporting workspace */
+.contribution-reporting-workspace { display:grid; gap:16px; max-width:1480px; margin:0 auto 28px; }
+.reporting-hero { display:flex; justify-content:space-between; align-items:flex-end; gap:24px; padding:26px 28px; color:#fff; background:linear-gradient(112deg,#172f49 0%,#294b6b 68%,#3c5b75 100%); border-left:5px solid #b59a62; box-shadow:0 5px 16px #172d4818; }
+.reporting-eyebrow { display:block; color:#a68d5d; font-size:9px; font-weight:800; letter-spacing:.15em; }
+.reporting-hero .reporting-eyebrow { color:#d8c69e; }
+.reporting-hero h1 { margin:8px 0 6px; color:#fff; font-family:Georgia,serif; font-size:30px; font-weight:600; }
+.reporting-hero p { margin:0; color:#d3deea; font-size:12px; }
+.reporting-hero-meta { display:grid; gap:5px; min-width:230px; padding:13px 15px; border:1px solid #ffffff38; background:#ffffff0d; }
+.reporting-hero-meta span { color:#d7c69e; font-size:8px; font-weight:800; letter-spacing:.13em; }
+.reporting-hero-meta strong { color:#fff; font-size:13px; }
+.reporting-hero-meta small { color:#d0d9e3; font-size:9px; line-height:1.4; }
+.contribution-report-shortcuts { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.contribution-report-shortcuts button { display:grid; gap:5px; min-width:0; padding:12px 14px; text-align:left; border:1px solid #d1d9e1; background:#f8fafb; color:#30465c; cursor:pointer; transition:background .15s,border-color .15s,transform .15s; }
+.contribution-report-shortcuts button:hover { border-color:#8d9eaf; background:#eef2f5; transform:translateY(-1px); }
+.contribution-report-shortcuts button.active { border-color:#314f6d; background:#eaf0f5; box-shadow:inset 0 -3px #b59a62; }
+.contribution-report-shortcuts button span { color:#9a8252; font-size:8px; font-weight:800; letter-spacing:.1em; }
+.contribution-report-shortcuts button strong { color:#233e59; font-size:12px; }
+.contribution-report-shortcuts button small { color:#788696; font-size:9px; }
+.reporting-parameters { border-top:3px solid #b59a62; }
+.reporting-parameters .form-stack { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px 16px; align-items:end; }
+.reporting-parameters .form-stack > label:first-child { grid-column:1/-1; }
+.reporting-parameters .form-stack > .field-pair { margin:0; }
+.reporting-parameters .form-stack > .reporting-period-picker { grid-column:1/-1; }
+.reporting-parameters .form-stack > .message { grid-column:1/-1; }
+.reporting-parameters .form-stack > .field-pair:last-child { grid-column:1/-1; }
+.reporting-period-picker { display:grid; gap:8px; padding:12px; border:1px solid #d7dee5; background:#f5f7f9; }
+.reporting-period-picker > span { color:#758395; font-size:8px; font-weight:800; letter-spacing:.12em; }
+.reporting-period-options { display:flex; flex-wrap:wrap; gap:6px; }
+.reporting-period-options button { min-height:30px; padding:6px 11px; border:1px solid #cbd4dd; background:#fff; color:#53677d; font-size:10px; font-weight:700; cursor:pointer; }
+.reporting-period-options button:hover,.reporting-period-options button.active { border-color:#314f6d; color:#203b59; background:#e7edf3; }
+.reporting-date-fields { max-width:620px; }
+.reporting-results { overflow:hidden; border-top:3px solid #314f6d; }
+.reporting-results-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:17px; }
+.reporting-results-heading h2 { margin:6px 0 4px; color:#203b59; font-family:Georgia,serif; font-size:22px; }
+.reporting-results-heading p { margin:0; color:#788696; font-size:10px; }
+.reporting-result-count { padding:7px 10px; border:1px solid #d0d8e0; color:#53677d; background:#f2f5f7; font-size:8px; font-weight:800; letter-spacing:.1em; white-space:nowrap; }
+.reporting-total-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; margin-bottom:22px; }
+.reporting-total-card { display:grid; gap:8px; min-width:0; padding:16px; border:1px solid #cbd5df; background:linear-gradient(145deg,#f7f9fb,#edf2f6); }
+.reporting-total-card span { color:#748295; font-size:8px; font-weight:800; letter-spacing:.1em; }
+.reporting-total-card strong { overflow-wrap:anywhere; color:#203b59; font-size:23px; font-weight:700; }
+.reporting-total-card small { color:#84909d; font-size:9px; }
+.reporting-total-count { background:#f5f3ee; border-color:#ded6c5; }
+.reporting-table-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin:0 0 10px; }
+.reporting-table-heading h3 { margin:0 0 4px; color:#29445f; font-size:14px; }
+.reporting-table-heading p { margin:0; color:#788696; font-size:10px; }
+.reporting-table-heading > span { color:#8b754c; font-size:8px; font-weight:800; letter-spacing:.1em; }
+.reporting-inline-bar { width:min(180px,100%); height:4px; margin-top:7px; overflow:hidden; border-radius:4px; background:#e7ebef; }
+.reporting-inline-bar span { display:block; height:100%; border-radius:4px; background:#b59a62; }
+@media(max-width:850px) { .reporting-hero { align-items:flex-start; flex-direction:column; } .reporting-hero-meta { width:100%; } .contribution-report-shortcuts { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .reporting-hero { padding:19px; } .reporting-hero h1 { font-size:25px; } .contribution-report-shortcuts { grid-template-columns:1fr 1fr; } .contribution-report-shortcuts button { padding:10px; } .reporting-parameters .form-stack { grid-template-columns:1fr; } .reporting-parameters .form-stack > label:first-child,.reporting-parameters .form-stack > .reporting-period-picker,.reporting-parameters .form-stack > .message,.reporting-parameters .form-stack > .field-pair:last-child { grid-column:1; } .reporting-results-heading { align-items:flex-start; flex-direction:column; } .reporting-total-card strong { font-size:20px; } }

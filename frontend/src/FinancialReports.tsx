@@ -18,11 +18,34 @@ function toLocalDateInputValue(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function dateRangeForPreset(preset: string, now = new Date()): { from: string; to: string } {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (preset === "MONTH_TO_DATE") return { from: toLocalDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), to: toLocalDateInputValue(today) };
+  if (preset === "PREVIOUS_MONTH") return { from: toLocalDateInputValue(new Date(today.getFullYear(), today.getMonth() - 1, 1)), to: toLocalDateInputValue(new Date(today.getFullYear(), today.getMonth(), 0)) };
+  if (preset === "QUARTER_TO_DATE") {
+    const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
+    return { from: toLocalDateInputValue(new Date(today.getFullYear(), quarterStartMonth, 1)), to: toLocalDateInputValue(today) };
+  }
+  if (preset === "YEAR_TO_DATE") return { from: toLocalDateInputValue(new Date(today.getFullYear(), 0, 1)), to: toLocalDateInputValue(today) };
+  return { from: toLocalDateInputValue(today), to: toLocalDateInputValue(today) };
+}
+
+function formatReportDate(value: string): string {
+  if (!value) return "—";
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatReportAmount(currency: string, amount: number): string {
+  return `${currency} ${Number(amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default function FinancialReports({ organisationId, authorizationHeader }: { organisationId: string; authorizationHeader: string }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [scopeUnitId, setScopeUnitId] = useState("");
-  const [from, setFrom] = useState(toLocalDateInputValue(new Date(new Date().getFullYear(), 0, 1)));
-  const [to, setTo] = useState(toLocalDateInputValue(new Date()));
+  const initialPeriod = dateRangeForPreset("YEAR_TO_DATE");
+  const [from, setFrom] = useState(initialPeriod.from);
+  const [to, setTo] = useState(initialPeriod.to);
+  const [periodPreset, setPeriodPreset] = useState("YEAR_TO_DATE");
   const [type, setType] = useState("CONTRIBUTION_SUMMARY");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [contributions, setContributions] = useState<Contribution[]>([]);
@@ -57,6 +80,14 @@ export default function FinancialReports({ organisationId, authorizationHeader }
       })
       .catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
+
+  function applyPeriodPreset(preset: string) {
+    setPeriodPreset(preset);
+    if (preset === "CUSTOM") return;
+    const range = dateRangeForPreset(preset);
+    setFrom(range.from);
+    setTo(range.to);
+  }
 
   function params() {
     const query = new URLSearchParams({ scopeUnitId, from, to, groupBy });
@@ -105,10 +136,26 @@ export default function FinancialReports({ organisationId, authorizationHeader }
     finally { setBusy(false); }
   }
 
-  return <div className="financial-reports">
-    <section className="panel">
-      <div className="panel-title"><div><span className="panel-index">01</span><h2>Financial report parameters</h2></div><span className="panel-tag">AUTHORISATION SCOPED</span></div>
-      <p className="panel-description">Reports include records in the selected geographical unit and its descendants. Access is checked by the API for every request.</p>
+  return <div className="financial-reports contribution-reporting-workspace">
+    <header className="reporting-hero">
+      <div>
+        <span className="reporting-eyebrow">ZCC BOOKS / FINANCIAL INTELLIGENCE</span>
+        <h1>Financial reporting</h1>
+        <p>Understand contributions across reporting periods, categories, Cells and households.</p>
+      </div>
+      <div className="reporting-hero-meta"><span>REPORTING PERIOD</span><strong>{formatReportDate(from)} – {formatReportDate(to)}</strong><small>Access follows your assigned geographical authority</small></div>
+    </header>
+
+    <nav className="contribution-report-shortcuts" aria-label="Contribution report views">
+      <button type="button" className={type === "CONTRIBUTION_SUMMARY" ? "active" : ""} onClick={() => setType("CONTRIBUTION_SUMMARY")}><span>01</span><strong>Overview</strong><small>Period totals and categories</small></button>
+      <button type="button" className={type === "CONTRIBUTION_BREAKDOWN" && groupBy === "CATEGORY" ? "active" : ""} onClick={() => { setType("CONTRIBUTION_BREAKDOWN"); setGroupBy("CATEGORY"); }}><span>02</span><strong>By category</strong><small>Contribution streams</small></button>
+      <button type="button" className={type === "CONTRIBUTION_BREAKDOWN" && groupBy === "CELL" ? "active" : ""} onClick={() => { setType("CONTRIBUTION_BREAKDOWN"); setGroupBy("CELL"); }}><span>03</span><strong>By Cell</strong><small>Geographical performance</small></button>
+      <button type="button" className={type === "CONTRIBUTION_BREAKDOWN" && groupBy === "HOUSEHOLD" ? "active" : ""} onClick={() => { setType("CONTRIBUTION_BREAKDOWN"); setGroupBy("HOUSEHOLD"); }}><span>04</span><strong>By household</strong><small>Household contributions</small></button>
+    </nav>
+
+    <section className="panel reporting-parameters">
+      <div className="panel-title"><div><span className="panel-index">01</span><h2>Build your report</h2></div><span className="panel-tag">AUTHORISATION SCOPED</span></div>
+      <p className="panel-description">Choose a reporting view, geographical scope and period. Results include records in the selected unit and its descendants; the API checks access on every request.</p>
       <div className="form-stack">
         <label>Report<select value={type} onChange={e => setType(e.target.value)}>
           <option value="CONTRIBUTION_SUMMARY">Contribution summary</option>
@@ -124,13 +171,35 @@ export default function FinancialReports({ organisationId, authorizationHeader }
           <option value="CATEGORY">Contribution category</option><option value="HOUSEHOLD">Household</option><option value="MEMBER">Member</option><option value="CLASSIFICATION">Classification</option><option value="CELL">Cell</option>
         </select></label>}
         <label>Geographical scope<select value={scopeUnitId} onChange={e => setScopeUnitId(e.target.value)}><option value="">Select scope</option>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
-        <div className="field-pair"><label>From<input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} /></label></div>
+        <div className="reporting-period-picker">
+          <span>REPORTING PERIOD</span>
+          <div className="reporting-period-options">
+            <button type="button" className={periodPreset === "MONTH_TO_DATE" ? "active" : ""} onClick={() => applyPeriodPreset("MONTH_TO_DATE")}>This month</button>
+            <button type="button" className={periodPreset === "PREVIOUS_MONTH" ? "active" : ""} onClick={() => applyPeriodPreset("PREVIOUS_MONTH")}>Last month</button>
+            <button type="button" className={periodPreset === "QUARTER_TO_DATE" ? "active" : ""} onClick={() => applyPeriodPreset("QUARTER_TO_DATE")}>This quarter</button>
+            <button type="button" className={periodPreset === "YEAR_TO_DATE" ? "active" : ""} onClick={() => applyPeriodPreset("YEAR_TO_DATE")}>Year to date</button>
+            <button type="button" className={periodPreset === "CUSTOM" ? "active" : ""} onClick={() => setPeriodPreset("CUSTOM")}>Custom</button>
+          </div>
+        </div>
+        <div className="field-pair reporting-date-fields"><label>From<input type="date" value={from} max={to} onChange={e => { setFrom(e.target.value); setPeriodPreset("CUSTOM"); }} /></label><label>To<input type="date" value={to} min={from} onChange={e => { setTo(e.target.value); setPeriodPreset("CUSTOM"); }} /></label></div>
         {error && <div className="message error" role="alert">{error}</div>}
         <div className="field-pair"><button className="secondary-button" disabled={busy || !scopeUnitId} onClick={loadReport}>{busy ? "Working…" : "Preview report"}</button><button className="primary-button" disabled={busy || !scopeUnitId} onClick={() => download("docx")}>Download Word</button><button className="secondary-button" disabled={busy || !scopeUnitId} onClick={() => download("pdf")}>Download PDF</button></div>
       </div>
     </section>
-    {summary && type === "CONTRIBUTION_SUMMARY" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Contribution summary</h2></div><span className="panel-tag">{summary.context.unitName}</span></div><div className="overview-stat-grid"><article className="overview-stat"><span>TRANSACTIONS</span><strong>{summary.contributionCount}</strong></article>{summary.currencyTotals.map(total => <article className="overview-stat" key={total.currency}><span>TOTAL CONTRIBUTIONS · {total.currency}</span><strong>{total.currency} {Number(total.totalAmount).toLocaleString("en-ZA", {minimumFractionDigits:2})}</strong></article>)}</div><div className="table-wrap"><table><thead><tr><th>STREAM</th><th>CATEGORY</th><th>COUNT</th><th>CURRENCY</th><th>TOTAL</th></tr></thead><tbody>{summary.groups.map((row,i)=><tr key={i}><td>{row.streamName}</td><td>{row.categoryName}</td><td>{row.contributionCount}</td><td>{row.currency}</td><td>{row.currency} {Number(row.totalAmount).toLocaleString("en-ZA",{minimumFractionDigits:2})}</td></tr>)}{!summary.groups.length && <tr><td colSpan={5} className="empty-table">No contributions were recorded for this period.</td></tr>}</tbody></table></div></section>}
-    {type === "CONTRIBUTION_BREAKDOWN" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Contribution breakdown</h2></div><span className="panel-tag">{breakdown.length} GROUPS</span></div><p className="panel-description">Totals are grouped by the selected dimension and kept separate by currency. Reversed contributions are excluded.</p><div className="table-wrap"><table><thead><tr><th>GROUP</th><th>TRANSACTIONS</th><th>CURRENCY</th><th>TOTAL</th></tr></thead><tbody>{breakdown.map((row,i)=><tr key={i}><td>{row.groupName}</td><td>{row.contributionCount}</td><td>{row.currency}</td><td>{row.currency} {Number(row.totalAmount).toLocaleString("en-ZA",{minimumFractionDigits:2})}</td></tr>)}{!breakdown.length && <tr><td colSpan={4} className="empty-table">No contributions were recorded for this period.</td></tr>}</tbody></table></div></section>}
+    {summary && type === "CONTRIBUTION_SUMMARY" && <section className="panel reporting-results">
+      <div className="reporting-results-heading"><div><span className="reporting-eyebrow">PERIOD PERFORMANCE</span><h2>Contribution summary</h2><p>{summary.context.unitName} · {formatReportDate(summary.context.from)} to {formatReportDate(summary.context.to)}</p></div><span className="reporting-result-count">{summary.contributionCount.toLocaleString("en-ZA")} TRANSACTIONS</span></div>
+      <div className="reporting-total-grid">
+        {summary.currencyTotals.map(total => <article className="reporting-total-card" key={total.currency}><span>TOTAL CONTRIBUTIONS · {total.currency}</span><strong>{formatReportAmount(total.currency, total.totalAmount)}</strong><small>Recorded in selected period</small></article>)}
+        <article className="reporting-total-card reporting-total-count"><span>CONTRIBUTION RECORDS</span><strong>{summary.contributionCount.toLocaleString("en-ZA")}</strong><small>Across all active categories</small></article>
+      </div>
+      <div className="reporting-table-heading"><div><h3>Category performance</h3><p>Contribution totals by category and stream, separated by currency</p></div><span>{summary.groups.length} LINES</span></div>
+      <div className="table-wrap"><table><thead><tr><th>STREAM</th><th>CATEGORY</th><th>COUNT</th><th>CURRENCY</th><th>TOTAL</th></tr></thead><tbody>{summary.groups.map((row,i)=><tr key={i}><td>{row.streamName}</td><td><strong>{row.categoryName}</strong></td><td>{row.contributionCount}</td><td>{row.currency}</td><td><strong>{formatReportAmount(row.currency,row.totalAmount)}</strong></td></tr>)}{!summary.groups.length && <tr><td colSpan={5} className="empty-table">No contributions were recorded for this period.</td></tr>}</tbody></table></div>
+    </section>}
+    {type === "CONTRIBUTION_BREAKDOWN" && <section className="panel reporting-results">
+      <div className="reporting-results-heading"><div><span className="reporting-eyebrow">CONTRIBUTION ANALYSIS</span><h2>{groupBy === "CELL" ? "Contribution by Cell" : groupBy === "HOUSEHOLD" ? "Contribution by household" : groupBy === "CATEGORY" ? "Contribution by category" : "Contribution breakdown"}</h2><p>{units.find(unit => unit.id === scopeUnitId)?.name ?? "Selected scope"} · {formatReportDate(from)} to {formatReportDate(to)}</p></div><span className="reporting-result-count">{breakdown.length} GROUPS</span></div>
+      <p className="panel-description">Totals are grouped by the selected dimension and kept separate by currency. Reversed contributions are excluded.</p>
+      <div className="table-wrap"><table><thead><tr><th>{groupBy === "CELL" ? "CELL" : groupBy === "HOUSEHOLD" ? "HOUSEHOLD" : "CATEGORY / GROUP"}</th><th>TRANSACTIONS</th><th>CURRENCY</th><th>TOTAL CONTRIBUTIONS</th></tr></thead><tbody>{breakdown.map((row,i)=>{const sameCurrency = breakdown.filter(item => item.currency === row.currency); const maxAmount = Math.max(1,...sameCurrency.map(item => Number(item.totalAmount))); const width = Math.max(3, Number(row.totalAmount) / maxAmount * 100); return <tr key={i}><td><strong>{row.groupName}</strong><div className="reporting-inline-bar"><span style={{width:`${width}%`}} /></div></td><td>{row.contributionCount.toLocaleString("en-ZA")}</td><td>{row.currency}</td><td><strong>{formatReportAmount(row.currency,row.totalAmount)}</strong></td></tr>;})}{!breakdown.length && <tr><td colSpan={4} className="empty-table">No contributions were recorded for this period.</td></tr>}</tbody></table></div>
+    </section>}
     {type === "CONTRIBUTION_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Contributor and receipt register</h2></div><span className="panel-tag">{contributions.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>RECEIPT</th><th>CONTRIBUTOR</th><th>TYPE</th><th>CLASSIFICATION</th><th>ELITE NUMBER</th><th>CATEGORY</th><th>STREAM</th><th>AMOUNT</th></tr></thead><tbody>{contributions.map(row=><tr key={row.receiptNumber}><td>{row.contributionDate}</td><td>{row.receiptNumber}</td><td>{row.contributorName}</td><td>{row.contributorType}</td><td>{row.classificationName ?? "—"}</td><td>{row.eliteNumber ?? "—"}</td><td>{row.categoryName}</td><td>{row.streamName}</td><td>{row.currency} {Number(row.amount).toFixed(2)}</td></tr>)}{!contributions.length && <tr><td colSpan={9} className="empty-table">No contributions were recorded for this period.</td></tr>}</tbody></table></div></section>}
     {type === "DEPOSIT_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Deposit register</h2></div><span className="panel-tag">{deposits.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>UNIT</th><th>BANK</th><th>REFERENCE</th><th>EXPECTED</th><th>ALLOCATED</th><th>BANKED</th><th>OUTSTANDING</th><th>STATUS</th></tr></thead><tbody>{deposits.map(row=><tr key={row.id}><td>{row.depositDate}</td><td>{row.unitName}</td><td>{row.bankName}</td><td>{row.bankReference}</td><td>R {Number(row.expectedAmount).toFixed(2)}</td><td>R {Number(row.allocatedAmount).toFixed(2)}</td><td>R {Number(row.bankedAmount).toFixed(2)}</td><td>R {Number(row.outstandingAmount).toFixed(2)}</td><td>{row.status}</td></tr>)}{!deposits.length && <tr><td colSpan={9} className="empty-table">No deposits were recorded for this period.</td></tr>}</tbody></table></div></section>}
     {type === "EXPENDITURE_REGISTER" && <section className="panel"><div className="panel-title"><div><span className="panel-index">02</span><h2>Expenditure register</h2></div><span className="panel-tag">{expenses.length} RECORDS</span></div><div className="table-wrap"><table><thead><tr><th>DATE</th><th>UNIT</th><th>CATEGORY</th><th>PAYEE / DETAILS</th><th>AMOUNT</th><th>STATUS</th></tr></thead><tbody>{expenses.map(row=><tr key={row.id}><td>{row.expenseDate}</td><td>{row.unitName}</td><td>{row.categoryName}</td><td><strong>{row.payee}</strong><small className="table-subtext">{row.description}</small></td><td>{row.currency} {Number(row.amount).toFixed(2)}</td><td>{row.status}</td></tr>)}{!expenses.length && <tr><td colSpan={6} className="empty-table">No expenditure records were recorded for this period.</td></tr>}</tbody></table></div></section>}
