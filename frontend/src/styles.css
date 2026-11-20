@@ -1022,3 +1022,13 @@ input, select { border-radius: 5px !important; }
 .reporting-inline-bar span { display:block; height:100%; border-radius:4px; background:#b59a62; }
 @media(max-width:850px) { .reporting-hero { align-items:flex-start; flex-direction:column; } .reporting-hero-meta { width:100%; } .contribution-report-shortcuts { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:600px) { .reporting-hero { padding:19px; } .reporting-hero h1 { font-size:25px; } .contribution-report-shortcuts { grid-template-columns:1fr 1fr; } .contribution-report-shortcuts button { padding:10px; } .reporting-parameters .form-stack { grid-template-columns:1fr; } .reporting-parameters .form-stack > label:first-child,.reporting-parameters .form-stack > .reporting-period-picker,.reporting-parameters .form-stack > .message,.reporting-parameters .form-stack > .field-pair:last-child { grid-column:1; } .reporting-results-heading { align-items:flex-start; flex-direction:column; } .reporting-total-card strong { font-size:20px; } }
+
+
+/* Nyika household profile refinement */
+.nyika-household-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.nyika-household-summary article{display:grid;gap:6px;min-width:0;padding:12px;border:1px solid #d1d9e1;background:#f1f4f6}
+.nyika-household-summary article span{color:#788697;font-size:8px;font-weight:800;letter-spacing:.09em}
+.nyika-household-summary article strong{overflow-wrap:anywhere;color:#29445f;font-size:13px}
+.nyika-household-search{display:grid;gap:6px;max-width:420px;color:#53677d;font-size:10px;font-weight:700}
+.nyika-household-search input{min-height:35px;padding:7px 9px;border:1px solid #bac5d0;background:#fff;color:#263343;font-size:11px}
+@media(max-width:600px){.nyika-household-summary{grid-template-columns:1fr 1fr}.nyika-household-summary article:last-child{grid-column:1/-1}}
