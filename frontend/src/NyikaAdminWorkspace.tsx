@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import DepositManagement from "./DepositManagement";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Classification = { id: string; code: string; name: string; active: boolean };
@@ -565,6 +566,10 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       </div>
     </section>
 
+    <section id="nyika-cash-collections" className="nyika-card">
+      <div className="nyika-register-heading"><div><span className="nyika-eyebrow">COLLECTION ACCOUNTABILITY</span><h3>Cash collections and deposit submission</h3><p>Every cash receipt must be allocated to a deposit batch. Capture or upload the bank deposit slip and submit the complete collection package to Central Financial Administration. Issuing a receipt does not complete the collection workflow: Central Finance must accept the deposit package and reconcile the bank credit.</p></div></div>
+      <DepositManagement organisationId={organisationId} authorizationHeader={authorizationHeader} canDeposit={true} canReconcile={false} />
+    </section>
     <section className="nyika-next-step">
       <div><span className="nyika-eyebrow">NEXT IN YOUR WORKSPACE</span><h3>Financial reporting</h3><p>Contribution summaries by period, category, Cell and household are the next reporting milestone.</p></div>
       <span className="nyika-next-status">UP NEXT</span>
