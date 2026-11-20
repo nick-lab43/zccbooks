@@ -40,6 +40,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   const [contributionHouseholdId, setContributionHouseholdId] = useState("");
   const [contributionCategoryId, setContributionCategoryId] = useState("");
   const [contributionReceipt, setContributionReceipt] = useState<ContributionReceipt | null>(null);
+  const [receiptRecipientEmail, setReceiptRecipientEmail] = useState("");
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [nyikaId, setNyikaId] = useState("");
   const [tabheraId, setTabheraId] = useState("");
@@ -532,7 +533,29 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
           <b className="nyika-receipt-amount">{contributionReceipt.currency} {Number(contributionReceipt.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
           <small>Keep this receipt for your records.</small>
         </div>
-        <button className="secondary-button nyika-receipt-print-action" type="button" onClick={() => window.print()}>Print receipt</button>
+        <div className="nyika-receipt-actions">
+          <label className="nyika-receipt-email">Email receipt to<input type="email" value={receiptRecipientEmail} onChange={e => setReceiptRecipientEmail(e.target.value)} placeholder="recipient@example.com" autoComplete="email" /></label>
+          <button className="secondary-button nyika-receipt-email-action" type="button" disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiptRecipientEmail.trim())} onClick={() => {
+            const amount = `${contributionReceipt.currency} ${Number(contributionReceipt.amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            const body = [
+              "ZCCBooks contribution receipt",
+              `Receipt number: ${contributionReceipt.receiptNumber}`,
+              `Received from: ${contributionReceipt.memberName}`,
+              `Category: ${contributionReceipt.categoryName}`,
+              `Financial scope: ${contributionReceipt.scopeName}`,
+              `Date received: ${contributionReceipt.contributionDate}`,
+              `Payment method: ${contributionReceipt.paymentMethod.replace(/_/g, " ")}`,
+              `Amount: ${amount}`,
+              contributionReceipt.paymentReference ? `Payment reference: ${contributionReceipt.paymentReference}` : "",
+              contributionReceipt.note ? `Note: ${contributionReceipt.note}` : "",
+              "",
+              "Keep this email for your records."
+            ].filter(Boolean).join("\n");
+            const subject = `ZCCBooks contribution receipt ${contributionReceipt.receiptNumber}`;
+            window.location.href = `mailto:${encodeURIComponent(receiptRecipientEmail.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+          }}>Email receipt</button>
+          <button className="secondary-button nyika-receipt-print-action" type="button" onClick={() => window.print()}>Print receipt</button>
+        </div>
       </div>}
       <div className="nyika-contribution-history"><div className="nyika-register-heading"><div><h4>Contribution history</h4><p>Posted contributions in the selected financial scope. Reversed receipts are excluded from this active history.</p></div></div>
         <div className="table-wrap"><table><thead><tr><th>RECEIPT / DATE</th><th>CONTRIBUTOR</th><th>CATEGORY</th><th>AMOUNT</th><th>PAYMENT</th></tr></thead><tbody>

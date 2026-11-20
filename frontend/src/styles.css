@@ -1054,3 +1054,11 @@ input, select { border-radius: 5px !important; }
   #nyika-print-receipt .nyika-receipt-print-action{display:none!important}
 }
 @media(max-width:600px){.nyika-contribution-receipt{flex-direction:column}.nyika-receipt-paper{box-sizing:border-box}}
+
+
+.nyika-receipt-actions{display:grid;gap:9px;min-width:220px;max-width:280px}
+.nyika-receipt-email{display:grid;gap:5px;color:#53677d;font-size:10px;font-weight:700}
+.nyika-receipt-email input{min-height:35px;padding:7px 9px;border:1px solid #bac5d0;background:#fff;color:#263343;font-size:11px}
+.nyika-receipt-email-action:disabled{opacity:.45;cursor:not-allowed}
+@media print{.nyika-receipt-actions{display:none!important}}
+@media(max-width:600px){.nyika-receipt-actions{width:100%;max-width:none}}
