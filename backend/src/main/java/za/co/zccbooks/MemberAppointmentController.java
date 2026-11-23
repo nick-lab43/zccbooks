@@ -32,14 +32,21 @@ public class MemberAppointmentController {
     @GetMapping("/appointments/positions")
     public List<PositionDto> positions() {
         authorization.requireAnyOrganisationPermission("MEMBERS_VIEW");
-        return jdbc.query("""
-            SELECT id, code, name, description, allow_concurrent, active
-            FROM church_positions
-            WHERE active = TRUE
-            ORDER BY name
-            """, (rs, n) -> new PositionDto(
-                rs.getObject("id", UUID.class).toString(), rs.getString("code"), rs.getString("name"),
-                rs.getString("description"), rs.getBoolean("allow_concurrent"), rs.getBoolean("active")));
+        String sql = authorization.isCentralAdministrator()
+            ? """
+                SELECT id, code, name, description, allow_concurrent, active
+                FROM church_positions
+                ORDER BY active DESC, name
+                """
+            : """
+                SELECT id, code, name, description, allow_concurrent, active
+                FROM church_positions
+                WHERE active = TRUE
+                ORDER BY name
+                """;
+        return jdbc.query(sql, (rs, n) -> new PositionDto(
+            rs.getObject("id", UUID.class).toString(), rs.getString("code"), rs.getString("name"),
+            rs.getString("description"), rs.getBoolean("allow_concurrent"), rs.getBoolean("active")));
     }
 
     @GetMapping("/appointments/positions/management-access")
