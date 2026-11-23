@@ -301,7 +301,14 @@ public class OrganisationalUnitController {
 
     private ResponseEntity<UnitDto> createUnit(UUID organisationId, UUID parentId, String level, CreateUnit request) {
         UUID id = UUID.randomUUID();
-        String code = "CELL".equals(level) ? nextCode(parentId, parentCode(parentId), "C", "organisational_units", "parent_id") : requiredCode(request.code());
+        String code = switch (level) {
+            case "PROVINCE_STATE" -> nextCode(parentId, parentCode(parentId), "P", "organisational_units", "parent_id");
+            case "DISTRICT" -> nextCode(parentId, parentCode(parentId), "D", "organisational_units", "parent_id");
+            case "NYIKA" -> nextCode(parentId, parentCode(parentId), "N", "organisational_units", "parent_id");
+            case "TABHERA" -> nextCode(parentId, parentCode(parentId), "T", "organisational_units", "parent_id");
+            case "CELL" -> nextCode(parentId, parentCode(parentId), "C", "organisational_units", "parent_id");
+            default -> requiredCode(request.code());
+        };
         return ResponseEntity.status(HttpStatus.CREATED).body(jdbc.queryForObject("""
             INSERT INTO organisational_units (id, organisation_id, parent_id, level, code, name)
             VALUES (?, ?, ?, ?, ?, ?)
