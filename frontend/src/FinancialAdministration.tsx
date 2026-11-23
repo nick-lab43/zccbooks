@@ -47,25 +47,28 @@ export default function FinancialAdministration({ organisationId, authorizationH
 
   async function reload() {
     if (!organisationId) return;
-    const [streamRows, categoryRows, targetRows, progressRows, access, classificationRows] = await Promise.all([
+    const [streamRows, categoryRows, targetRows, progressRows, access] = await Promise.all([
       request<Stream[]>(`/api/organisations/${organisationId}/financial-streams`),
       request<Category[]>(`/api/organisations/${organisationId}/contribution-categories`),
       request<Target[]>(`/api/organisations/${organisationId}/financial-targets`),
       request<TargetProgress[]>(`/api/organisations/${organisationId}/financial-target-progress`),
-      request<boolean>(`/api/organisations/${organisationId}/financial-management-access`),
-      request<Classification[]>(`/api/organisations/${organisationId}/classifications`)
+      request<boolean>(`/api/organisations/${organisationId}/financial-management-access`)
     ]);
     setStreams(streamRows);
     setCategories(categoryRows);
     setTargets(targetRows);
     setProgress(progressRows);
     setCanConfigure(access);
-    setClassifications(classificationRows.filter(item => item.active));
     if (access) {
-      const unitRows = await request<Unit[]>(`/api/organisations/${organisationId}/units`);
+      const [unitRows, classificationRows] = await Promise.all([
+        request<Unit[]>(`/api/organisations/${organisationId}/units`),
+        request<Classification[]>(`/api/organisations/${organisationId}/classifications`)
+      ]);
       setUnits(unitRows.filter(unit => unit.active && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)));
+      setClassifications(classificationRows.filter(item => item.active));
     } else {
       setUnits([]);
+      setClassifications([]);
     }
   }
 
