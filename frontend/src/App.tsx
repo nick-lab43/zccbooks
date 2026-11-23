@@ -57,6 +57,7 @@ function MainApp() {
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [unitCount, setUnitCount] = useState(0);
+  const [nyikaCount, setNyikaCount] = useState(0);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -89,7 +90,7 @@ function MainApp() {
 
   useEffect(() => {
     if (!organisationId) {
-      setBranches([]); setClassifications([]); setBranchId(""); setUnitCount(0);
+      setBranches([]); setClassifications([]); setBranchId(""); setUnitCount(0); setNyikaCount(0);
       return;
     }
     Promise.allSettled([
@@ -102,7 +103,8 @@ function MainApp() {
       if (unitResult.status === "rejected") throw unitResult.reason;
       setBranches(branchRows);
       setClassifications(classificationRows);
-      setUnitCount((unitResult.value as UnitOption[]).filter((unit) => unit.level === "NYIKA").length);
+      setUnitCount(unitResult.value.length);
+      setNyikaCount((unitResult.value as UnitOption[]).filter((unit) => unit.level === "NYIKA").length);
       setBranchId((current) => branchRows.some((b) => b.id === current) ? current : branchRows[0]?.id ?? "");
       if (branchResult.status === "rejected" && classificationResult.status === "rejected") {
         setNotice("Organisation access is limited to your assigned geographical scope. Branch-based membership maintenance is not available to this account.");
@@ -302,7 +304,7 @@ function MainApp() {
             <div className="sidebar-section-label">SYSTEM ADMINISTRATION</div>
             <button className={activeModule === "access" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("access")} aria-current={activeModule === "access" ? "page" : undefined}><span className="sidebar-icon">AC</span><span>Users &amp; access</span></button>
           </>}
-          <div className="sidebar-note"><strong>Current release</strong><span>Organisation, membership, contributions, deposits, expenditure approvals, budget controls and financial reporting.</span></div>
+          <div className="sidebar-note"><strong>Current release</strong><span>Organisation structure, church configuration, financial oversight and administrator access.</span></div>
         </aside>
         <main className="app-main">
 
@@ -322,7 +324,7 @@ function MainApp() {
           <div className="overview-context"><div><span className="overview-eyebrow">PERMANENT ORGANISATION</span><strong>Zion Christian Church</strong></div><span className="overview-eyebrow">SINGLE-ORGANISATION CONTROL CENTRE</span></div>
           <div className="overview-stat-grid">
             <article className="overview-stat"><span>ORGANISATION</span><strong>001</strong></article>
-            <article className="overview-stat"><span>NYIKAS</span><strong>{unitCount.toString().padStart(3, "0")}</strong></article>
+            <article className="overview-stat"><span>NYIKAS</span><strong>{nyikaCount.toString().padStart(3, "0")}</strong></article>
             <article className="overview-stat"><span>GEOGRAPHICAL UNITS</span><strong>{unitCount.toString().padStart(3, "0")}</strong></article>
             <article className="overview-stat"><span>CLASSIFICATIONS</span><strong>{classifications.length.toString().padStart(3, "0")}</strong></article>
           </div>
@@ -330,7 +332,8 @@ function MainApp() {
             <section className="pos-window overview-window">
               <div className="pos-window-title"><div><span className="pos-window-icon">SYS</span><strong>CENTRAL ADMINISTRATION</strong></div><span className="pos-window-reference">CONTROL DESK</span></div>
               <div className="overview-module-list">
-                <button onClick={() => setActiveModule("organisation")}><span className="module-code">01</span><span><strong>Organisation management</strong><small>Organisation records, branches and geographical hierarchy</small></span><b>OPEN</b></button>
+                <button onClick={() => setActiveModule("organisation")}><span className="module-code">01</span><span><strong>Organisation management</strong><small>Country, province/state, district and Nyika setup</small></span><b>OPEN</b></button>
+                {currentAdmin?.permissions.includes("ORG_MANAGE") && <button onClick={() => setActiveModule("configuration")}><span className="module-code">02</span><span><strong>Church configuration</strong><small>Member classifications and organisation-wide settings</small></span><b>OPEN</b></button>}
                 {(currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("FINANCE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_REVERSE")) && <button onClick={() => setActiveModule("financial")}><span className="module-code">03</span><span><strong>Financial Administration</strong><small>Financial streams, contribution categories and geographical targets</small></span><b>OPEN</b></button>}
                 {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button onClick={() => setActiveModule("access")}><span className="module-code">04</span><span><strong>Administrator access control</strong><small>Accounts, role definitions, permissions and geographical scopes</small></span><b>OPEN</b></button>}
               </div>
@@ -344,7 +347,7 @@ function MainApp() {
               </div>
             </section>
           </div>
-          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION, MEMBERSHIP, CONTRIBUTIONS, DEPOSITS, EXPENDITURE AND BUDGET ACCOUNTABILITY</div>
+          <div className="overview-footnote">CENTRAL CONTROL: STRUCTURE, CLASSIFICATIONS, FINANCIAL OVERSIGHT AND ACCESS</div>
         </section>
       )}
 
