@@ -1062,3 +1062,14 @@ input, select { border-radius: 5px !important; }
 .nyika-receipt-email-action:disabled{opacity:.45;cursor:not-allowed}
 @media print{.nyika-receipt-actions{display:none!important}}
 @media(max-width:600px){.nyika-receipt-actions{width:100%;max-width:none}}
+
+
+/* Nyika cash collection overview */
+.deposit-collection-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:16px 0}
+.deposit-collection-summary article{display:grid;gap:7px;min-width:0;padding:13px;border:1px solid #d1d9e1;background:#f3f6f8}
+.deposit-collection-summary article span{color:#788697;font-size:8px;font-weight:800;letter-spacing:.09em}
+.deposit-collection-summary article strong{color:#203b59;font-size:23px;line-height:1}
+.deposit-collection-summary article small{color:#788697;font-size:9px;line-height:1.4}
+.deposit-accountability-note{margin:0 0 14px;padding:10px 12px;border-left:3px solid #b59a62;background:#f5f3ee;color:#596b7e;font-size:10px;line-height:1.5}
+@media(max-width:850px){.deposit-collection-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.deposit-collection-summary article{padding:10px}.deposit-collection-summary article strong{font-size:20px}}
