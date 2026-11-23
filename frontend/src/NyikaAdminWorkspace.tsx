@@ -123,8 +123,14 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       && (memberStatusFilter === "ALL" || (memberStatusFilter === "ACTIVE" ? member.active : !member.active))
       && (householdFilterIds === null || householdFilterIds.includes(member.id));
   });
-  const unassignedCount = members.filter(member => !member.cellId).length;
-  const assignedCount = members.length - unassignedCount;
+  const activeMemberCount = members.filter(member => member.active).length;
+  const inactiveMemberCount = members.length - activeMemberCount;
+  const unassignedCount = members.filter(member => !member.cellId && member.active).length;
+  const assignedCount = members.filter(member => !!member.cellId && member.active).length;
+  const today = new Date().toISOString().slice(0, 10);
+  const currentMonth = today.slice(0, 7);
+  const contributionsToday = contributions.filter(item => item.contributionDate?.slice(0, 10) === today).length;
+  const contributionsThisMonth = contributions.filter(item => item.contributionDate?.slice(0, 7) === currentMonth).length;
 
   async function submit(event: FormEvent<HTMLFormElement>, action: (data: FormData) => Promise<void>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
@@ -390,11 +396,13 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
 
     {(error || notice) && <div className={error ? "message error" : "message success"} role="status">{error || notice}</div>}
 
-    <section className="nyika-stat-grid">
-      <article><span>MEMBERS</span><strong>{members.length}</strong></article>
-      <article><span>CELLS</span><strong>{cells.length}</strong></article>
-      <article><span>ASSIGNED TO CELLS</span><strong>{assignedCount}</strong></article>
-      <article><span>AWAITING CELL</span><strong>{unassignedCount}</strong></article>
+    <section className="nyika-stat-grid nyika-dashboard-stats" aria-label="Nyika administration overview">
+      <article><span>ACTIVE MEMBERS</span><strong>{activeMemberCount}</strong><small>{members.length} registered in total</small></article>
+      <article><span>INACTIVE MEMBERS</span><strong>{inactiveMemberCount}</strong><small>Historical records retained</small></article>
+      <article><span>CELLS</span><strong>{cells.length}</strong><small>Active Cells in this Nyika</small></article>
+      <article><span>HOUSEHOLDS</span><strong>{households.length}</strong><small>Registered households</small></article>
+      <article><span>AWAITING CELL</span><strong>{unassignedCount}</strong><small>Active members not yet assigned</small></article>
+      <article><span>CONTRIBUTIONS THIS MONTH</span><strong>{contributionsThisMonth}</strong><small>{contributionsToday} captured today · selected financial scope</small></article>
     </section>
     <nav className="nyika-workflow-nav" aria-label="Nyika workspace sections">
       <a href="#nyika-setup"><span>01</span> Setup</a>
