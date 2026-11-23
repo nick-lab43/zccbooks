@@ -138,7 +138,6 @@ public class FinancialAdministrationController {
         requireOrganisation(organisationId);
         requireFinancialConfigurationAuthority();
         validateScopeLevels(request.scopeLevels());
-        validateClassifications(request.classificationIds(), requireCategoryRow(categoryId).organisationId());
         if (!CONTRIBUTION_TYPES.contains(request.contributionType())) {
             throw new IllegalArgumentException("Unsupported contribution type.");
         }
@@ -167,7 +166,7 @@ public class FinancialAdministrationController {
             Map.of("organisationId", organisationId.toString(), "streamId", request.streamId().toString(),
                 "code", code, "name", request.name().trim(), "type", request.contributionType(),
                 "scopeLevels", request.scopeLevels().stream().distinct().toList(),
-                "classificationIds", request.classificationIds().stream().distinct().toList()));
+                "classificationIds", request.classificationIds() == null ? List.of() : request.classificationIds().stream().distinct().toList()));
         return ResponseEntity.status(HttpStatus.CREATED).body(requireCategory(id));
     }
 
@@ -177,6 +176,7 @@ public class FinancialAdministrationController {
         requireFinancialConfigurationAuthority();
         ContributionCategoryDto existing = requireCategory(categoryId);
         validateScopeLevels(request.scopeLevels());
+        validateClassifications(request.classificationIds(), requireCategoryRow(categoryId).organisationId());
         if (!CONTRIBUTION_TYPES.contains(request.contributionType())) {
             throw new IllegalArgumentException("Unsupported contribution type.");
         }
