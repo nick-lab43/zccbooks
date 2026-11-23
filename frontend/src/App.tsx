@@ -322,7 +322,7 @@ function MainApp() {
         <aside className="app-sidebar central-navigation" aria-label="Central administration workspaces">
           <div className="sidebar-section-label">WORKSPACE</div>
           <button className={activeModule === "overview" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("overview")} aria-current={activeModule === "overview" ? "page" : undefined}><span className="sidebar-icon">OV</span><span>Overview</span></button>
-          {(currentAdmin?.permissions.includes("MEMBERS_VIEW") || currentAdmin?.permissions.includes("FINANCE_VIEW")) && <details className="sidebar-group" open={activeModule === "oversight" || activeModule === "organisation"}>
+          {(currentAdmin?.permissions.includes("MEMBERS_VIEW") || currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("ORG_VIEW")) && <details className="sidebar-group" open={activeModule === "oversight" || activeModule === "organisation"}>
             <summary>Oversight &amp; structure</summary>
             {currentAdmin?.permissions.includes("MEMBERS_VIEW") || currentAdmin?.permissions.includes("FINANCE_VIEW") ? <button className={activeModule === "oversight" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("oversight")}><span className="sidebar-icon">NY</span><span>Nyika oversight</span></button> : null}
             {currentAdmin?.permissions.includes("ORG_VIEW") && <button className={activeModule === "organisation" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("organisation")}><span className="sidebar-icon">OR</span><span>Organisational structure</span></button>}
