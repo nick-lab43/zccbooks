@@ -58,6 +58,13 @@ public class ContributionController {
                      SELECT 1 FROM contribution_category_scope_levels sl
                      WHERE sl.category_id = c.id AND sl.scope_level = u.level
                    ) AS category_allows_scope,
+                   (
+                     NOT EXISTS (SELECT 1 FROM contribution_category_classifications cc WHERE cc.category_id = c.id)
+                     OR EXISTS (
+                       SELECT 1 FROM contribution_category_classifications cc
+                       WHERE cc.category_id = c.id AND cc.classification_id = m.classification_id
+                     )
+                   ) AS category_allows_classification,
                    (?::uuid IS NULL OR EXISTS (
                      SELECT 1
                      FROM households h
@@ -81,7 +88,7 @@ public class ContributionController {
                 rs.getBoolean("category_active"), rs.getBoolean("stream_active"),
                 rs.getString("scope_level"), rs.getBoolean("scope_active"),
                 rs.getBoolean("scope_contains_member"), rs.getBoolean("category_allows_scope"),
-                rs.getBoolean("household_matches")),
+                rs.getBoolean("category_allows_classification"), rs.getBoolean("household_matches")),
             request.scopeUnitId(), request.categoryId(), request.scopeUnitId(),
             request.householdId(), request.householdId(), request.memberId(), organisationId,
             organisationId, organisationId, organisationId)
@@ -94,6 +101,7 @@ public class ContributionController {
         if (!context.scopeActive()) throw new ConflictException("Contributions cannot be recorded against an inactive geographical unit.");
         if (!context.scopeContainsMember()) throw new IllegalArgumentException("The selected financial scope must contain the member's assigned Cell.");
         if (!context.categoryAllowsScope()) throw new IllegalArgumentException("The category is not configured for the selected geographical level.");
+        if (!context.categoryAllowsClassification()) throw new IllegalArgumentException("The selected contribution category is not available to this member's classification.");
         if (!context.householdMatches()) throw new IllegalArgumentException(
             "Household contributions require an active household in this Cell and its active designated household head.");
 
@@ -671,5 +679,5 @@ public class ContributionController {
     private record ContributionContext(UUID memberId, UUID organisationId, UUID cellId, boolean memberActive,
         UUID categoryId, UUID streamId, boolean categoryActive, boolean streamActive,
         String scopeLevel, boolean scopeActive, boolean scopeContainsMember, boolean categoryAllowsScope,
-        boolean householdMatches) {}
+        boolean categoryAllowsClassification, boolean householdMatches) {}
 }

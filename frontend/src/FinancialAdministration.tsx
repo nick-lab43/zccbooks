@@ -6,7 +6,8 @@ import FinancialReconciliationExceptions from "./FinancialReconciliationExceptio
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Stream = { id: string; code: string; name: string; active: boolean };
-type Category = { id: string; streamId: string; streamCode: string; streamName: string; code: string; name: string; description: string | null; contributionType: string; active: boolean; scopeLevels: string[] };
+type Category = { id: string; streamId: string; streamCode: string; streamName: string; code: string; name: string; description: string | null; contributionType: string; active: boolean; scopeLevels: string[]; classificationIds: string[] };
+type Classification = { id: string; code: string; name: string; active: boolean };
 type Target = { id: string; categoryId: string; categoryCode: string; categoryName: string; streamName: string; unitId: string; unitLevel: string; unitCode: string; unitName: string; periodStart: string; periodEnd: string; targetAmount: number; currency: string; note: string | null };
 type TargetProgress = { targetId: string; categoryName: string; unitId: string; unitName: string; periodStart: string; periodEnd: string; targetAmount: number; receivedAmount: number; percentageAchieved: number; currency: string };
 
@@ -24,6 +25,7 @@ export default function FinancialAdministration({ organisationId, authorizationH
   const [targets, setTargets] = useState<Target[]>([]);
   const [progress, setProgress] = useState<TargetProgress[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
+  const [classifications, setClassifications] = useState<Classification[]>([]);
   const [canConfigure, setCanConfigure] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -45,18 +47,20 @@ export default function FinancialAdministration({ organisationId, authorizationH
 
   async function reload() {
     if (!organisationId) return;
-    const [streamRows, categoryRows, targetRows, progressRows, access] = await Promise.all([
+    const [streamRows, categoryRows, targetRows, progressRows, access, classificationRows] = await Promise.all([
       request<Stream[]>(`/api/organisations/${organisationId}/financial-streams`),
       request<Category[]>(`/api/organisations/${organisationId}/contribution-categories`),
       request<Target[]>(`/api/organisations/${organisationId}/financial-targets`),
       request<TargetProgress[]>(`/api/organisations/${organisationId}/financial-target-progress`),
-      request<boolean>(`/api/organisations/${organisationId}/financial-management-access`)
+      request<boolean>(`/api/organisations/${organisationId}/financial-management-access`),
+      request<Classification[]>(`/api/organisations/${organisationId}/classifications`)
     ]);
     setStreams(streamRows);
     setCategories(categoryRows);
     setTargets(targetRows);
     setProgress(progressRows);
     setCanConfigure(access);
+    setClassifications(classificationRows.filter(item => item.active));
     if (access) {
       const unitRows = await request<Unit[]>(`/api/organisations/${organisationId}/units`);
       setUnits(unitRows.filter(unit => unit.active && ["NYIKA", "TABHERA", "CELL"].includes(unit.level)));
@@ -113,7 +117,7 @@ export default function FinancialAdministration({ organisationId, authorizationH
         body: JSON.stringify({
           streamId: data.get("streamId"), code: data.get("code"), name: data.get("name"),
           description: data.get("description"), contributionType: data.get("contributionType"),
-          scopeLevels
+          scopeLevels, classificationIds: data.getAll("classificationIds").map(String)
         })
       });
       await reload(); form.reset();
@@ -129,7 +133,7 @@ export default function FinancialAdministration({ organisationId, authorizationH
         body: JSON.stringify({
           name: category.name, description: category.description,
           contributionType: category.contributionType, active: !category.active,
-          scopeLevels: category.scopeLevels
+          scopeLevels: category.scopeLevels, classificationIds: category.classificationIds
         })
       });
       await reload();
@@ -192,11 +196,12 @@ export default function FinancialAdministration({ organisationId, authorizationH
           <label>Contribution type<select name="contributionType" defaultValue="MANDATORY"><option value="MANDATORY">Mandatory</option><option value="VOLUNTARY">Voluntary</option><option value="PROJECT">Project / special fund</option></select></label>
           <label>Description<input name="description" maxLength={500} placeholder="Optional policy description" /></label>
           <fieldset className="scope-choice"><legend>Applicable geographical levels</legend><div className="field-pair">{scopeOptions.map(option => <label className="checkbox-label" key={option.value}><input type="checkbox" name="scopeLevels" value={option.value} defaultChecked={option.value !== "CELL"} />{option.label}</label>)}</div></fieldset>
+          <fieldset className="scope-choice"><legend>Eligible member classifications <small>(optional — leave all unchecked for every classification)</small></legend><div className="field-pair">{classifications.map(item => <label className="checkbox-label" key={item.id}><input type="checkbox" name="classificationIds" value={item.id} />{item.name}</label>)}</div>{!classifications.length && <p className="empty-note">No active member classifications are configured.</p>}</fieldset>
           <button className="primary-button" disabled={busy || !activeStreams.length}>Create contribution category</button>
         </form>
-        <div className="table-wrap"><table><thead><tr><th>CATEGORY</th><th>STREAM</th><th>TYPE</th><th>APPLIES AT</th><th>STATUS</th><th></th></tr></thead><tbody>
-          {categories.map(category => <tr key={category.id}><td><strong>{category.name}</strong><small className="table-subtext">{category.code}</small></td><td>{category.streamName}</td><td>{category.contributionType}</td><td>{category.scopeLevels.join(", ") || "—"}</td><td><span className={category.active ? "active-label" : "inactive-label"}>{category.active ? "ACTIVE" : "INACTIVE"}</span></td><td><button type="button" className="secondary-button" disabled={busy} onClick={() => toggleCategory(category)}>{category.active ? "Deactivate" : "Reactivate"}</button></td></tr>)}
-          {!categories.length && <tr><td colSpan={6} className="empty-table">No contribution categories configured.</td></tr>}
+        <div className="table-wrap"><table><thead><tr><th>CATEGORY</th><th>STREAM</th><th>TYPE</th><th>APPLIES AT</th><th>CLASSIFICATIONS</th><th>STATUS</th><th></th></tr></thead><tbody>
+          {categories.map(category => <tr key={category.id}><td><strong>{category.name}</strong><small className="table-subtext">{category.code}</small></td><td>{category.streamName}</td><td>{category.contributionType}</td><td>{category.scopeLevels.join(", ") || "—"}</td><td>{category.classificationIds.length ? category.classificationIds.map(id => classifications.find(item => item.id === id)?.name ?? "Inactive classification").join(", ") : "All classifications"}</td><td><span className={category.active ? "active-label" : "inactive-label"}>{category.active ? "ACTIVE" : "INACTIVE"}</span></td><td><button type="button" className="secondary-button" disabled={busy} onClick={() => toggleCategory(category)}>{category.active ? "Deactivate" : "Reactivate"}</button></td></tr>)}
+          {!categories.length && <tr><td colSpan={7} className="empty-table">No contribution categories configured.</td></tr>}
         </tbody></table></div>
         <div className="panel-divider" />
         <div className="panel-title"><div><span className="panel-index">03</span><h2>Financial targets</h2></div><span className="panel-tag">GEOGRAPHICAL TARGETS</span></div>

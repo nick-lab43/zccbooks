@@ -112,10 +112,12 @@ public class FinancialAdministrationController {
         return jdbc.query("""
             SELECT c.id, c.stream_id, s.code AS stream_code, s.name AS stream_name,
                    c.code, c.name, c.description, c.contribution_type, c.active,
-                   COALESCE(STRING_AGG(sl.scope_level, ',' ORDER BY sl.scope_level), '') AS scope_levels
+                   COALESCE(STRING_AGG(DISTINCT sl.scope_level, ',' ORDER BY sl.scope_level), '') AS scope_levels,
+                   COALESCE(STRING_AGG(DISTINCT cc.classification_id::text, ',' ORDER BY cc.classification_id::text), '') AS classification_ids
             FROM contribution_categories c
             JOIN financial_streams s ON s.id = c.stream_id AND s.organisation_id = c.organisation_id
             LEFT JOIN contribution_category_scope_levels sl ON sl.category_id = c.id
+            LEFT JOIN contribution_category_classifications cc ON cc.category_id = c.id
             WHERE c.organisation_id = ?
             GROUP BY c.id, c.stream_id, s.code, s.name
             ORDER BY c.name
@@ -124,7 +126,9 @@ public class FinancialAdministrationController {
                 rs.getString("stream_code"), rs.getString("stream_name"), rs.getString("code"),
                 rs.getString("name"), rs.getString("description"), rs.getString("contribution_type"),
                 rs.getBoolean("active"), rs.getString("scope_levels").isBlank()
-                    ? List.of() : List.of(rs.getString("scope_levels").split(","))), organisationId);
+                    ? List.of() : List.of(rs.getString("scope_levels").split(",")),
+                rs.getString("classification_ids").isBlank()
+                    ? List.of() : List.of(rs.getString("classification_ids").split(","))), organisationId);
     }
 
     @PostMapping("/organisations/{organisationId}/contribution-categories")
@@ -134,10 +138,12 @@ public class FinancialAdministrationController {
         requireOrganisation(organisationId);
         requireFinancialConfigurationAuthority();
         validateScopeLevels(request.scopeLevels());
+        validateClassifications(request.classificationIds(), requireCategoryRow(categoryId).organisationId());
         if (!CONTRIBUTION_TYPES.contains(request.contributionType())) {
             throw new IllegalArgumentException("Unsupported contribution type.");
         }
         requireStreamInOrganisation(request.streamId(), organisationId, true);
+        validateClassifications(request.classificationIds(), organisationId);
         String code = request.code().trim().toUpperCase();
         if (exists("SELECT COUNT(*) FROM contribution_categories WHERE organisation_id = ? AND LOWER(code) = LOWER(?)",
                 organisationId, code)) {
@@ -156,10 +162,12 @@ public class FinancialAdministrationController {
                 VALUES (?, ?)
                 """, id, level);
         }
+        replaceCategoryClassifications(id, request.classificationIds());
         audit.record("CONTRIBUTION_CATEGORY_CREATED", "CONTRIBUTION_CATEGORY", id,
             Map.of("organisationId", organisationId.toString(), "streamId", request.streamId().toString(),
                 "code", code, "name", request.name().trim(), "type", request.contributionType(),
-                "scopeLevels", request.scopeLevels().stream().distinct().toList()));
+                "scopeLevels", request.scopeLevels().stream().distinct().toList(),
+                "classificationIds", request.classificationIds().stream().distinct().toList()));
         return ResponseEntity.status(HttpStatus.CREATED).body(requireCategory(id));
     }
 
@@ -200,10 +208,12 @@ public class FinancialAdministrationController {
             jdbc.update("INSERT INTO contribution_category_scope_levels (category_id, scope_level) VALUES (?, ?)",
                 categoryId, level);
         }
+        replaceCategoryClassifications(categoryId, request.classificationIds());
         audit.record("CONTRIBUTION_CATEGORY_UPDATED", "CONTRIBUTION_CATEGORY", categoryId,
             Map.of("previousActive", existing.active(), "active", request.active(),
                 "name", request.name().trim(), "type", request.contributionType(),
-                "scopeLevels", request.scopeLevels().stream().distinct().toList()));
+                "scopeLevels", request.scopeLevels().stream().distinct().toList(),
+                "classificationIds", request.classificationIds().stream().distinct().toList()));
         return requireCategory(categoryId);
     }
 
@@ -302,10 +312,12 @@ public class FinancialAdministrationController {
         return jdbc.query("""
             SELECT c.id, c.stream_id, s.code AS stream_code, s.name AS stream_name,
                    c.code, c.name, c.description, c.contribution_type, c.active,
-                   COALESCE(STRING_AGG(sl.scope_level, ',' ORDER BY sl.scope_level), '') AS scope_levels
+                   COALESCE(STRING_AGG(DISTINCT sl.scope_level, ',' ORDER BY sl.scope_level), '') AS scope_levels,
+                   COALESCE(STRING_AGG(DISTINCT cc.classification_id::text, ',' ORDER BY cc.classification_id::text), '') AS classification_ids
             FROM contribution_categories c
             JOIN financial_streams s ON s.id = c.stream_id AND s.organisation_id = c.organisation_id
             LEFT JOIN contribution_category_scope_levels sl ON sl.category_id = c.id
+            LEFT JOIN contribution_category_classifications cc ON cc.category_id = c.id
             WHERE c.id = ?
             GROUP BY c.id, c.stream_id, s.code, s.name
             """, (rs, n) -> new ContributionCategoryDto(
@@ -313,7 +325,9 @@ public class FinancialAdministrationController {
                 rs.getString("stream_code"), rs.getString("stream_name"), rs.getString("code"),
                 rs.getString("name"), rs.getString("description"), rs.getString("contribution_type"),
                 rs.getBoolean("active"), rs.getString("scope_levels").isBlank()
-                    ? List.of() : List.of(rs.getString("scope_levels").split(","))), id)
+                    ? List.of() : List.of(rs.getString("scope_levels").split(",")),
+                rs.getString("classification_ids").isBlank()
+                    ? List.of() : List.of(rs.getString("classification_ids").split(","))), id)
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Contribution category not found."));
     }
 
@@ -358,6 +372,30 @@ public class FinancialAdministrationController {
             rs.getDate("period_start").toLocalDate().toString(),
             rs.getDate("period_end").toLocalDate().toString(),
             rs.getBigDecimal("target_amount"), rs.getString("currency"), rs.getString("note"));
+    }
+
+    private void validateClassifications(List<UUID> classificationIds, UUID organisationId) {
+        if (classificationIds == null || classificationIds.isEmpty()) return;
+        for (UUID classificationId : classificationIds.stream().distinct().toList()) {
+            Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM classifications
+                WHERE id = ? AND organisation_id = ? AND active = TRUE
+                """, Integer.class, classificationId, organisationId);
+            if (count == null || count == 0) {
+                throw new IllegalArgumentException("Select only active member classifications belonging to this organisation.");
+            }
+        }
+    }
+
+    private void replaceCategoryClassifications(UUID categoryId, List<UUID> classificationIds) {
+        jdbc.update("DELETE FROM contribution_category_classifications WHERE category_id = ?", categoryId);
+        if (classificationIds == null) return;
+        for (UUID classificationId : classificationIds.stream().distinct().toList()) {
+            jdbc.update("""
+                INSERT INTO contribution_category_classifications (category_id, classification_id)
+                VALUES (?, ?)
+                """, categoryId, classificationId);
+        }
     }
 
     private void requireFinancialConfigurationAuthority() {
@@ -423,13 +461,14 @@ public class FinancialAdministrationController {
     public record CreateCategory(@NotNull UUID streamId,
         @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]{2,60}") String code,
         @NotBlank @Size(max = 120) String name, @Size(max = 500) String description,
-        @NotBlank String contributionType, @NotEmpty List<String> scopeLevels) {}
+        @NotBlank String contributionType, @NotEmpty List<String> scopeLevels,
+        List<UUID> classificationIds) {}
     public record UpdateCategory(@NotBlank @Size(max = 120) String name,
         @Size(max = 500) String description, @NotBlank String contributionType,
-        boolean active, @NotEmpty List<String> scopeLevels) {}
+        boolean active, @NotEmpty List<String> scopeLevels, List<UUID> classificationIds) {}
     public record ContributionCategoryDto(String id, String streamId, String streamCode, String streamName,
         String code, String name, String description, String contributionType, boolean active,
-        List<String> scopeLevels) {}
+        List<String> scopeLevels, List<String> classificationIds) {}
     public record CreateTarget(@NotNull UUID categoryId, @NotNull UUID unitId,
         @NotNull java.time.LocalDate periodStart, @NotNull java.time.LocalDate periodEnd,
         @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) BigDecimal targetAmount,
