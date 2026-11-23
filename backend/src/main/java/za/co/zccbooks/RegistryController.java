@@ -56,10 +56,8 @@ public class RegistryController {
     @PostMapping("/organisations")
     public ResponseEntity<OrganisationDto> createOrganisation(@Valid @RequestBody CreateOrganisation request) {
         authorization.requireGlobalPermission("ORG_MANAGE");
-        UUID id = UUID.randomUUID();
-        return ResponseEntity.status(HttpStatus.CREATED).body(jdbc.queryForObject(
-            "INSERT INTO organisations (id, name) VALUES (?, ?) RETURNING id, name, created_at::text AS created_at",
-            ORGANISATION_ROW, id, request.name().trim()));
+        throw new org.springframework.web.server.ResponseStatusException(
+            HttpStatus.CONFLICT, "Zion Christian Church is the only organisation supported by this system.");
     }
 
     @GetMapping("/organisations/{organisationId}/branches")

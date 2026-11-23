@@ -15,7 +15,7 @@ import BudgetManagement from "./BudgetManagement";
 import DepositReview from "./DepositReview";
 import AdminAuditLog from "./AdminAuditLog";
 
-type Module = "overview" | "organisation" | "membership" | "appointments" | "membershipReports" | "financial" | "reports" | "journals" | "ledger" | "expenditure" | "budgets" | "depositReview" | "access";
+type Module = "overview" | "organisation" | "configuration" | "membership" | "appointments" | "membershipReports" | "financial" | "reports" | "journals" | "ledger" | "expenditure" | "budgets" | "depositReview" | "access";
 type CurrentAdmin = { username: string; displayName: string; permissions: string[] };
 type AdminUser = { id: string; username: string; displayName: string; email?: string | null; enabled: boolean; createdAt: string | null; assignments: string };
 type AdminRole = { id: string; code: string; name: string; description?: string; systemRole: boolean; permissions: string[] };
@@ -57,6 +57,7 @@ function MainApp() {
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [unitCount, setUnitCount] = useState(0);
+  const [nyikaCount, setNyikaCount] = useState(0);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -64,8 +65,8 @@ function MainApp() {
 
   async function refreshOrganisations() {
     const rows = await api<Organisation[]>("/api/organisations");
-    setOrganisations(rows);
-    if (!organisationId && rows.length) setOrganisationId(rows[0].id);
+    setOrganisations(rows.slice(0, 1));
+    if (!organisationId && rows.length) { setOrganisationId(rows[0].id); setAccessOrganisationId(rows[0].id); }
   }
 
   useEffect(() => { if (authenticated) refreshOrganisations().catch((e: Error) => setError(e.message)); }, [authenticated]);
@@ -89,7 +90,7 @@ function MainApp() {
 
   useEffect(() => {
     if (!organisationId) {
-      setBranches([]); setClassifications([]); setBranchId(""); setUnitCount(0);
+      setBranches([]); setClassifications([]); setBranchId(""); setUnitCount(0); setNyikaCount(0);
       return;
     }
     Promise.allSettled([
@@ -103,6 +104,7 @@ function MainApp() {
       setBranches(branchRows);
       setClassifications(classificationRows);
       setUnitCount(unitResult.value.length);
+      setNyikaCount((unitResult.value as UnitOption[]).filter((unit) => unit.level === "NYIKA").length);
       setBranchId((current) => branchRows.some((b) => b.id === current) ? current : branchRows[0]?.id ?? "");
       if (branchResult.status === "rejected" && classificationResult.status === "rejected") {
         setNotice("Organisation access is limited to your assigned geographical scope. Branch-based membership maintenance is not available to this account.");
@@ -286,11 +288,8 @@ function MainApp() {
           <button className={activeModule === "overview" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("overview")} aria-current={activeModule === "overview" ? "page" : undefined}><span className="sidebar-icon">OV</span><span>Overview</span></button>
           <div className="sidebar-section-label">GENERAL ADMINISTRATION</div>
           {currentAdmin?.permissions.includes("ORG_VIEW") && <button className={activeModule === "organisation" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("organisation")} aria-current={activeModule === "organisation" ? "page" : undefined}><span className="sidebar-icon">OR</span><span>Organisational structure</span></button>}
-          {currentAdmin?.permissions.includes("MEMBERS_VIEW") && <>
-            <button className={activeModule === "membership" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("membership")} aria-current={activeModule === "membership" ? "page" : undefined}><span className="sidebar-icon">ME</span><span>Membership</span></button>
-            <button className={activeModule === "appointments" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("appointments")} aria-current={activeModule === "appointments" ? "page" : undefined}><span className="sidebar-icon">AP</span><span>Church appointments</span></button>
-            <button className={activeModule === "membershipReports" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("membershipReports")} aria-current={activeModule === "membershipReports" ? "page" : undefined}><span className="sidebar-icon">MR</span><span>Membership Reports</span></button>
-          </>}
+          {currentAdmin?.permissions.includes("ORG_MANAGE") && <button className={activeModule === "configuration" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("configuration")} aria-current={activeModule === "configuration" ? "page" : undefined}><span className="sidebar-icon">CF</span><span>Church configuration</span></button>}
+
           {(currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("FINANCE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_REVERSE") || currentAdmin?.permissions.includes("FINANCE_DEPOSIT") || currentAdmin?.permissions.includes("FINANCE_RECONCILE") || currentAdmin?.permissions.includes("FINANCE_REVIEW") || currentAdmin?.permissions.includes("FINANCE_EXPENSE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_EXPENSE_APPROVE") || currentAdmin?.permissions.includes("FINANCE_BUDGET_MANAGE") || currentAdmin?.permissions.includes("FINANCE_JOURNAL_VIEW") || currentAdmin?.permissions.includes("FINANCE_JOURNAL_CREATE") || currentAdmin?.permissions.includes("FINANCE_JOURNAL_APPROVE")) && <>
             <div className="sidebar-section-label">FINANCIAL ADMINISTRATION</div>
             {(currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("FINANCE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_REVERSE") || currentAdmin?.permissions.includes("FINANCE_DEPOSIT") || currentAdmin?.permissions.includes("FINANCE_RECONCILE")) && <button className={activeModule === "financial" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("financial")} aria-current={activeModule === "financial" ? "page" : undefined}><span className="sidebar-icon">FA</span><span>Financial Administration</span></button>}
@@ -305,39 +304,36 @@ function MainApp() {
             <div className="sidebar-section-label">SYSTEM ADMINISTRATION</div>
             <button className={activeModule === "access" ? "sidebar-link active" : "sidebar-link"} onClick={() => setActiveModule("access")} aria-current={activeModule === "access" ? "page" : undefined}><span className="sidebar-icon">AC</span><span>Users &amp; access</span></button>
           </>}
-          <div className="sidebar-note"><strong>Current release</strong><span>Organisation, membership, contributions, deposits, expenditure approvals, budget controls and financial reporting.</span></div>
+          <div className="sidebar-note"><strong>Current release</strong><span>Organisation structure, church configuration, financial oversight and administrator access.</span></div>
         </aside>
         <main className="app-main">
 
       <section className="workspace-heading">
         <div>
           <div className="breadcrumb">{activeModule === "access" ? "SYSTEM ADMINISTRATION" : activeModule === "financial" ? "FINANCIAL ADMINISTRATION" : activeModule === "reports" ? "FINANCIAL REPORTING" : activeModule === "journals" || activeModule === "ledger" ? "GENERAL LEDGER" : activeModule === "expenditure" ? "EXPENDITURE CONTROL" : activeModule === "budgets" ? "BUDGET MANAGEMENT" : activeModule === "depositReview" ? "DEPOSIT PACKAGE REVIEW" : activeModule === "overview" ? "WORKSPACE" : "GENERAL ADMINISTRATION"}</div>
-          <h1>{activeModule === "overview" ? "Overview" : activeModule === "organisation" ? "Organisational structure" : activeModule === "membership" ? "Membership" : activeModule === "appointments" ? "Church appointments" : activeModule === "financial" ? "Financial Administration" : activeModule === "reports" ? "Financial Reports" : activeModule === "journals" ? "Accounts & Journals" : activeModule === "ledger" ? "General Ledger Reports" : activeModule === "expenditure" ? "Expenditure Management" : activeModule === "budgets" ? "Budget Management" : activeModule === "depositReview" ? "Deposit Package Review" : "Users & access"}</h1>
-          <p>{activeModule === "overview" ? "A summary of the organisation and administration areas available to your account." : activeModule === "organisation" ? "Create and maintain the organisation's geographical hierarchy." : activeModule === "membership" ? "Register and maintain members and their household records." : activeModule === "appointments" ? "Maintain church offices and date-effective member appointments." : activeModule === "financial" ? "Govern financial configuration, capture contributions and issue receipts within assigned scope." : activeModule === "reports" ? "Generate permission-scoped financial summaries, registers and downloadable Word reports." : activeModule === "journals" ? "Manage the chart of accounts, reconciliation mappings and controlled double-entry journals." : activeModule === "ledger" ? "Review trial balances and account statements generated from posted journals." : activeModule === "expenditure" ? "Capture church spending, enforce independent approval and track payment settlement." : activeModule === "budgets" ? "Allocate expenditure budgets, preserve amendments and monitor actual spending against approved allocations." : activeModule === "depositReview" ? "Review submitted Nyika deposit packages, record decisions and retain immutable review history." : "Manage administrator accounts, roles, permissions and audit history."}</p>
+          <h1>{activeModule === "overview" ? "Overview" : activeModule === "organisation" ? "Organisational structure" : activeModule === "configuration" ? "Church configuration" : activeModule === "membership" ? "Membership" : activeModule === "appointments" ? "Church appointments" : activeModule === "financial" ? "Financial Administration" : activeModule === "reports" ? "Financial Reports" : activeModule === "journals" ? "Accounts & Journals" : activeModule === "ledger" ? "General Ledger Reports" : activeModule === "expenditure" ? "Expenditure Management" : activeModule === "budgets" ? "Budget Management" : activeModule === "depositReview" ? "Deposit Package Review" : "Users & access"}</h1>
+          <p>{activeModule === "overview" ? "A summary of the organisation and administration areas available to your account." : activeModule === "organisation" ? "Configure the geographical hierarchy." : activeModule === "configuration" ? "Configure the classifications used by Nyika administrators when registering members." : activeModule === "membership" ? "Register and maintain members and their household records." : activeModule === "appointments" ? "Maintain church offices and date-effective member appointments." : activeModule === "financial" ? "Govern financial configuration, capture contributions and issue receipts within assigned scope." : activeModule === "reports" ? "Generate permission-scoped financial summaries, registers and downloadable Word reports." : activeModule === "journals" ? "Manage the chart of accounts, reconciliation mappings and controlled double-entry journals." : activeModule === "ledger" ? "Review trial balances and account statements generated from posted journals." : activeModule === "expenditure" ? "Capture church spending, enforce independent approval and track payment settlement." : activeModule === "budgets" ? "Allocate expenditure budgets, preserve amendments and monitor actual spending against approved allocations." : activeModule === "depositReview" ? "Review submitted Nyika deposit packages, record decisions and retain immutable review history." : "Manage administrator accounts, roles, permissions and audit history."}</p>
         </div>
-        <div className="record-stamp"><span>WORKSPACE</span><strong>{activeModule === "overview" ? "CEN-01" : activeModule === "organisation" ? "ORG-01" : activeModule === "membership" ? "MEM-01" : activeModule === "appointments" ? "APT-01" : activeModule === "financial" ? "FIN-01" : activeModule === "reports" ? "RPT-01" : activeModule === "journals" ? "GL-01" : activeModule === "ledger" ? "GL-02" : activeModule === "expenditure" ? "EXP-01" : activeModule === "budgets" ? "BUD-01" : activeModule === "depositReview" ? "REV-01" : "ACL-01"}</strong><span>FOUNDATION RELEASE</span></div>
+        <div className="record-stamp"><span>WORKSPACE</span><strong>{activeModule === "overview" ? "CEN-01" : activeModule === "organisation" ? "ORG-01" : activeModule === "configuration" ? "CFG-01" : activeModule === "membership" ? "MEM-01" : activeModule === "appointments" ? "APT-01" : activeModule === "financial" ? "FIN-01" : activeModule === "reports" ? "RPT-01" : activeModule === "journals" ? "GL-01" : activeModule === "ledger" ? "GL-02" : activeModule === "expenditure" ? "EXP-01" : activeModule === "budgets" ? "BUD-01" : activeModule === "depositReview" ? "REV-01" : "ACL-01"}</strong><span>FOUNDATION RELEASE</span></div>
       </section>
 
       {(error || notice) && <div className={error ? "message error" : "message success"} role="status">{error || notice}<button onClick={() => { setError(""); setNotice(""); }} aria-label="Dismiss message">×</button></div>}
 
       {activeModule === "overview" && (
         <section className="central-overview">
-          <div className="overview-context">
-            <div><span className="overview-eyebrow">ORGANISATION IN VIEW</span><strong>{selectedOrganisation?.name ?? "No organisation registered"}</strong></div>
-            <label>ACTIVE ORGANISATION<select value={organisationId} onChange={(e) => setOrganisationId(e.target.value)}><option value="">Select organisation</option>{organisations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
-          </div>
+          <div className="overview-context"><div><span className="overview-eyebrow">PERMANENT ORGANISATION</span><strong>Zion Christian Church</strong></div><span className="overview-eyebrow">SINGLE-ORGANISATION CONTROL CENTRE</span></div>
           <div className="overview-stat-grid">
-            <article className="overview-stat"><span>ORGANISATIONS</span><strong>{organisations.length.toString().padStart(3, "0")}</strong></article>
-            <article className="overview-stat"><span>BRANCHES</span><strong>{branches.length.toString().padStart(3, "0")}</strong></article>
+            <article className="overview-stat"><span>ORGANISATION</span><strong>001</strong></article>
+            <article className="overview-stat"><span>NYIKAS</span><strong>{nyikaCount.toString().padStart(3, "0")}</strong></article>
             <article className="overview-stat"><span>GEOGRAPHICAL UNITS</span><strong>{unitCount.toString().padStart(3, "0")}</strong></article>
-            <article className="overview-stat"><span>MEMBERS IN VIEW</span><strong>{members.length.toString().padStart(3, "0")}</strong></article>
+            <article className="overview-stat"><span>CLASSIFICATIONS</span><strong>{classifications.length.toString().padStart(3, "0")}</strong></article>
           </div>
           <div className="overview-lower-grid">
             <section className="pos-window overview-window">
               <div className="pos-window-title"><div><span className="pos-window-icon">SYS</span><strong>CENTRAL ADMINISTRATION</strong></div><span className="pos-window-reference">CONTROL DESK</span></div>
               <div className="overview-module-list">
-                <button onClick={() => setActiveModule("organisation")}><span className="module-code">01</span><span><strong>Organisation management</strong><small>Organisation records, branches and geographical hierarchy</small></span><b>OPEN</b></button>
-                <button onClick={() => setActiveModule("membership")}><span className="module-code">02</span><span><strong>Membership administration</strong><small>Classifications, Cell registration and household records</small></span><b>OPEN</b></button>
+                <button onClick={() => setActiveModule("organisation")}><span className="module-code">01</span><span><strong>Organisation management</strong><small>Country, province/state, district and Nyika setup</small></span><b>OPEN</b></button>
+                {currentAdmin?.permissions.includes("ORG_MANAGE") && <button onClick={() => setActiveModule("configuration")}><span className="module-code">02</span><span><strong>Church configuration</strong><small>Member classifications and organisation-wide settings</small></span><b>OPEN</b></button>}
                 {(currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("FINANCE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_REVERSE")) && <button onClick={() => setActiveModule("financial")}><span className="module-code">03</span><span><strong>Financial Administration</strong><small>Financial streams, contribution categories and geographical targets</small></span><b>OPEN</b></button>}
                 {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button onClick={() => setActiveModule("access")}><span className="module-code">04</span><span><strong>Administrator access control</strong><small>Accounts, role definitions, permissions and geographical scopes</small></span><b>OPEN</b></button>}
               </div>
@@ -351,82 +347,33 @@ function MainApp() {
               </div>
             </section>
           </div>
-          <div className="overview-footnote">CURRENT RELEASE: ORGANISATION, MEMBERSHIP, CONTRIBUTIONS, DEPOSITS, EXPENDITURE AND BUDGET ACCOUNTABILITY</div>
+          <div className="overview-footnote">CENTRAL CONTROL: STRUCTURE, CLASSIFICATIONS, FINANCIAL OVERSIGHT AND ACCESS</div>
         </section>
       )}
 
       {activeModule === "organisation" && (
         <>
-          <div className="selection-bar organisation-selection">
-            <label>Organisation<select value={organisationId} onChange={(e) => setOrganisationId(e.target.value)}><option value="">Select organisation</option>{organisations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
-            <div className="selection-summary"><span>BRANCHES IN ORGANISATION</span><strong>{branches.length.toString().padStart(3, "0")}</strong></div>
-          </div>
-          <div className="organisation-layout">
-            <section className="panel">
-              <div className="panel-title"><div><span className="panel-index">01</span><h2>Organisation record</h2></div><span className="panel-tag">CENTRAL CONTROL</span></div>
-              <form onSubmit={createOrganisation} className="form-stack">
-                <label>Organisation name<input name="name" required maxLength={160} placeholder="Organisation name" /></label>
-                <button className="primary-button" disabled={busy}>Create organisation</button>
-              </form>
-              <div className="panel-divider" />
-              <div className="panel-title"><div><span className="panel-index">02</span><h2>Register branch</h2></div></div>
-              <form onSubmit={createBranch} className="form-stack">
-                <div className="field-pair"><label>Branch code<input name="code" required maxLength={40} placeholder="e.g. POL-001" /></label><label>Country code<input name="countryCode" maxLength={2} pattern="[A-Z]{2}" placeholder="ZA" /></label></div>
-                <label>Branch name<input name="name" required maxLength={160} placeholder="Branch name" /></label>
-                <label>District / region<input name="districtName" maxLength={160} placeholder="District or region" /></label>
-                <button className="primary-button" disabled={busy || !organisationId}>Register branch</button>
-              </form>
-              <div className="panel-divider" />
-              <div className="panel-title"><div><span className="panel-index">03</span><h2>Branch register</h2></div><span className="panel-tag">{branches.length} RECORDS</span></div>
-              <div className="table-wrap"><table><thead><tr><th>CODE</th><th>BRANCH</th><th>DISTRICT / REGION</th></tr></thead><tbody>
-                {branches.map((item) => <tr key={item.id}><td><strong>{item.code}</strong></td><td>{item.name}</td><td>{item.districtName || "—"}</td></tr>)}
-                {!branches.length && <tr><td colSpan={3} className="empty-table">No branches registered.</td></tr>}
-              </tbody></table></div>
-            </section>
-            <div className="organisation-hierarchy"><OrganisationalHierarchy organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} /></div>
-          </div>
+          <div className="overview-context"><div><span className="overview-eyebrow">ORGANISATION</span><strong>Zion Christian Church</strong></div><span className="overview-eyebrow">COUNTRY → PROVINCE / STATE → DISTRICT → NYIKA</span></div>
+          <div className="organisation-hierarchy central-structure-layout"><OrganisationalHierarchy organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} /></div>
         </>
       )}
 
-      {activeModule === "membership" && (
-        <>
-          <section className="selection-bar">
-            <label>Organisation<select value={organisationId} onChange={(e) => setOrganisationId(e.target.value)}><option value="">Select organisation</option>{organisations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
-            <label>Legacy branch records<select value={branchId} onChange={(e) => setBranchId(e.target.value)} disabled={!branches.length}><option value="">Select branch</option>{branches.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
-            <div className="selection-summary"><span>LEGACY RECORDS IN VIEW</span><strong>{members.length.toString().padStart(3, "0")}</strong></div>
-          </section>
-          <div className="content-grid membership-grid">
-            <section className="panel">
-              <div className="panel-title"><div><span className="panel-index">01</span><h2>Member classifications</h2></div><span className="panel-tag">CONFIGURABLE</span></div>
-              <p className="panel-description">Classification labels are configured by authorised administrators. No church-specific categories are embedded in the application.</p>
-              <form onSubmit={createClassification} className="form-stack">
-                <div className="field-pair"><label>Classification code<input name="code" required maxLength={60} placeholder="Classification code" /></label><label>Display name<input name="name" required maxLength={120} placeholder="Classification name" /></label></div>
-                <button className="secondary-button" disabled={busy || !organisationId}>Add classification</button>
-              </form>
-              <div className="classification-list">
-                {classifications.map((item) => <div className="classification-row" key={item.id}><span className="classification-code">{item.code}</span><span>{item.name}</span><span className="active-label">{item.active ? "ACTIVE" : "INACTIVE"}</span></div>)}
-                {!classifications.length && <p className="empty-note">No classifications configured for this organisation.</p>}
-              </div>
-            </section>
-            <section className="panel member-panel">
-              <div className="panel-title"><div><span className="panel-index">02</span><h2>Legacy branch register</h2></div><span className="panel-tag">MEMBER RECORDS</span></div>
-              <p className="panel-description">This is a read-only view of older branch-based records. Register new members in the Cell Membership section below so every new record has a canonical geographical location.</p>
-              <div className="legacy-record-notice"><strong>LEGACY REGISTER</strong><span>Existing records are preserved. New member registration is handled through Cell Membership.</span></div>
-              <div className="panel-divider" />
-              <div className="register-heading"><div><h2>Membership register</h2><p>{selectedBranch ? `${selectedBranch.name}${selectedBranch.districtName ? " · " + selectedBranch.districtName : ""}` : "Select a branch to view its register"}</p></div><span className="count-box">{members.length} RECORDS</span></div>
-              <label className="search-field"><span>SEARCH REGISTER</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or ZCC app number" disabled={!branchId} /></label>
-              <div className="table-wrap"><table><thead><tr><th>MEMBER</th><th>ZCC APP NO.</th><th>CLASSIFICATION</th><th>STATUS</th></tr></thead><tbody>
-                {members.map((member) => <tr key={member.id}><td><strong>{member.lastName}, {member.firstName}</strong></td><td>{member.zccAppNumber || "—"}</td><td>{member.classificationName || "Unassigned"}</td><td><span className="active-label">{member.active ? "ACTIVE" : "INACTIVE"}</span></td></tr>)}
-                {!members.length && <tr><td colSpan={4} className="empty-table">No legacy member records found for this branch.</td></tr>}
-              </tbody></table></div>
-            </section>
+      {activeModule === "configuration" && (
+        <section className="panel">
+          <div className="panel-title"><div><span className="panel-index">01</span><h2>Member classifications</h2></div><span className="panel-tag">CENTRAL CONFIGURATION</span></div>
+          <p className="panel-description">Define the classification options that Nyika administrators must select when registering members. These are shared across the organisation.</p>
+          <form onSubmit={createClassification} className="form-stack">
+            <div className="field-pair"><label>Classification code<input name="code" required maxLength={60} placeholder="e.g. FULL_MEMBER" /></label><label>Classification name<input name="name" required maxLength={120} placeholder="e.g. Full Member" /></label></div>
+            <button className="primary-button" disabled={busy || !organisationId}>Add classification</button>
+          </form>
+          <div className="panel-divider" />
+          <div className="panel-title"><div><span className="panel-index">02</span><h2>Configured classifications</h2></div><span className="panel-tag">{classifications.length} OPTIONS</span></div>
+          <div className="classification-list">
+            {classifications.map((item) => <div className="classification-row" key={item.id}><span className="classification-code">{item.code}</span><span>{item.name}</span><span className={item.active ? "active-label" : "inactive-label"}>{item.active ? "ACTIVE" : "INACTIVE"}</span></div>)}
+            {!classifications.length && <p className="empty-note">No classifications have been configured.</p>}
           </div>
-          <CellMembership organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />
-        </>
+        </section>
       )}
-
-
-      {activeModule === "appointments" && <MemberAppointments organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
 
       {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_CAPTURE") ?? false} canDeposit={currentAdmin?.permissions.includes("FINANCE_DEPOSIT") ?? false} canReconcile={currentAdmin?.permissions.includes("FINANCE_RECONCILE") ?? false} canManageExceptions={currentAdmin?.permissions.includes("FINANCE_EXCEPTION") ?? false} canReverse={currentAdmin?.permissions.includes("FINANCE_REVERSE") ?? false} />}
 
@@ -434,7 +381,6 @@ function MainApp() {
       {activeModule === "journals" && <FinancialJournals organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canView={currentAdmin?.permissions.includes("FINANCE_JOURNAL_VIEW") ?? false} canCreate={currentAdmin?.permissions.includes("FINANCE_JOURNAL_CREATE") ?? false} canApprove={currentAdmin?.permissions.includes("FINANCE_JOURNAL_APPROVE") ?? false} />}
       {activeModule === "ledger" && <FinancialLedgerReports organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
       {activeModule === "depositReview" && <DepositReview organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} /> }
-      {activeModule === "membershipReports" && <MembershipReports organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} />}
 
       {activeModule === "expenditure" && <ExpenditureManagement organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_EXPENSE_CAPTURE") ?? false} canApprove={currentAdmin?.permissions.includes("FINANCE_EXPENSE_APPROVE") ?? false} />}
 
