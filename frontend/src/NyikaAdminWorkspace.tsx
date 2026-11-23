@@ -144,7 +144,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     await submit(event, async data => {
       if (!tabheraId) throw new Error("Create or select a Tabhera before creating a Cell.");
       await request<Unit>(`/api/units/${tabheraId}/children`, {
-        method: "POST", body: JSON.stringify({ code: data.get("code"), name: data.get("name") })
+        method: "POST", body: JSON.stringify({ name: data.get("name") })
       });
       await reload(); form.reset();
       setNotice("Cell created. You can now assign members to it.");
@@ -248,7 +248,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       if (!householdName.trim()) throw new Error("Enter a household name.");
       const created = await request<HouseholdProfile>(`/api/nyikas/${nyikaId}/households`, {
         method: "POST", body: JSON.stringify({
-          cellId: householdCellId, code: data.get("householdCode"), name: householdName.trim(),
+          cellId: householdCellId, name: householdName.trim(),
           headMemberId: householdHeadId || null,
           members: householdCandidateIds.map(memberId => ({ memberId, relationshipLabel: "Member" }))
         })
@@ -418,7 +418,6 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         <form className="form-stack" onSubmit={createCell}>
           <label>Tabhera<select value={tabheraId} onChange={e => setTabheraId(e.target.value)} required><option value="">Select Tabhera</option>{tabheras.map(tab => <option key={tab.id} value={tab.id}>{tab.code} — {tab.name}</option>)}</select></label>
           <label>Cell name<input name="name" required maxLength={160} placeholder="Enter Cell name" /></label>
-          <label>Cell code<input name="code" required maxLength={60} placeholder="Enter a unique code" /></label>
           <button className="primary-button" disabled={busy || !tabheraId}>Create Cell</button>
         </form>
         {tabheraId && <div className="nyika-cell-list"><strong>Cells in this Tabhera</strong>{cells.filter(cell => cell.parentId === tabheraId).map(cell => <div key={cell.id}><span>{cell.name}</span><small>{cell.code}</small></div>)}{!cells.some(cell => cell.parentId === tabheraId) && <p>No Cells created in this Tabhera yet.</p>}</div>}
@@ -482,7 +481,6 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         <form className="form-stack nyika-household-create" onSubmit={createHousehold}>
           <h4>Create a household</h4>
           <label>Cell<select value={householdCellId} onChange={e => { setHouseholdCellId(e.target.value); setHouseholdCandidateIds([]); setHouseholdHeadId(""); }} required><option value="">Select Cell</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select></label>
-          <label>Household code<input name="householdCode" required maxLength={60} placeholder="Enter a unique code" /></label>
           <label>Household name<input value={householdName} onChange={e => setHouseholdName(e.target.value)} required maxLength={160} placeholder="Enter household name" /></label>
           {householdCandidateIds.length > 0 && <label>Household head<select value={householdHeadId} onChange={e => setHouseholdHeadId(e.target.value)}><option value="">No head designated yet</option>{householdCandidates.filter(candidate => householdCandidateIds.includes(candidate.id)).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.lastName}, {candidate.firstName}</option>)}</select></label>}
           <div className="nyika-household-candidates"><strong>Available members in this Cell</strong>{householdCandidates.map(candidate => <label key={candidate.id} className="nyika-household-candidate"><input type="checkbox" checked={householdCandidateIds.includes(candidate.id)} onChange={e => toggleHouseholdCandidate(candidate.id, e.target.checked)} /><span><b>{candidate.lastName}, {candidate.firstName}</b><small>{candidate.classificationName || "No classification"} · {candidate.eliteNumber || "No Elite Number"}</small></span></label>)}{householdCellId && !householdCandidates.length && <p>No available active members in this Cell. Members already in another household are excluded.</p>}{!householdCellId && <p>Select a Cell to load available members.</p>}</div>
@@ -578,10 +576,6 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     <section id="nyika-cash-collections" className="nyika-card">
       <div className="nyika-register-heading"><div><span className="nyika-eyebrow">COLLECTION ACCOUNTABILITY</span><h3>Cash collections and deposit submission</h3><p>Every cash receipt must be allocated to a deposit batch. Capture or upload the bank deposit slip and submit the complete collection package to Central Financial Administration. Issuing a receipt does not complete the collection workflow: Central Finance must accept the deposit package and reconcile the bank credit.</p></div></div>
       <DepositManagement organisationId={organisationId} authorizationHeader={authorizationHeader} canDeposit={true} canReconcile={false} />
-    </section>
-    <section className="nyika-next-step">
-      <div><span className="nyika-eyebrow">NEXT IN YOUR WORKSPACE</span><h3>Financial reporting</h3><p>Contribution summaries by period, category, Cell and household are the next reporting milestone.</p></div>
-      <span className="nyika-next-status">UP NEXT</span>
     </section>
   </div>;
 }
