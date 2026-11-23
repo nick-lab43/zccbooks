@@ -319,10 +319,10 @@ public class NyikaHouseholdController {
 
     private Unit requireNyika(UUID id) {
         Unit unit = jdbc.query("""
-            SELECT id, organisation_id, level, name, code FROM organisational_units
+            SELECT id, organisation_id, level, name FROM organisational_units
             WHERE id = ? AND active = TRUE
             """, (rs, n) -> new Unit(rs.getObject("id", UUID.class),
-                rs.getObject("organisation_id", UUID.class), rs.getString("level"), rs.getString("name"), rs.getString("code")), id)
+                rs.getObject("organisation_id", UUID.class), rs.getString("level"), rs.getString("name")), id)
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Active Nyika not found."));
         if (!"NYIKA".equals(unit.level())) throw new IllegalArgumentException("The selected unit is not a Nyika.");
         return unit;
@@ -336,10 +336,10 @@ public class NyikaHouseholdController {
                 SELECT child.id FROM organisational_units child
                 JOIN descendants parent ON child.parent_id = parent.id
             )
-            SELECT id, organisation_id, level, name FROM organisational_units
+            SELECT id, organisation_id, level, name, code FROM organisational_units
             WHERE id = ? AND id IN (SELECT id FROM descendants) AND active = TRUE
             """, (rs, n) -> new Cell(rs.getObject("id", UUID.class),
-                rs.getObject("organisation_id", UUID.class), rs.getString("level"), rs.getString("name")),
+                rs.getObject("organisation_id", UUID.class), rs.getString("level"), rs.getString("name"), rs.getString("code")),
             nyika.id(), cellId).stream().findFirst()
             .filter(cell -> "CELL".equals(cell.level()) && nyika.organisationId().equals(cell.organisationId()))
             .orElseThrow(() -> new IllegalArgumentException("Select an active Cell within your Nyika."));
