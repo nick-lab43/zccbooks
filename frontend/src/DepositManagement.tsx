@@ -77,6 +77,10 @@ export default function DepositManagement({ organisationId, authorizationHeader,
   const selectedBatch = batches.find(batch => batch.id === selectedBatchId);
   const allocatedIds = new Set(allocations.map(item => item.contributionId));
   const availableReceipts = receipts.filter(item => !allocatedIds.has(item.id));
+  const unallocatedTotal = receipts.reduce((total, receipt) => total + Number(receipt.amount), 0);
+  const draftBatchCount = batches.filter(batch => batch.status === "DRAFT").length;
+  const awaitingReviewCount = batches.filter(batch => ["SUBMITTED", "PARTIALLY_RECONCILED"].includes(batch.status) && !["ACCEPTED", "RECONCILED"].includes(batch.reviewStatus)).length;
+  const reviewedCount = batches.filter(batch => ["ACCEPTED", "RECONCILED"].includes(batch.reviewStatus) || batch.status === "RECONCILED").length;
 
   async function perform(action: () => Promise<void>, message: string) {
     setBusy(true); setError(""); setNotice("");
@@ -121,7 +125,7 @@ export default function DepositManagement({ organisationId, authorizationHeader,
     await perform(async () => {
       const updated = await request<Batch>(`/api/deposit-batches/${selectedBatch.id}/submit`, { method: "POST" });
       setBatches(rows => rows.map(row => row.id === updated.id ? updated : row));
-    }, "Deposit batch submitted for bank reconciliation.");
+    }, "Deposit batch submitted to Central Financial Administration for review.");
   }
 
   async function respondToReview() {
@@ -208,7 +212,7 @@ export default function DepositManagement({ organisationId, authorizationHeader,
       <div className="panel-divider" />
       <div className="register-heading"><div><h3>Deposit batch register</h3><p>Drafts can be edited; submitted batches are locked.</p></div><span className="count-box">{batches.length} BATCHES</span></div>
       <div className="table-wrap"><table><thead><tr><th>DATE / REFERENCE</th><th>DECLARED</th><th>ALLOCATED</th><th>RECEIPTS</th><th>STATUS</th><th></th></tr></thead><tbody>
-        {batches.map(batch => <tr key={batch.id}><td><strong>{batch.bankReference}</strong><small className="table-subtext">{batch.depositDate} · {batch.bankName}</small></td><td>ZAR {Number(batch.expectedAmount).toFixed(2)}</td><td>ZAR {Number(batch.allocatedAmount).toFixed(2)}</td><td>{batch.receiptCount}</td><td>{batch.status}</td><td><button type="button" className="secondary-button" onClick={() => setSelectedBatchId(batch.id)}>Open</button></td></tr>)}
+        {batches.map(batch => <tr key={batch.id}><td><strong>{batch.bankReference}</strong><small className="table-subtext">{batch.depositDate} · {batch.bankName}</small></td><td>ZAR {Number(batch.expectedAmount).toFixed(2)}</td><td>ZAR {Number(batch.allocatedAmount).toFixed(2)}</td><td>{batch.receiptCount}</td><td><strong>{batch.status.replace(/_/g, " ")}</strong><small className="table-subtext">{batch.reviewStatus.replace(/_/g, " ")}</small></td><td><button type="button" className="secondary-button" onClick={() => setSelectedBatchId(batch.id)}>Open</button></td></tr>)}
         {!batches.length && <tr><td colSpan={6} className="empty-table">No deposit batches recorded for this scope.</td></tr>}
       </tbody></table></div>
       {selectedBatch && <div className="panel-divider">
@@ -230,7 +234,7 @@ export default function DepositManagement({ organisationId, authorizationHeader,
             {availableReceipts.map(item => <tr key={item.id}><td><strong>{item.receiptNumber}</strong></td><td>{item.memberName}<small className="table-subtext">{item.categoryName}</small></td><td>{item.contributionDate}</td><td>ZAR {Number(item.amount).toFixed(2)}</td><td><button type="button" className="secondary-button" disabled={busy} onClick={() => allocate(item)}>Allocate</button></td></tr>)}
             {!availableReceipts.length && <tr><td colSpan={5} className="empty-table">No unallocated cash receipts in this scope.</td></tr>}
           </tbody></table></div>
-          <button type="button" className="primary-button" disabled={busy || !allocations.length || Number(selectedBatch.allocatedAmount) !== Number(selectedBatch.expectedAmount)} onClick={submitBatch}>Submit batch for reconciliation</button>
+          <button type="button" className="primary-button" disabled={busy || !allocations.length || Number(selectedBatch.allocatedAmount) !== Number(selectedBatch.expectedAmount)} onClick={submitBatch}>Submit to Central Finance for review</button>
         </>}
       </div>}
     </>}
