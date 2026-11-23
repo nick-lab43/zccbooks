@@ -25,6 +25,7 @@ type Invitation = { id: string; username: string; displayName: string; email: st
 type Organisation = { id: string; name: string; createdAt: string };
 type Branch = { id: string; organisationId: string; code: string; name: string; districtName?: string; countryCode?: string };
 type Classification = { id: string; code: string; name: string; active: boolean };
+type ChurchPosition = { id: string; code: string; name: string; description: string | null; allowConcurrent: boolean; active: boolean };
 type Member = { id: string; branchId: string; zccAppNumber?: string; firstName: string; lastName: string; classificationId?: string; classificationName?: string; active: boolean };
 
 let currentAuthHeader: string | null = null;
@@ -55,6 +56,7 @@ function MainApp() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState("");
   const [classifications, setClassifications] = useState<Classification[]>([]);
+  const [churchPositions, setChurchPositions] = useState<ChurchPosition[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [unitCount, setUnitCount] = useState(0);
   const [nyikaCount, setNyikaCount] = useState(0);
@@ -81,6 +83,12 @@ function MainApp() {
     ]).then(([users, roles, permissions, inviteRows]) => { setAdminUsers(users); setAdminRoles(roles); setPermissionOptions(permissions); setInvitations(inviteRows); })
       .catch((e: Error) => setError(e.message));
   }, [authenticated, activeModule]);
+
+  useEffect(() => {
+    if (!authenticated || activeModule !== "configuration" || !organisationId) return;
+    api<ChurchPosition[]>("/api/appointments/positions")
+      .then(setChurchPositions).catch((e: Error) => setError(e.message));
+  }, [authenticated, activeModule, organisationId]);
 
   useEffect(() => {
     if (!accessOrganisationId) { setAccessUnits([]); return; }
@@ -233,6 +241,33 @@ function MainApp() {
     });
   }
 
+  async function createChurchPosition(event: FormEvent<HTMLFormElement>) {
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    await submit(event, async () => {
+      await api<ChurchPosition>("/api/appointments/positions", { method: "POST", body: JSON.stringify({
+        code: form.get("code"), name: form.get("name"), description: form.get("description"),
+        allowConcurrent: form.get("allowConcurrent") === "on"
+      }) });
+      setChurchPositions(await api<ChurchPosition[]>("/api/appointments/positions"));
+      formElement.reset();
+      setNotice("Church role added to the central catalogue.");
+    });
+  }
+
+  async function toggleChurchPosition(position: ChurchPosition) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api<ChurchPosition>(`/api/appointments/positions/${position.id}`, { method: "PATCH", body: JSON.stringify({
+        name: position.name, description: position.description,
+        allowConcurrent: position.allowConcurrent, active: !position.active
+      }) });
+      setChurchPositions(await api<ChurchPosition[]>("/api/appointments/positions"));
+      setNotice(`Church role ${position.active ? "deactivated" : "reactivated"}.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not update the church role."); }
+    finally { setBusy(false); }
+  }
+
   async function createClassification(event: FormEvent<HTMLFormElement>) {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
@@ -359,6 +394,7 @@ function MainApp() {
       )}
 
       {activeModule === "configuration" && (
+        <>
         <section className="panel">
           <div className="panel-title"><div><span className="panel-index">01</span><h2>Member classifications</h2></div><span className="panel-tag">CENTRAL CONFIGURATION</span></div>
           <p className="panel-description">Define the classification options that Nyika administrators must select when registering members. These are shared across the organisation.</p>
@@ -373,6 +409,31 @@ function MainApp() {
             {!classifications.length && <p className="empty-note">No classifications have been configured.</p>}
           </div>
         </section>
+
+        <div className="panel-divider" />
+        <div className="panel-title"><div><span className="panel-index">02</span><h2>Church offices and leadership roles</h2></div><span className="panel-tag">CENTRAL ROLE CATALOGUE</span></div>
+        <p className="panel-description">Define church offices such as Minister, Headmaster and other approved responsibilities. These are church appointments, not application login roles. Nyika administrators assign members to configured offices within their authorised geographical scope.</p>
+        <form onSubmit={createChurchPosition} className="form-stack">
+          <div className="field-pair">
+            <label>ROLE CODE<input name="code" required maxLength={60} pattern="[A-Za-z0-9_-]{2,60}" placeholder="e.g. MINISTER" /></label>
+            <label>ROLE NAME<input name="name" required maxLength={120} placeholder="e.g. Minister" /></label>
+          </div>
+          <label>DESCRIPTION <span className="optional-label">(optional)</span><input name="description" maxLength={300} placeholder="Describe the office and its responsibilities" /></label>
+          <label className="checkbox-label"><input type="checkbox" name="allowConcurrent" /> Allow the same member to hold this role at multiple scopes concurrently</label>
+          <button className="primary-button" disabled={busy || !organisationId}>Add church role</button>
+        </form>
+        <div className="panel-divider" />
+        <div className="panel-title"><div><span className="panel-index">03</span><h2>Configured church roles</h2></div><span className="panel-tag">{churchPositions.length} ROLES</span></div>
+        <div className="classification-list">
+          {churchPositions.map(position => <div className="classification-row" key={position.id}>
+            <span className="classification-code">{position.code}</span>
+            <span><strong>{position.name}</strong>{position.description && <small className="table-subtext">{position.description}</small>}</span>
+            <span className={position.active ? "active-label" : "inactive-label"}>{position.active ? "ACTIVE" : "INACTIVE"}</span>
+            <button type="button" className="secondary-button" disabled={busy} onClick={() => toggleChurchPosition(position)}>{position.active ? "Deactivate" : "Reactivate"}</button>
+          </div>)}
+          {!churchPositions.length && <p className="empty-note">No church offices have been configured. Add the approved roles above.</p>}
+        </div>
+        </>
       )}
 
       {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_CAPTURE") ?? false} canDeposit={currentAdmin?.permissions.includes("FINANCE_DEPOSIT") ?? false} canReconcile={currentAdmin?.permissions.includes("FINANCE_RECONCILE") ?? false} canManageExceptions={currentAdmin?.permissions.includes("FINANCE_EXCEPTION") ?? false} canReverse={currentAdmin?.permissions.includes("FINANCE_REVERSE") ?? false} />}

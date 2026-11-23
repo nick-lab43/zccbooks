@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import DepositManagement from "./DepositManagement";
+import MemberAppointments from "./MemberAppointments";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Classification = { id: string; code: string; name: string; active: boolean };
@@ -509,6 +510,11 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       </section>}
     </section>
 
+
+    <section id="nyika-appointments" className="nyika-card">
+      <div className="nyika-register-heading"><div><span className="nyika-eyebrow">CHURCH LEADERSHIP</span><h3>Member roles and appointments</h3><p>Assign members to church offices configured by Central Administration. Each appointment has an effective date and geographical scope, with previous appointments retained.</p></div></div>
+      <MemberAppointments organisationId={organisationId} authorizationHeader={authorizationHeader} />
+    </section>
 
     <section id="nyika-contributions" className="nyika-card nyika-contributions">
       <div className="nyika-register-heading"><div><span className="nyika-eyebrow">FINANCIAL WORKSPACE</span><h3>Capture contributions</h3><p>Record a contribution for an individual member or a household. Only active categories configured by Central Administration are available.</p></div><span className="nyika-register-count">{contributions.length} RECENT RECORDS</span></div>
