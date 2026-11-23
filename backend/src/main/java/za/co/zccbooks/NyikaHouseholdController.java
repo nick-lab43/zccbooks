@@ -113,11 +113,12 @@ public class NyikaHouseholdController {
             throw new IllegalArgumentException("The household head must be one of the selected members.");
         }
 
+        String householdCode = nextHouseholdCode(cell);
         UUID householdId = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO households (id, organisation_id, cell_id, cell_level, code, name)
             VALUES (?, ?, ?, 'CELL', ?, ?)
-            """, householdId, nyika.organisationId(), cell.id(), request.code().trim(), request.name().trim());
+            """, householdId, nyika.organisationId(), cell.id(), householdCode, request.name().trim());
 
         for (HouseholdMemberInput member : selected) {
             lockAndValidateMember(member.memberId(), cell, nyika);
@@ -335,13 +336,37 @@ public class NyikaHouseholdController {
                 SELECT child.id FROM organisational_units child
                 JOIN descendants parent ON child.parent_id = parent.id
             )
-            SELECT id, organisation_id, level, name FROM organisational_units
+            SELECT id, organisation_id, level, name, code FROM organisational_units
             WHERE id = ? AND id IN (SELECT id FROM descendants) AND active = TRUE
             """, (rs, n) -> new Cell(rs.getObject("id", UUID.class),
-                rs.getObject("organisation_id", UUID.class), rs.getString("level"), rs.getString("name")),
+                rs.getObject("organisation_id", UUID.class), rs.getString("level"), rs.getString("name"), rs.getString("code")),
             nyika.id(), cellId).stream().findFirst()
             .filter(cell -> "CELL".equals(cell.level()) && nyika.organisationId().equals(cell.organisationId()))
             .orElseThrow(() -> new IllegalArgumentException("Select an active Cell within your Nyika."));
+    }
+
+    private String nextHouseholdCode(Cell cell) {
+        jdbc.queryForObject("SELECT id FROM organisational_units WHERE id = ? FOR UPDATE", UUID.class, cell.id());
+        String prefix = cell.code().length() <= 48 ? cell.code()
+            : cell.code().substring(0, 39) + "-" + cell.id().toString().substring(0, 8);
+        String stem = prefix + "-H";
+        List<String> existing = jdbc.queryForList(
+            "SELECT code FROM households WHERE organisation_id = ? AND cell_id = ?",
+            String.class, cell.organisationId(), cell.id());
+        int next = 1;
+        for (String code : existing) {
+            if (code != null && code.startsWith(stem)) {
+                String tail = code.substring(stem.length());
+                if (tail.matches("\\d{3,}")) {
+                    try { next = Math.max(next, Integer.parseInt(tail) + 1); }
+                    catch (NumberFormatException ignored) { }
+                }
+            }
+        }
+        String generated;
+        do { generated = stem + String.format("%03d", next++); } while (existing.contains(generated));
+        if (generated.length() > 60) throw new IllegalStateException("Generated household code exceeds the supported length.");
+        return generated;
     }
 
     private static String fullName(String first, String last) {
@@ -349,7 +374,7 @@ public class NyikaHouseholdController {
         return ((first == null ? "" : first) + " " + (last == null ? "" : last)).trim();
     }
 
-    public record CreateHousehold(@NotNull UUID cellId, @NotBlank @Size(max = 60) String code,
+    public record CreateHousehold(@NotNull UUID cellId, @Size(max = 60) String code,
             @NotBlank @Size(max = 160) String name, @NotEmpty @Size(max = 200) List<HouseholdMemberInput> members,
             UUID headMemberId) {}
     public record AddHouseholdMembers(@NotEmpty @Size(max = 200) List<HouseholdMemberInput> members) {}
@@ -362,6 +387,6 @@ public class NyikaHouseholdController {
             String classificationName, String eliteNumber, String zccAppNumber, boolean active,
             String relationshipLabel, String joinedOn) {}
     private record Unit(UUID id, UUID organisationId, String level, String name) {}
-    private record Cell(UUID id, UUID organisationId, String level, String name) {}
+    private record Cell(UUID id, UUID organisationId, String level, String name, String code) {}
     private record MemberPlacement(UUID id, UUID cellId, boolean active) {}
 }
