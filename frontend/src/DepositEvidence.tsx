@@ -145,12 +145,24 @@ export default function DepositEvidence({ batchId, status, authorizationHeader }
     </div>
     {error && <div className="message error" role="alert">{error}</div>}
     {notice && <div className="message success" role="status">{notice}</div>}
-    {canUpload && <div className="form-stack">
-      <label>Capture or upload deposit slip
-        <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple capture="environment"
-          disabled={busy || verifying} onChange={event => upload(event.currentTarget.files, event.currentTarget)} />
-      </label>
-      <small className="table-subtext">JPEG, PNG, WebP or PDF · up to 10 MB per file · up to 10 files per upload. Use the camera option on a mobile device or select existing scans. Multiple images can represent a multi-page deposit package.</small>
+    {canUpload && <div className="deposit-evidence-actions">
+      <div className="deposit-evidence-action">
+        <strong>Take a deposit slip photo</strong>
+        <p>On supported mobile devices, open the rear camera and photograph the original slip.</p>
+        <label className="primary-button deposit-evidence-input">Open camera
+          <input aria-label="Take a deposit slip photo" type="file" accept="image/*" capture="environment"
+            disabled={busy || verifying} onChange={event => upload(event.currentTarget.files, event.currentTarget)} />
+        </label>
+      </div>
+      <div className="deposit-evidence-action">
+        <strong>Upload an existing image or PDF</strong>
+        <p>Select a saved photograph, scan or bank document from this device.</p>
+        <label className="secondary-button deposit-evidence-input">Choose files
+          <input aria-label="Upload deposit slip files" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple
+            disabled={busy || verifying} onChange={event => upload(event.currentTarget.files, event.currentTarget)} />
+        </label>
+      </div>
+      <small className="table-subtext">JPEG, PNG, WebP or PDF · up to 10 MB per file · up to 10 files per upload. Evidence is attached to this batch and retained in its original form.</small>
       {busy && <p role="status">Uploading evidence…</p>}
     </div>}
     <div className="table-wrap"><table><thead><tr><th>FILE</th><th>FORMAT</th><th>SIZE</th><th>UPLOADED</th><th></th></tr></thead><tbody>
