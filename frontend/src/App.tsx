@@ -394,6 +394,7 @@ function MainApp() {
       )}
 
       {activeModule === "configuration" && (
+        <>
         <section className="panel">
           <div className="panel-title"><div><span className="panel-index">01</span><h2>Member classifications</h2></div><span className="panel-tag">CENTRAL CONFIGURATION</span></div>
           <p className="panel-description">Define the classification options that Nyika administrators must select when registering members. These are shared across the organisation.</p>
@@ -432,6 +433,7 @@ function MainApp() {
           </div>)}
           {!churchPositions.length && <p className="empty-note">No church offices have been configured. Add the approved roles above.</p>}
         </div>
+        </>
       )}
 
       {activeModule === "financial" && <FinancialAdministration organisationId={organisationId} authorizationHeader={currentAuthHeader ?? ""} canCapture={currentAdmin?.permissions.includes("FINANCE_CAPTURE") ?? false} canDeposit={currentAdmin?.permissions.includes("FINANCE_DEPOSIT") ?? false} canReconcile={currentAdmin?.permissions.includes("FINANCE_RECONCILE") ?? false} canManageExceptions={currentAdmin?.permissions.includes("FINANCE_EXCEPTION") ?? false} canReverse={currentAdmin?.permissions.includes("FINANCE_REVERSE") ?? false} />}
