@@ -93,10 +93,10 @@ public class NyikaWorkspaceController {
         }
 
         UUID positionId = request.positionId();
-        String roleName = null;
         UUID roleScopeId = cellId == null ? nyika.id() : cellId;
+        PositionAssignment selectedRole = null;
         if (positionId != null) {
-            PositionAssignment position = jdbc.query("""
+            selectedRole = jdbc.query("""
                 SELECT id, name, allow_concurrent, active
                 FROM church_positions WHERE id = ?
                 """, (rs, n) -> new PositionAssignment(
@@ -126,18 +126,12 @@ public class NyikaWorkspaceController {
                 "eliteNumber", blankToNull(request.eliteNumber()) == null ? "" : blankToNull(request.eliteNumber())));
 
         if (positionId != null) {
-            PositionAssignment position = jdbc.query("""
-                SELECT id, name, allow_concurrent, active
-                FROM church_positions WHERE id = ?
-                """, (rs, n) -> new PositionAssignment(
-                    rs.getObject("id", UUID.class), rs.getString("name"),
-                    rs.getBoolean("allow_concurrent"), rs.getBoolean("active")), positionId).get(0);
             String overlapSql = """
                 SELECT COUNT(*) FROM member_appointments
                 WHERE organisation_id = ? AND member_id = ? AND position_id = ?
                   AND valid_to IS NULL
-                """ + (position.allowConcurrent() ? " AND scope_unit_id = ?" : "");
-            Integer overlap = position.allowConcurrent()
+                """ + (selectedRole.allowConcurrent() ? " AND scope_unit_id = ?" : "");
+            Integer overlap = selectedRole.allowConcurrent()
                 ? jdbc.queryForObject(overlapSql, Integer.class, nyika.organisationId(), id, positionId, roleScopeId)
                 : jdbc.queryForObject(overlapSql, Integer.class, nyika.organisationId(), id, positionId);
             if (overlap != null && overlap > 0) throw new ConflictException("This member already holds this church role.");
