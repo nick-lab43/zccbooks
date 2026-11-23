@@ -10,6 +10,8 @@ type HouseholdMember = { id: string; firstName: string; lastName: string; classi
 type HouseholdProfile = { household: Household; members: HouseholdMember[] };
 type HouseholdCandidate = { id: string; firstName: string; lastName: string; classificationId: string | null; classificationName: string | null; eliteNumber: string | null; zccAppNumber: string | null };
 type ContributionCategory = { id: string; name: string; streamName: string; active: boolean; scopeLevels: string[] };
+type FinancialTarget = { id: string; categoryId: string; categoryName: string; streamName: string; unitId: string; unitLevel: string; unitCode: string; unitName: string; periodStart: string; periodEnd: string; targetAmount: number; currency: string };
+type TargetProgress = { targetId: string; categoryName: string; unitId: string; unitName: string; periodStart: string; periodEnd: string; targetAmount: number; receivedAmount: number; percentageAchieved: number; currency: string };
 type ContributionReceipt = { id: string; receiptNumber: string; memberId: string; memberName: string; categoryId: string; categoryName: string; streamName: string; scopeUnitId: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; paymentReference: string | null; note: string | null; capturedAt: string };
 type Member = {
   id: string; zccAppNumber: string | null; eliteNumber: string | null;
@@ -36,6 +38,8 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   const [householdMemberSearch, setHouseholdMemberSearch] = useState("");
   const [contributionCategories, setContributionCategories] = useState<ContributionCategory[]>([]);
   const [contributions, setContributions] = useState<ContributionReceipt[]>([]);
+  const [financialTargets, setFinancialTargets] = useState<FinancialTarget[]>([]);
+  const [targetProgress, setTargetProgress] = useState<TargetProgress[]>([]);
   const [contributionScopeId, setContributionScopeId] = useState("");
   const [contributionMode, setContributionMode] = useState<"MEMBER" | "HOUSEHOLD">("MEMBER");
   const [contributionMemberId, setContributionMemberId] = useState("");
@@ -101,7 +105,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   useEffect(() => {
     setUnits([]); setMembers([]); setClassifications([]); setSelectedIds([]); setSelectedMember(null);
     setHouseholds([]); setHouseholdProfile(null); setHouseholdCandidates([]); setHouseholdCandidateIds([]); setHouseholdFilter(""); setHouseholdFilterIds(null);
-    setContributionCategories([]); setContributions([]); setContributionScopeId(""); setContributionMemberId(""); setContributionHouseholdId(""); setContributionCategoryId(""); setContributionReceipt(null);
+    setContributionCategories([]); setContributions([]); setFinancialTargets([]); setTargetProgress([]); setContributionScopeId(""); setContributionMemberId(""); setContributionHouseholdId(""); setContributionCategoryId(""); setContributionReceipt(null);
     setError(""); setNotice(""); setClassificationFilter(""); setCellFilter(""); setMemberStatusFilter("ALL");
     if (organisationId) reload().catch((e: Error) => setError(e.message));
   }, [organisationId, authorizationHeader]);
@@ -111,6 +115,17 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     request<ContributionReceipt[]>(
       `/api/organisations/${organisationId}/contributions?scopeUnitId=${contributionScopeId}`
     ).then(setContributions).catch((e: Error) => setError(e.message));
+  }, [organisationId, contributionScopeId, authorizationHeader]);
+
+  useEffect(() => {
+    if (!organisationId || !contributionScopeId) { setFinancialTargets([]); setTargetProgress([]); return; }
+    Promise.all([
+      request<FinancialTarget[]>(`/api/organisations/${organisationId}/financial-targets`),
+      request<TargetProgress[]>(`/api/organisations/${organisationId}/financial-target-progress`)
+    ]).then(([targets, progress]) => {
+      setFinancialTargets(targets.filter(target => target.unitId === contributionScopeId));
+      setTargetProgress(progress.filter(row => row.unitId === contributionScopeId));
+    }).catch((e: Error) => setError(e.message));
   }, [organisationId, contributionScopeId, authorizationHeader]);
 
   const tabheras = units.filter(unit => unit.level === "TABHERA" && unit.active && unit.parentId === nyikaId);
@@ -517,6 +532,24 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
     </section>
 
     <section id="nyika-contributions" className="nyika-card nyika-contributions">
+      <div className="nyika-register-heading"><div><span className="nyika-eyebrow">FINANCIAL WORKSPACE</span><h3>Contribution performance</h3><p>Compare posted collections against centrally configured targets for the selected geographical scope. Reversed contributions are excluded from achievement.</p></div></div>
+      <div className="nyika-target-grid">
+        {financialTargets.map(target => {
+          const progress = targetProgress.find(row => row.targetId === target.id);
+          const received = Number(progress?.receivedAmount ?? 0);
+          const targetAmount = Number(target.targetAmount);
+          const percentage = Number(progress?.percentageAchieved ?? 0);
+          const progressWidth = Math.max(0, Math.min(100, percentage));
+          return <article className="nyika-target-card" key={target.id}>
+            <div className="nyika-target-card-heading"><div><span className="nyika-eyebrow">{target.streamName}</span><h4>{target.categoryName}</h4></div><strong>{percentage.toFixed(1)}%</strong></div>
+            <div className="nyika-target-track" role="progressbar" aria-label={`${target.categoryName} target achievement`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressWidth}><span style={{ width: `${progressWidth}%` }} /></div>
+            <div className="nyika-target-amounts"><span><strong>{target.currency} {received.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><small>Received</small></span><span><strong>{target.currency} {targetAmount.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><small>Target</small></span></div>
+            <small className="nyika-target-period">{target.unitLevel} · {target.periodStart} to {target.periodEnd}</small>
+            {percentage > 100 && <span className="nyika-target-exceeded">Target exceeded by {(percentage - 100).toFixed(1)}%</span>}
+          </article>;
+        })}
+        {!financialTargets.length && <p className="nyika-form-hint">No financial targets are configured for this scope. Central Administration manages targets and reporting periods.</p>}
+      </div>
       <div className="nyika-register-heading"><div><span className="nyika-eyebrow">FINANCIAL WORKSPACE</span><h3>Capture contributions</h3><p>Record a contribution for an individual member or a household. Only active categories configured by Central Administration are available.</p></div><span className="nyika-register-count">{contributions.length} RECENT RECORDS</span></div>
       <form className="form-stack nyika-contribution-form" onSubmit={captureContribution}>
         <label>Financial scope<select value={contributionScopeId} onChange={e => { setContributionScopeId(e.target.value); setContributionMemberId(""); setContributionHouseholdId(""); setContributionReceipt(null); }} required><option value="">Select authorised scope</option>{contributionScopeUnits.map(unit => <option key={unit.id} value={unit.id}>{unit.level} · {unit.code} — {unit.name}</option>)}</select></label>
