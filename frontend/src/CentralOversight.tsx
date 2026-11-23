@@ -4,7 +4,7 @@ type Unit = { id: string; parentId: string | null; level: string; code: string; 
 type Member = { id: string; cellId: string; firstName: string; lastName: string; zccAppNumber: string | null; classificationName: string | null; active: boolean };
 type Household = { id: string; code: string; name: string; householdHeadMemberId: string | null; active: boolean; cellId: string };
 type HouseholdMember = { id: string; firstName: string; lastName: string; relationshipLabel: string; validFrom: string; validTo: string | null };
-type Contribution = { id: string; receiptNumber: string; contributorName: string; categoryName: string; streamName: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; capturedAt: string };
+type Contribution = { id: string; receiptNumber: string; memberName: string; categoryName: string; streamName: string; scopeName: string; amount: number; currency: string; contributionDate: string; paymentMethod: string; capturedAt: string };
 
 export default function CentralOversight({ organisationId, authorizationHeader, canViewMembers, canViewFinance }: {
   organisationId: string; authorizationHeader: string; canViewMembers: boolean; canViewFinance: boolean;
@@ -143,7 +143,7 @@ export default function CentralOversight({ organisationId, authorizationHeader, 
         <div className="register-heading"><div><h3>Contribution register</h3><p>Receipts recorded against this Nyika, its Tabheras and Cells. Reversed contributions are excluded by the source register.</p></div><span className="count-box">{contributions.length} RECEIPTS</span></div>
         {financeUnavailable && <p className="message error">Some financial scopes could not be loaded with this account's permissions. The displayed totals may be incomplete.</p>}
         <div className="table-wrap"><table><thead><tr><th>RECEIPT</th><th>CONTRIBUTOR</th><th>CATEGORY / STREAM</th><th>DATE / SCOPE</th><th>AMOUNT</th></tr></thead><tbody>
-          {contributions.map(row => <tr key={row.id}><td>{row.receiptNumber}</td><td>{row.contributorName}</td><td>{row.categoryName}<small className="table-subtext">{row.streamName}</small></td><td>{row.contributionDate}<small className="table-subtext">{row.scopeName}</small></td><td>{row.currency} {Number(row.amount).toFixed(2)}</td></tr>)}
+          {contributions.map(row => <tr key={row.id}><td>{row.receiptNumber}</td><td>{row.memberName}</td><td>{row.categoryName}<small className="table-subtext">{row.streamName}</small></td><td>{row.contributionDate}<small className="table-subtext">{row.scopeName}</small></td><td>{row.currency} {Number(row.amount).toFixed(2)}</td></tr>)}
           {!contributions.length && !loading && <tr><td colSpan={5} className="empty-table">No contribution records were found in the selected Nyika.</td></tr>}
         </tbody></table></div>
       </>}
