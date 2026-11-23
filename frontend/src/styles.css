@@ -1073,3 +1073,11 @@ input, select { border-radius: 5px !important; }
 .deposit-accountability-note{margin:0 0 14px;padding:10px 12px;border-left:3px solid #b59a62;background:#f5f3ee;color:#596b7e;font-size:10px;line-height:1.5}
 @media(max-width:850px){.deposit-collection-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.deposit-collection-summary article{padding:10px}.deposit-collection-summary article strong{font-size:20px}}
+
+
+/* Nyika administration dashboard */
+.nyika-dashboard-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.nyika-dashboard-stats article{display:grid;gap:6px;min-width:0}
+.nyika-dashboard-stats article small{color:#788697;font-size:9px;line-height:1.4}
+@media(max-width:850px){.nyika-dashboard-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.nyika-dashboard-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.nyika-dashboard-stats article strong{font-size:21px}}
