@@ -28,7 +28,7 @@ export default function OrganisationalHierarchy({ organisationId, authorizationH
   const deepestSelected = selected.reduce((last, id, index) => id ? index : last, -1);
   const nextLevelIndex = deepestSelected + 1;
   const parentId = deepestSelected >= 0 ? selected[deepestSelected] : null;
-  const nextLevel = deepestSelected < 0 ? (units.some((unit) => unit.level === "COUNTRY") ? null : LEVELS[0]) : LEVELS[nextLevelIndex] ?? null;
+  const nextLevel = deepestSelected < 0 ? LEVELS[0] : LEVELS[nextLevelIndex] ?? null;
 
   async function loadUnits() {
     if (!organisationId) { setUnits([]); setSelected([]); return; }

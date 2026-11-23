@@ -330,7 +330,6 @@ function MainApp() {
               <div className="pos-window-title"><div><span className="pos-window-icon">SYS</span><strong>CENTRAL ADMINISTRATION</strong></div><span className="pos-window-reference">CONTROL DESK</span></div>
               <div className="overview-module-list">
                 <button onClick={() => setActiveModule("organisation")}><span className="module-code">01</span><span><strong>Organisation management</strong><small>Organisation records, branches and geographical hierarchy</small></span><b>OPEN</b></button>
-                <button onClick={() => setActiveModule("organisation")}><span className="module-code">02</span><span><strong>Nyika configuration</strong><small>Configure countries, provinces, districts and Nyikas</small></span><b>OPEN</b></button>
                 {(currentAdmin?.permissions.includes("FINANCE_VIEW") || currentAdmin?.permissions.includes("FINANCE_CAPTURE") || currentAdmin?.permissions.includes("FINANCE_REVERSE")) && <button onClick={() => setActiveModule("financial")}><span className="module-code">03</span><span><strong>Financial Administration</strong><small>Financial streams, contribution categories and geographical targets</small></span><b>OPEN</b></button>}
                 {currentAdmin?.permissions.includes("ADMIN_MANAGE") && <button onClick={() => setActiveModule("access")}><span className="module-code">04</span><span><strong>Administrator access control</strong><small>Accounts, role definitions, permissions and geographical scopes</small></span><b>OPEN</b></button>}
               </div>
