@@ -104,7 +104,7 @@ public class NyikaWorkspaceController {
                     rs.getBoolean("allow_concurrent"), rs.getBoolean("active")), positionId)
                 .stream().findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Church role not found."));
-            if (!position.active()) throw new IllegalArgumentException("Select an active church role configured by Central Administration.");
+            if (!selectedRole.active()) throw new IllegalArgumentException("Select an active church role configured by Central Administration.");
             authorization.requireUnitPermission("MEMBERS_MANAGE", roleScopeId);
         }
 
