@@ -374,7 +374,7 @@ public class NyikaHouseholdController {
         return ((first == null ? "" : first) + " " + (last == null ? "" : last)).trim();
     }
 
-    public record CreateHousehold(@NotNull UUID cellId,
+    public record CreateHousehold(@NotNull UUID cellId, @Size(max = 60) String code,
             @NotBlank @Size(max = 160) String name, @NotEmpty @Size(max = 200) List<HouseholdMemberInput> members,
             UUID headMemberId) {}
     public record AddHouseholdMembers(@NotEmpty @Size(max = 200) List<HouseholdMemberInput> members) {}
