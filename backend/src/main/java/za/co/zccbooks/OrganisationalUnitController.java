@@ -372,7 +372,7 @@ public class OrganisationalUnitController {
 
     public record CreateUnit(@Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
     public record UpdateUnitStatus(boolean active) {}
-    public record CreateHousehold(@NotBlank @Size(max = 160) String name) {}
+    public record CreateHousehold(@Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
     public record AddHouseholdMember(@jakarta.validation.constraints.NotNull UUID memberId,
                                      @NotBlank @Size(max = 80) String relationshipLabel,
                                      java.time.LocalDate validFrom) {}
