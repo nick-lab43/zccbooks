@@ -101,9 +101,11 @@ public class OrganisationalUnitController {
     }
 
     @PostMapping("/units/{parentId}/children")
+    @Transactional
     public ResponseEntity<UnitDto> createChild(@PathVariable UUID parentId,
             @Valid @RequestBody CreateUnit request) {
         UnitRow parent = requireUnit(parentId);
+        jdbc.queryForObject("SELECT id FROM organisational_units WHERE id = ? FOR UPDATE", UUID.class, parentId);
         int parentIndex = LEVELS.indexOf(parent.level());
         if (parentIndex < 0 || parentIndex == LEVELS.size() - 1) {
             throw new IllegalArgumentException("A Cell is the lowest geographical level. Households are maintained separately.");
@@ -210,10 +212,12 @@ public class OrganisationalUnitController {
     }
 
     @PostMapping("/units/{cellId}/households")
+    @Transactional
     public ResponseEntity<HouseholdDto> createHousehold(@PathVariable UUID cellId,
             @Valid @RequestBody CreateHousehold request) {
         UnitRow cell = requireCell(cellId);
         authorization.requireUnitPermission("MEMBERS_MANAGE", cellId);
+        jdbc.queryForObject("SELECT id FROM organisational_units WHERE id = ? FOR UPDATE", UUID.class, cellId);
         UUID id = UUID.randomUUID();
         HouseholdDto created = jdbc.queryForObject("""
             INSERT INTO households (id, organisation_id, cell_id, code, name)
@@ -222,7 +226,7 @@ public class OrganisationalUnitController {
             """, (rs, n) -> new HouseholdDto(
                 rs.getObject("id", UUID.class).toString(), rs.getString("code"), rs.getString("name"),
                 null, rs.getBoolean("active")
-            ), id, cell.organisationId(), cell.id(), request.code().trim(), request.name().trim());
+            ), id, cell.organisationId(), cell.id(), nextCode(cell.id(), cell.code(), "H", "households", "cell_id"), request.name().trim());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -297,6 +301,7 @@ public class OrganisationalUnitController {
 
     private ResponseEntity<UnitDto> createUnit(UUID organisationId, UUID parentId, String level, CreateUnit request) {
         UUID id = UUID.randomUUID();
+        String code = "CELL".equals(level) ? nextCode(parentId, parentCode(parentId), "C", "organisational_units", "parent_id") : requiredCode(request.code());
         return ResponseEntity.status(HttpStatus.CREATED).body(jdbc.queryForObject("""
             INSERT INTO organisational_units (id, organisation_id, parent_id, level, code, name)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -306,14 +311,43 @@ public class OrganisationalUnitController {
                 rs.getObject("organisation_id", UUID.class).toString(),
                 rs.getObject("parent_id") == null ? null : rs.getObject("parent_id", UUID.class).toString(),
                 rs.getString("level"), rs.getString("code"), rs.getString("name"), rs.getBoolean("active")
-            ), id, organisationId, parentId, level, request.code().trim(), request.name().trim()));
+            ), id, organisationId, parentId, level, code, request.name().trim()));
+    }
+
+    private String parentCode(UUID parentId) {
+        return jdbc.queryForObject("SELECT code FROM organisational_units WHERE id = ?", String.class, parentId);
+    }
+
+    private String requiredCode(String code) {
+        if (code == null || code.isBlank()) throw new IllegalArgumentException("A code is required for this organisational level.");
+        return code.trim();
+    }
+
+    private String nextCode(UUID parentId, String parentCode, String suffix, String table, String parentColumn) {
+        String prefix = parentCode.length() <= 48 ? parentCode : parentCode.substring(0, 39) + "-" + parentId.toString().substring(0, 8);
+        String stem = prefix + "-" + suffix;
+        List<String> existing = jdbc.queryForList("SELECT code FROM " + table + " WHERE " + parentColumn + " = ?", String.class, parentId);
+        int next = 1;
+        for (String code : existing) {
+            if (code != null && code.startsWith(stem)) {
+                String tail = code.substring(stem.length());
+                if (tail.matches("\\d{3,}")) {
+                    try { next = Math.max(next, Integer.parseInt(tail) + 1); }
+                    catch (NumberFormatException ignored) { }
+                }
+            }
+        }
+        String generated;
+        do { generated = stem + String.format("%03d", next++); } while (existing.contains(generated));
+        if (generated.length() > 60) throw new IllegalStateException("Generated code exceeds the supported length.");
+        return generated;
     }
 
     private UnitRow requireUnit(UUID id) {
         return jdbc.query("""
-            SELECT id, organisation_id, level FROM organisational_units WHERE id = ?
+            SELECT id, organisation_id, level, code FROM organisational_units WHERE id = ?
             """, (rs, n) -> new UnitRow(rs.getObject("id", UUID.class),
-                rs.getObject("organisation_id", UUID.class), rs.getString("level")), id)
+                rs.getObject("organisation_id", UUID.class), rs.getString("level"), rs.getString("code")), id)
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Organisational unit not found."));
     }
 
@@ -325,9 +359,9 @@ public class OrganisationalUnitController {
 
     private HouseholdRow requireHousehold(UUID id) {
         return jdbc.query("""
-            SELECT id, organisation_id, cell_id FROM households WHERE id = ?
+            SELECT id, organisation_id, cell_id, code FROM households WHERE id = ?
             """, (rs, n) -> new HouseholdRow(rs.getObject("id", UUID.class),
-                rs.getObject("organisation_id", UUID.class), rs.getObject("cell_id", UUID.class)), id)
+                rs.getObject("organisation_id", UUID.class), rs.getObject("cell_id", UUID.class), rs.getString("code")), id)
             .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("Household not found."));
     }
 
@@ -336,9 +370,9 @@ public class OrganisationalUnitController {
             throw new ResourceNotFoundException("Organisation not found.");
     }
 
-    public record CreateUnit(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
+    public record CreateUnit(@Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
     public record UpdateUnitStatus(boolean active) {}
-    public record CreateHousehold(@NotBlank @Size(max = 60) String code, @NotBlank @Size(max = 160) String name) {}
+    public record CreateHousehold(@NotBlank @Size(max = 160) String name) {}
     public record AddHouseholdMember(@jakarta.validation.constraints.NotNull UUID memberId,
                                      @NotBlank @Size(max = 80) String relationshipLabel,
                                      java.time.LocalDate validFrom) {}
@@ -347,6 +381,6 @@ public class OrganisationalUnitController {
     public record HouseholdDto(String id, String code, String name, String householdHeadMemberId, boolean active) {}
     public record HouseholdMemberDto(String id, String zccAppNumber, String firstName, String lastName,
                                      String relationshipLabel, String validFrom, String validTo) {}
-    private record UnitRow(UUID id, UUID organisationId, String level) {}
-    private record HouseholdRow(UUID id, UUID organisationId, UUID cellId) {}
+    private record UnitRow(UUID id, UUID organisationId, String level, String code) {}
+    private record HouseholdRow(UUID id, UUID organisationId, UUID cellId, String code) {}
 }
