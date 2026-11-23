@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import DepositManagement from "./DepositManagement";
-import MemberAppointments from "./MemberAppointments";
 
 type Unit = { id: string; parentId: string | null; level: string; code: string; name: string; active: boolean };
 type Classification = { id: string; code: string; name: string; active: boolean };
+type ChurchRole = { id: string; code: string; name: string; description: string | null; allowConcurrent: boolean; active: boolean };
 type Household = { id: string; code: string; name: string; cellId: string; cellName: string; headMemberId: string | null; headMemberName: string | null; memberCount: number };
 type HouseholdMember = { id: string; firstName: string; lastName: string; classificationId: string | null; classificationName: string | null; eliteNumber: string | null; zccAppNumber: string | null; active: boolean; relationshipLabel: string; joinedOn: string };
 type HouseholdProfile = { household: Household; members: HouseholdMember[] };
@@ -48,6 +48,7 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
   const [contributionReceipt, setContributionReceipt] = useState<ContributionReceipt | null>(null);
   const [receiptRecipientEmail, setReceiptRecipientEmail] = useState("");
   const [classifications, setClassifications] = useState<Classification[]>([]);
+  const [churchRoles, setChurchRoles] = useState<ChurchRole[]>([]);
   const [nyikaId, setNyikaId] = useState("");
   const [tabheraId, setTabheraId] = useState("");
   const [cellId, setCellId] = useState("");
@@ -76,15 +77,17 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
 
   async function reload() {
     if (!organisationId) return;
-    const [rows, configuredClassifications, configuredCategories] = await Promise.all([
+    const [rows, configuredClassifications, configuredCategories, configuredRoles] = await Promise.all([
       request<Unit[]>(`/api/organisations/${organisationId}/units`),
       request<Classification[]>(`/api/organisations/${organisationId}/classifications`),
-      request<ContributionCategory[]>(`/api/organisations/${organisationId}/contribution-categories`)
+      request<ContributionCategory[]>(`/api/organisations/${organisationId}/contribution-categories`),
+      request<ChurchRole[]>(`/api/appointments/positions`)
     ]);
     const nyika = rows.find(unit => unit.level === "NYIKA" && unit.active);
     setUnits(rows);
     setClassifications(configuredClassifications.filter(item => item.active));
     setContributionCategories(configuredCategories.filter(item => item.active));
+    setChurchRoles(configuredRoles.filter(item => item.active));
     setNyikaId(nyika?.id ?? "");
     setContributionScopeId(current => current && rows.some(unit => unit.id === current && unit.active)
       ? current : (nyika?.id ?? ""));
@@ -174,7 +177,8 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
         method: "POST", body: JSON.stringify({
           firstName: data.get("firstName"), lastName: data.get("lastName"),
           zccAppNumber: data.get("zccAppNumber"), eliteNumber: data.get("eliteNumber"),
-          classificationId: data.get("classificationId"), cellId: data.get("cellId") || null
+          classificationId: data.get("classificationId"), cellId: data.get("cellId") || null,
+          positionId: data.get("positionId") || null
         })
       });
       await reload(); form.reset(); setMemberCellId("");
@@ -452,6 +456,8 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
           <div className="field-pair"><label>First name<input name="firstName" required maxLength={100} /></label><label>Last name<input name="lastName" required maxLength={100} /></label></div>
           <label>Classification<select name="classificationId" required defaultValue=""><option value="" disabled>Select classification</option>{classifications.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           {!classifications.length && <p className="nyika-inline-note">No active classifications are configured. Central Administration must configure classifications before members can be registered.</p>}
+          <label>Church role <span className="nyika-optional">(optional)</span><select name="positionId" defaultValue=""><option value="">No role</option>{churchRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+          {!churchRoles.length && <small className="nyika-form-hint">No active church roles are configured by Central Administration.</small>}
           <label>Elite Number <span className="nyika-optional">(optional)</span><input name="eliteNumber" /></label>
           <label>ZCC application number <span className="nyika-optional">(optional)</span><input name="zccAppNumber" maxLength={80} /></label>
           <label>Assign to Cell now <span className="nyika-optional">(optional)</span><select name="cellId" value={memberCellId} onChange={e => setMemberCellId(e.target.value)}><option value="">Leave unassigned for now</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.code} — {cell.name}</option>)}</select></label>
@@ -531,11 +537,6 @@ export default function NyikaAdminWorkspace({ organisationId, authorizationHeade
       </section>}
     </section>
 
-
-    <section id="nyika-appointments" className="nyika-card">
-      <div className="nyika-register-heading"><div><span className="nyika-eyebrow">CHURCH LEADERSHIP</span><h3>Member roles and appointments</h3><p>Assign members to church offices configured by Central Administration. Each appointment has an effective date and geographical scope, with previous appointments retained.</p></div></div>
-      <MemberAppointments organisationId={organisationId} authorizationHeader={authorizationHeader} />
-    </section>
 
     <section id="nyika-contributions" className="nyika-card nyika-contributions">
       <div className="nyika-register-heading"><div><span className="nyika-eyebrow">FINANCIAL WORKSPACE</span><h3>Contribution performance</h3><p>Compare posted collections against centrally configured targets for the selected geographical scope. Reversed contributions are excluded from achievement.</p></div></div>

@@ -92,6 +92,22 @@ public class NyikaWorkspaceController {
             cellName = cell.name();
         }
 
+        UUID positionId = request.positionId();
+        UUID roleScopeId = cellId == null ? nyika.id() : cellId;
+        PositionAssignment selectedRole = null;
+        if (positionId != null) {
+            selectedRole = jdbc.query("""
+                SELECT id, name, allow_concurrent, active
+                FROM church_positions WHERE id = ?
+                """, (rs, n) -> new PositionAssignment(
+                    rs.getObject("id", UUID.class), rs.getString("name"),
+                    rs.getBoolean("allow_concurrent"), rs.getBoolean("active")), positionId)
+                .stream().findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Church role not found."));
+            if (!selectedRole.active()) throw new IllegalArgumentException("Select an active church role configured by Central Administration.");
+            authorization.requireUnitPermission("MEMBERS_MANAGE", roleScopeId);
+        }
+
         UUID id = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO members
@@ -108,6 +124,31 @@ public class NyikaWorkspaceController {
                 "cellId", cellId == null ? "" : cellId.toString(),
                 "classificationId", request.classificationId().toString(),
                 "eliteNumber", blankToNull(request.eliteNumber()) == null ? "" : blankToNull(request.eliteNumber())));
+
+        if (positionId != null) {
+            String overlapSql = """
+                SELECT COUNT(*) FROM member_appointments
+                WHERE organisation_id = ? AND member_id = ? AND position_id = ?
+                  AND valid_to IS NULL
+                """ + (selectedRole.allowConcurrent() ? " AND scope_unit_id = ?" : "");
+            Integer overlap = selectedRole.allowConcurrent()
+                ? jdbc.queryForObject(overlapSql, Integer.class, nyika.organisationId(), id, positionId, roleScopeId)
+                : jdbc.queryForObject(overlapSql, Integer.class, nyika.organisationId(), id, positionId);
+            if (overlap != null && overlap > 0) throw new ConflictException("This member already holds this church role.");
+            UUID actorId = jdbc.queryForObject(
+                "SELECT id FROM admin_users WHERE LOWER(username) = LOWER(?)",
+                UUID.class, authorization.currentUsername());
+            UUID assignmentId = UUID.randomUUID();
+            jdbc.update("""
+                INSERT INTO member_appointments
+                    (id, organisation_id, member_id, position_id, scope_unit_id, valid_from, valid_to, note, recorded_by)
+                VALUES (?, ?, ?, ?, ?, CURRENT_DATE, NULL, NULL, ?)
+                """, assignmentId, nyika.organisationId(), id, positionId, roleScopeId, actorId);
+            audit.record("MEMBER_APPOINTMENT_CREATED", "MEMBER_APPOINTMENT", assignmentId,
+                Map.of("memberId", id.toString(), "positionId", positionId.toString(),
+                    "scopeUnitId", roleScopeId.toString(), "validFrom", java.time.LocalDate.now().toString(),
+                    "assignmentSource", "MEMBER_REGISTRATION"));
+        }
 
         NyikaMemberDto created = new NyikaMemberDto(id.toString(), blankToNull(request.zccAppNumber()),
             blankToNull(request.eliteNumber()), request.firstName().trim(), request.lastName().trim(),
@@ -324,7 +365,7 @@ public class NyikaWorkspaceController {
             String eliteNumber,
             @NotBlank @Size(max = 100) String firstName,
             @NotBlank @Size(max = 100) String lastName,
-            @NotNull UUID classificationId, UUID cellId) {}
+            @NotNull UUID classificationId, UUID cellId, UUID positionId) {}
     public record UpdateNyikaMember(@NotBlank @Size(max = 100) String firstName,
             @NotBlank @Size(max = 100) String lastName, @Size(max = 80) String zccAppNumber,
             String eliteNumber, @NotNull UUID classificationId, UUID cellId) {}
@@ -336,4 +377,5 @@ public class NyikaWorkspaceController {
             boolean active, String cellId, String cellName) {}
     private record Unit(UUID id, UUID organisationId, String level, String name) {}
     private record Cell(UUID id, UUID organisationId, String level, String name) {}
+    private record PositionAssignment(UUID id, String name, boolean allowConcurrent, boolean active) {}
 }
